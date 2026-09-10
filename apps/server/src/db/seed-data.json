@@ -1,0 +1,977 @@
+{
+  "products": [
+    {
+      "key": "relay",
+      "name": "Relay",
+      "description": "Team messaging with file sync across phone, tablet and web.",
+      "tests": [
+        {
+          "key": "T-01",
+          "version": 4,
+          "title": "Fresh install opens on the welcome screen",
+          "expectedResult": "No cached account is shown; the sign-in button is enabled.",
+          "metadata": {
+            "tags": [
+              "onboarding"
+            ]
+          }
+        },
+        {
+          "key": "T-02",
+          "version": 2,
+          "title": "Sign-in rejects a wrong password",
+          "expectedResult": "An inline error appears under the password field. The field is not cleared.",
+          "metadata": {
+            "tags": [
+              "onboarding",
+              "auth"
+            ]
+          }
+        },
+        {
+          "key": "T-03",
+          "version": 7,
+          "title": "Sign-in succeeds with valid credentials",
+          "expectedResult": "The channel list loads within 3 seconds and shows the workspace name in the header.",
+          "metadata": {
+            "tags": [
+              "onboarding",
+              "auth"
+            ]
+          }
+        },
+        {
+          "key": "T-04",
+          "version": 1,
+          "title": "Workspace name renders in the header",
+          "expectedResult": "Full name, not truncated, on a 6\" screen.",
+          "metadata": {
+            "tags": [
+              "ui"
+            ]
+          }
+        },
+        {
+          "key": "T-05",
+          "version": 3,
+          "title": "Sending a message shows it optimistically",
+          "expectedResult": "The message appears in the thread immediately with a pending clock icon.",
+          "metadata": {
+            "tags": [
+              "messaging"
+            ]
+          }
+        },
+        {
+          "key": "T-06",
+          "version": 3,
+          "title": "Sent message is confirmed",
+          "expectedResult": "The clock icon becomes a single check within 2 seconds.",
+          "metadata": {
+            "tags": [
+              "messaging"
+            ]
+          }
+        },
+        {
+          "key": "T-07",
+          "version": 5,
+          "title": "Message arrives on a second device",
+          "expectedResult": "The message appears on the other signed-in device without a manual refresh.",
+          "metadata": {
+            "tags": [
+              "messaging",
+              "sync"
+            ]
+          }
+        },
+        {
+          "key": "T-08",
+          "version": 1,
+          "title": "Read receipt updates on the sender device",
+          "expectedResult": "The single check becomes a double check once the recipient opens the thread.",
+          "metadata": {
+            "tags": [
+              "messaging",
+              "sync"
+            ]
+          }
+        },
+        {
+          "key": "T-09",
+          "version": 2,
+          "title": "Typing indicator appears for the recipient",
+          "expectedResult": "\"Dana is typing…\" shows under the thread header and clears after 5 seconds of inactivity.",
+          "metadata": {
+            "tags": [
+              "messaging"
+            ]
+          }
+        },
+        {
+          "key": "T-10",
+          "version": 1,
+          "title": "Emoji reaction syncs across devices",
+          "expectedResult": "The reaction and its count are identical on both devices.",
+          "metadata": {
+            "tags": [
+              "messaging",
+              "sync"
+            ]
+          }
+        },
+        {
+          "key": "T-11",
+          "version": 6,
+          "title": "Editing a message marks it as edited",
+          "expectedResult": "The text updates everywhere and an \"edited\" label appears next to the timestamp.",
+          "metadata": {
+            "tags": [
+              "messaging"
+            ]
+          }
+        },
+        {
+          "key": "T-12",
+          "version": 2,
+          "title": "Deleting a message removes it for everyone",
+          "expectedResult": "The message is replaced by \"Message deleted\" on every device in the thread.",
+          "metadata": {
+            "tags": [
+              "messaging",
+              "sync"
+            ]
+          }
+        },
+        {
+          "key": "T-13",
+          "version": 3,
+          "title": "Image attachment uploads with a progress bar",
+          "expectedResult": "A determinate progress bar runs to 100%, then the thumbnail renders.",
+          "metadata": {
+            "tags": [
+              "files"
+            ]
+          }
+        },
+        {
+          "key": "T-14",
+          "version": 1,
+          "title": "Attachment opens in the full-screen viewer",
+          "expectedResult": "Pinch-to-zoom works and the download button is visible.",
+          "metadata": {
+            "tags": [
+              "files",
+              "ui"
+            ]
+          }
+        },
+        {
+          "key": "T-15",
+          "version": 4,
+          "title": "Large file over the limit is rejected",
+          "expectedResult": "Upload is blocked before it starts, with a message naming the 100 MB limit.",
+          "metadata": {
+            "tags": [
+              "files",
+              "limits"
+            ]
+          }
+        },
+        {
+          "key": "T-16",
+          "version": 2,
+          "title": "Downloaded file keeps its original filename",
+          "expectedResult": "The saved file matches the uploaded name, including spaces and extension.",
+          "metadata": {
+            "tags": [
+              "files"
+            ]
+          }
+        },
+        {
+          "key": "T-17",
+          "version": 1,
+          "title": "Push notification arrives when the app is closed",
+          "expectedResult": "A notification with the sender name and message preview appears within 10 seconds.",
+          "metadata": {
+            "tags": [
+              "notifications"
+            ]
+          }
+        },
+        {
+          "key": "T-18",
+          "version": 3,
+          "title": "Tapping a notification opens the right thread",
+          "expectedResult": "The app opens directly to the thread, scrolled to the new message.",
+          "metadata": {
+            "tags": [
+              "notifications"
+            ]
+          }
+        },
+        {
+          "key": "T-19",
+          "version": 2,
+          "title": "Muting a channel stops notifications",
+          "expectedResult": "No banner or sound for new messages in that channel; the badge still increments.",
+          "metadata": {
+            "tags": [
+              "notifications",
+              "settings"
+            ]
+          }
+        },
+        {
+          "key": "T-20",
+          "version": 1,
+          "title": "Messages sent offline are queued",
+          "expectedResult": "The message shows a pending state and stays in the thread while offline.",
+          "metadata": {
+            "tags": [
+              "sync",
+              "offline"
+            ]
+          }
+        },
+        {
+          "key": "T-21",
+          "version": 2,
+          "title": "Queued messages send on reconnect",
+          "expectedResult": "All queued messages send in their original order once connectivity returns.",
+          "metadata": {
+            "tags": [
+              "sync",
+              "offline"
+            ]
+          }
+        },
+        {
+          "key": "T-22",
+          "version": 1,
+          "title": "Offline banner appears and clears",
+          "expectedResult": "\"You are offline\" shows under the header and disappears within 5 seconds of reconnecting.",
+          "metadata": {
+            "tags": [
+              "sync",
+              "offline",
+              "ui"
+            ]
+          }
+        },
+        {
+          "key": "T-23",
+          "version": 1,
+          "title": "Sign-out clears local message cache",
+          "expectedResult": "After signing out and back in as another user, no previous messages are visible.",
+          "metadata": {
+            "tags": [
+              "auth",
+              "security"
+            ]
+          }
+        },
+        {
+          "key": "T-24",
+          "version": 1,
+          "title": "Dark mode applies to the whole thread view",
+          "expectedResult": "No light-themed elements remain, including the attachment viewer.",
+          "metadata": {
+            "tags": [
+              "ui",
+              "settings"
+            ]
+          }
+        },
+        {
+          "key": "T-25",
+          "version": 1,
+          "title": "Search returns messages from an archived channel",
+          "expectedResult": "Archived results appear under a separate heading and open read-only.",
+          "metadata": {
+            "tags": [
+              "search"
+            ]
+          }
+        },
+        {
+          "key": "T-26",
+          "version": 1,
+          "title": "Scheduled messages send at the chosen time",
+          "expectedResult": "The message leaves the queue within a minute of the scheduled time and shows a sent check.",
+          "metadata": {
+            "tags": [
+              "messaging",
+              "unreleased"
+            ]
+          }
+        }
+      ],
+      "templates": [
+        {
+          "key": "tpl-regression",
+          "name": "Monthly regression — fresh install",
+          "description": "The full pass we run on release week, starting from a wiped device.",
+          "status": "active",
+          "flows": [
+            {
+              "key": "f1",
+              "name": "First run and sign-in",
+              "precondition": "Relay uninstalled from the Pixel. You have valid credentials for the QA workspace.",
+              "estimatedMinutes": 12,
+              "steps": [
+                {
+                  "kind": "action",
+                  "text": "Install the release build on the Pixel and open it.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Look at the first screen.",
+                  "expectedResult": "Welcome screen, no cached account, sign-in enabled.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-01"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Enter the QA email and a deliberately wrong password, then tap Sign in.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Check the error handling.",
+                  "expectedResult": "Inline error under the password field; field keeps its text.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-02"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Correct the password and tap Sign in.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Watch the channel list load.",
+                  "expectedResult": "Loads under 3s; workspace name in the header, not truncated.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-03",
+                    "T-04"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Open Settings → Appearance and switch to Dark.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Return to a thread and inspect every surface.",
+                  "expectedResult": "No light-themed elements anywhere, viewer included.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-24"
+                  ]
+                }
+              ]
+            },
+            {
+              "key": "f2",
+              "name": "Messaging across two devices",
+              "precondition": "Signed in on the Pixel from the previous flow. Have the iPhone nearby but leave it locked for now.",
+              "estimatedMinutes": 20,
+              "steps": [
+                {
+                  "kind": "action",
+                  "text": "Open the #qa-sandbox channel.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Send the message \"ping 1\".",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Watch the message as it sends.",
+                  "expectedResult": "Appears immediately with a pending clock, then a single check within 2s.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-05",
+                    "T-06"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Unlock the iPhone, sign in with the same account and open #qa-sandbox.",
+                  "expectedResult": null,
+                  "deviceLabel": "iPhone 13",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Look for the message you just sent.",
+                  "expectedResult": "\"ping 1\" is present without pulling to refresh.",
+                  "deviceLabel": "iPhone 13",
+                  "marks": [
+                    "T-07"
+                  ]
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Look back at the Pixel.",
+                  "expectedResult": "The single check has become a double check.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-08"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Long-press \"ping 1\" and add a 👍 reaction.",
+                  "expectedResult": null,
+                  "deviceLabel": "iPhone 13",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Compare the reaction on both screens.",
+                  "expectedResult": "Same emoji and count on the Pixel and the iPhone.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-10"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Long-press your message, choose Edit, change it to \"ping 1 edited\" and save.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Check the iPhone thread.",
+                  "expectedResult": "Text updated with an \"edited\" label by the timestamp.",
+                  "deviceLabel": "iPhone 13",
+                  "marks": [
+                    "T-11"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "On the second laptop, signed in as Dana, open #qa-sandbox and start typing.",
+                  "expectedResult": null,
+                  "deviceLabel": "Second laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Watch the Pixel thread header.",
+                  "expectedResult": "\"Dana is typing…\" appears, then clears after ~5s.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-09"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Delete \"ping 1 edited\".",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Check the iPhone and the second laptop.",
+                  "expectedResult": "Both show \"Message deleted\".",
+                  "deviceLabel": "iPhone 13",
+                  "marks": [
+                    "T-12"
+                  ]
+                }
+              ]
+            },
+            {
+              "key": "f3",
+              "name": "Attachments",
+              "precondition": "Signed in on the Pixel. Have a photo and a file larger than 100 MB on the device.",
+              "estimatedMinutes": 15,
+              "steps": [
+                {
+                  "kind": "action",
+                  "text": "In #qa-sandbox, attach a photo from the gallery and send it.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Watch the upload.",
+                  "expectedResult": "Determinate progress bar to 100%, then a thumbnail.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-13"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Tap the thumbnail.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Try to zoom and find the download control.",
+                  "expectedResult": "Pinch-to-zoom works; download button visible.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-14"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Attach the oversized file.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Read the rejection.",
+                  "expectedResult": "Blocked before upload starts; message names the 100 MB limit.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-15"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Open the web app on the laptop, find the photo in #qa-sandbox and download it.",
+                  "expectedResult": null,
+                  "deviceLabel": "Chrome on laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Inspect the downloaded file.",
+                  "expectedResult": "Filename matches the original, spaces and extension intact.",
+                  "deviceLabel": "Chrome on laptop",
+                  "marks": [
+                    "T-16"
+                  ]
+                }
+              ]
+            },
+            {
+              "key": "f4",
+              "name": "Notifications and account switching",
+              "precondition": "Notifications allowed for Relay on the Pixel. Second laptop signed in as Dana.",
+              "estimatedMinutes": 14,
+              "steps": [
+                {
+                  "kind": "action",
+                  "text": "Close Relay completely on the Pixel (swipe it out of recents).",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "As Dana, send \"wake up\" to #qa-sandbox.",
+                  "expectedResult": null,
+                  "deviceLabel": "Second laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Watch the Pixel lock screen.",
+                  "expectedResult": "Notification with sender name and preview within 10s.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-17"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Tap the notification.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "See where the app lands.",
+                  "expectedResult": "Opens #qa-sandbox scrolled to the new message.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-18"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Open the channel menu and mute #qa-sandbox.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "As Dana, send two more messages.",
+                  "expectedResult": null,
+                  "deviceLabel": "Second laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Watch the Pixel.",
+                  "expectedResult": "No banner or sound; the channel badge still increments.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-19"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Sign out on the Pixel, then sign in as Dana.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Look through the channel list and threads.",
+                  "expectedResult": "None of the previous account's messages are visible.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-23"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "key": "tpl-offline",
+          "name": "Offline and reconnect",
+          "description": "Run on a device we can put into airplane mode without losing the session.",
+          "status": "active",
+          "flows": [
+            {
+              "key": "g1",
+              "name": "Queue and drain",
+              "precondition": "Signed in on the Pixel with #qa-sandbox open. Wi-Fi and mobile data both available.",
+              "estimatedMinutes": 10,
+              "steps": [
+                {
+                  "kind": "action",
+                  "text": "Turn on airplane mode.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Look under the thread header.",
+                  "expectedResult": "\"You are offline\" banner is visible.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-22"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Send three messages: \"one\", \"two\", \"three\".",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Check how they are shown.",
+                  "expectedResult": "All three stay in the thread with a pending state.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-20"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Turn airplane mode off.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Watch the queue drain.",
+                  "expectedResult": "All three send in order; banner clears within 5s.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-21",
+                    "T-22"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "key": "tpl-sms",
+          "name": "SMS bridge (legacy)",
+          "description": "Kept for the bridge we no longer ship. Never scheduled — retained for coverage history.",
+          "status": "archived",
+          "flows": [
+            {
+              "key": "h1",
+              "name": "Bridge pairing",
+              "precondition": "A SIM-enabled handset paired to the workspace.",
+              "estimatedMinutes": 8,
+              "steps": [
+                {
+                  "kind": "assertion",
+                  "text": "Open the archived channel from search.",
+                  "expectedResult": "Archived results grouped separately and read-only.",
+                  "deviceLabel": "Pixel 8",
+                  "marks": [
+                    "T-25"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "run": {
+        "templateKey": "tpl-regression",
+        "startedBy": "Noa",
+        "claims": {
+          "f1": "Yuval",
+          "f2": "Noa",
+          "f3": "Ori"
+        },
+        "finished": [
+          "f1"
+        ],
+        "results": {
+          "T-01": {
+            "v": "pass"
+          },
+          "T-02": {
+            "v": "pass"
+          },
+          "T-03": {
+            "v": "minor",
+            "note": "Took about 5s on the first load after install. Fine on every load after that."
+          },
+          "T-04": {
+            "v": "pass"
+          },
+          "T-24": {
+            "v": "skip",
+            "note": "The settings screen was redesigned in 4.2 — there is no Appearance section any more. This test needs rewriting."
+          },
+          "T-05": {
+            "v": "pass"
+          },
+          "T-06": {
+            "v": "pass"
+          },
+          "T-07": {
+            "v": "pass"
+          },
+          "T-08": {
+            "v": "pass"
+          },
+          "T-10": {
+            "v": "fail",
+            "note": "Reaction count showed 2 on the iPhone and 1 on the Pixel. Pull-to-refresh corrected it.",
+            "blocking": false
+          },
+          "T-13": {
+            "v": "pass"
+          },
+          "T-14": {
+            "v": "pass"
+          },
+          "T-15": {
+            "v": "pass"
+          }
+        }
+      }
+    },
+    {
+      "key": "beacon",
+      "name": "Beacon Console",
+      "description": "Admin console for provisioning Relay workspaces.",
+      "tests": [
+        {
+          "key": "B-01",
+          "version": 1,
+          "title": "Creating a workspace provisions it within a minute",
+          "expectedResult": "The workspace appears in the list with status Active and a generated ID.",
+          "metadata": {
+            "tags": [
+              "admin"
+            ]
+          }
+        },
+        {
+          "key": "B-02",
+          "version": 1,
+          "title": "Provisioning failure surfaces the reason",
+          "expectedResult": "An inline banner names the failing step; the workspace is left in Failed, not Active.",
+          "metadata": {
+            "tags": [
+              "admin"
+            ]
+          }
+        },
+        {
+          "key": "B-03",
+          "version": 1,
+          "title": "Suspending a workspace blocks new sign-ins",
+          "expectedResult": "Existing sessions continue; a new sign-in is refused with a suspension notice.",
+          "metadata": {
+            "tags": [
+              "admin"
+            ]
+          }
+        },
+        {
+          "key": "B-04",
+          "version": 1,
+          "title": "Seat count reflects invited members",
+          "expectedResult": "The seat counter increments on invite acceptance, not on invite send.",
+          "metadata": {
+            "tags": [
+              "admin"
+            ]
+          }
+        },
+        {
+          "key": "B-05",
+          "version": 1,
+          "title": "Audit log records who provisioned a workspace",
+          "expectedResult": "The entry names the admin, the workspace and the timestamp, and cannot be edited.",
+          "metadata": {
+            "tags": [
+              "admin"
+            ]
+          }
+        },
+        {
+          "key": "B-06",
+          "version": 1,
+          "title": "Exporting the workspace list produces a CSV",
+          "expectedResult": "Every visible column is present and the file opens without a warning.",
+          "metadata": {
+            "tags": [
+              "admin"
+            ]
+          }
+        }
+      ],
+      "templates": [
+        {
+          "key": "tpl-beacon-admin",
+          "name": "Admin console pass",
+          "description": "Run against a staging tenant with provisioning enabled.",
+          "status": "active",
+          "flows": [
+            {
+              "key": "bf1",
+              "name": "Provisioning a workspace end to end",
+              "precondition": "Signed in to the staging console as an admin. No workspace named 'qa-scratch' exists.",
+              "estimatedMinutes": 18,
+              "steps": [
+                {
+                  "kind": "action",
+                  "text": "Open Workspaces and choose New workspace.",
+                  "expectedResult": null,
+                  "deviceLabel": "Chrome on laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Name it 'qa-scratch' and submit.",
+                  "expectedResult": null,
+                  "deviceLabel": "Chrome on laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Watch the workspace list.",
+                  "expectedResult": "Appears as Active with a generated ID inside a minute.",
+                  "deviceLabel": "Chrome on laptop",
+                  "marks": [
+                    "B-01"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Invite two members and accept one invitation from the second laptop.",
+                  "expectedResult": null,
+                  "deviceLabel": "Second laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Read the seat counter on the console.",
+                  "expectedResult": "Incremented by one — the accepted invite only.",
+                  "deviceLabel": "Chrome on laptop",
+                  "marks": [
+                    "B-04"
+                  ]
+                },
+                {
+                  "kind": "action",
+                  "text": "Suspend the workspace.",
+                  "expectedResult": null,
+                  "deviceLabel": "Chrome on laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Try to sign in as the invited member.",
+                  "expectedResult": "Refused with a suspension notice; the existing session keeps working.",
+                  "deviceLabel": "Second laptop",
+                  "marks": [
+                    "B-03"
+                  ]
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Open the audit log.",
+                  "expectedResult": "Names the admin, the workspace and the time. Not editable.",
+                  "deviceLabel": "Chrome on laptop",
+                  "marks": [
+                    "B-05"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

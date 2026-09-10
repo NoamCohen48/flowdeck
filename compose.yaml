@@ -1,0 +1,59 @@
+# Flowdeck — the whole system. See .docs/09-implementation-plan.md (D32).
+#
+#   postgres  the database, with logical replication so Electric can follow it
+#   electric  syncs Postgres queries to the browser as "shapes" (the live read path)
+#   app       Hono API + the built React frontend; all writes go through here
+#   caddy     one origin, TLS in front of everything
+#
+# The app proxies shape requests rather than exposing Electric directly, so there is
+# one place that decides what a client may subscribe to.
+
+name: flowdeck
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flowdeck
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-flowdeck-dev}
+      POSTGRES_DB: flowdeck
+    # wal_level=logical is what lets Electric follow changes. Without it Electric
+    # starts and then fails on its first shape, which is a confusing way to find out.
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-54321}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowdeck -d flowdeck"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  electric:
+    image: electricsql/electric:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://flowdeck:${POSTGRES_PASSWORD:-flowdeck-dev}@postgres:5432/flowdeck?sslmode=disable
+      ELECTRIC_INSECURE: "true" # not exposed publicly; the app proxies and authorises
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${ELECTRIC_PORT:-3010}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/v1/health || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:
