@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: flowdeck
+          POSTGRES_PASSWORD: flowdeck-dev
+          POSTGRES_DB: flowdeck
+        # wal_level=logical matches compose.yaml; the migration sets replica
+        # identities that only make sense with logical replication on.
+        options: >-
+          --health-cmd "pg_isready -U flowdeck -d flowdeck"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+        ports:
+          - 54321:5432
+
+    env:
+      DATABASE_URL: postgresql://flowdeck:flowdeck-dev@localhost:54321/flowdeck
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Unit and property tests
+        run: bun test
+
+      - name: Migrate
+        run: bun run db:migrate
+
+      - name: Seed
+        run: bun run db:seed
