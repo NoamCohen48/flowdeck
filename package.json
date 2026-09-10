@@ -1,0 +1,24 @@
+{
+  "name": "flowdeck",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --build --pretty",
+    "db:up": "docker compose up -d postgres electric",
+    "db:down": "docker compose down",
+    "db:migrate": "bun run --cwd apps/server db:migrate",
+    "db:seed": "bun run --cwd apps/server db:seed",
+    "dev": "bun run --cwd apps/server dev",
+    "dev:web": "bun run --cwd apps/web dev"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "fast-check": "^4.9.0",
+    "typescript": "^7.0.2"
+  }
+}
