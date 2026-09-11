@@ -310,3 +310,65 @@ export async function addAttachment(input: {
 export async function listAttachments(testResultId: string) {
   return db.select().from(attachment).where(eq(attachment.testResultId, testResultId));
 }
+
+/* ── Reporting ───────────────────────────────────────────────────────── */
+
+/** Closing is bookkeeping: the day is over. Nothing is locked (D25 keeps runs open indefinitely otherwise). */
+export async function closeRun(runId: string, reopen = false) {
+  const [row] = await db
+    .update(run)
+    .set({ closedAt: reopen ? null : new Date() })
+    .where(eq(run.id, runId))
+    .returning();
+  return row;
+}
+
+export async function attachmentsForRun(runId: string) {
+  return query<{ id: string; test_result_id: string }>(raw`
+    select a.id, a.test_result_id
+    from attachment a
+    join test_result tr on tr.id = a.test_result_id
+    join flow_run fr on fr.id = tr.flow_run_id
+    where fr.run_id = ${runId}
+    order by a.created_at
+  `);
+}
+
+export type HistoryRow = {
+  run_id: string;
+  run_date: string;
+  template_name: string;
+  flow_name: string;
+  version: number;
+  title: string;
+  expected_result: string;
+  verdict: Verdict;
+  note: string | null;
+  blocking: boolean;
+  recorded_by: string;
+  recorded_at: string;
+};
+
+/**
+ * One test over time. Results pin a version id, so March's verdict reads against
+ * March's wording after any number of edits (`04`).
+ */
+export async function historyOf(testId: string) {
+  return query<HistoryRow>(raw`
+    select
+      r.id as run_id, r.date as run_date, t.name as template_name,
+      coalesce((
+        select f->>'name' from jsonb_array_elements(r.template_snapshot->'flows') f
+        where f->>'id' = fr.flow_id::text
+      ), '') as flow_name,
+      tv.version, tv.title, tv.expected_result,
+      tr.verdict, tr.note, tr.blocking, tr.recorded_by, tr.recorded_at
+    from test_result tr
+    join flow_run fr on fr.id = tr.flow_run_id
+    join run r on r.id = fr.run_id
+    join template t on t.id = r.template_id
+    join test_version tv on tv.id = tr.test_version_id
+    where tr.test_id = ${testId}
+    order by tr.recorded_at desc
+  `);
+}

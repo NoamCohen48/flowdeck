@@ -2186,6 +2186,169 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{runId}/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The issue feed: every non-pass result, self-contained
+         * @description Typed `failure | minor | invalid_test` (D28). Flowdeck does not filter — the adapter routes failures to the bug tracker and invalid tests to suite maintenance. Pass `includePass=true` for the whole day's data.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    includePass?: "true" | "false";
+                };
+                header?: never;
+                path: {
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The feed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IssueFeed"];
+                    };
+                };
+                /** @description No such run */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runs/{runId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close a testing day (or reopen it)
+         * @description Bookkeeping, not a lock: a closed run leaves the 'open days' list and its report is final. Flows still claimed are left as they are. `reopen=true` undoes it.
+         */
+        post: {
+            parameters: {
+                query?: {
+                    reopen?: "true" | "false";
+                };
+                header?: never;
+                path: {
+                    runId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The run */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Run"];
+                    };
+                };
+                /** @description No identity on the request */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No such run */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tests/{testId}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One test over time
+         * @description Every result ever recorded for the test, newest first, each against the version it ran against — a result from March stays readable against March's wording.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    testId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description History */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TestHistoryEntry"][];
+                    };
+                };
+                /** @description No such test */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2506,6 +2669,70 @@ export interface components {
             templateName: string;
             /** @enum {string} */
             templateStatus: "active" | "archived";
+        };
+        Issue: {
+            /** @enum {string} */
+            type: "failure" | "minor" | "invalid_test" | "pass";
+            test: {
+                /** Format: uuid */
+                id: string;
+                /** Format: uuid */
+                versionId: string;
+                version: number;
+                title: string;
+                expected: string;
+            };
+            context: {
+                /** Format: uuid */
+                flowId: string;
+                flow: string;
+                /** Format: uuid */
+                stepId: string;
+                stepNumber: number;
+                stepText: string;
+                device: string;
+            };
+            note: string | null;
+            attachments: string[];
+            blocking: boolean;
+            recordedBy: string;
+            /** Format: date-time */
+            recordedAt: string;
+        };
+        IssueFeed: {
+            run: {
+                /** Format: uuid */
+                id: string;
+                /** Format: date-time */
+                date: string;
+                /** Format: date-time */
+                closedAt: string | null;
+                product: string;
+                /** Format: uuid */
+                productId: string;
+                template: string;
+                /** Format: uuid */
+                templateId: string;
+            };
+            issues: components["schemas"]["Issue"][];
+        };
+        TestHistoryEntry: {
+            /** Format: uuid */
+            runId: string;
+            /** Format: date-time */
+            runDate: string;
+            template: string;
+            flow: string;
+            version: number;
+            title: string;
+            expected: string;
+            /** @enum {string} */
+            verdict: "pass" | "fail" | "minor" | "skipped";
+            note: string | null;
+            blocking: boolean;
+            recordedBy: string;
+            /** Format: date-time */
+            recordedAt: string;
         };
     };
     responses: never;

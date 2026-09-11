@@ -13,13 +13,25 @@ import { usePeers, usePresence } from "../lib/presence.ts";
 import { useTitle } from "../lib/title.ts";
 import { DeviceChip } from "../components/Device.tsx";
 import { Bar, Kpis } from "../components/Progress.tsx";
+import { IssueCard, useIssues } from "../components/Issues.tsx";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function Day() {
   const { productId, runId } = useParams({ strict: false }) as { productId: string; runId: string };
   const board = useRunBoard(runId);
   usePresence(`run:${runId}`);
   const here = usePeers(`run:${runId}`);
+  const qc = useQueryClient();
   useTitle(board ? `Testing day · ${board.run.snapshot.name} — Flowdeck` : "Flowdeck");
+  const resultCount = board ? board.flows.reduce((n, f) => n + Object.values(f.counts).reduce((a, b) => a + b, 0), 0) : 0;
+  const issues = useIssues(runId, resultCount);
+
+  async function close(reopen: boolean) {
+    if (!reopen && !confirm("Close the day? It leaves the open list and its report is final. You can reopen it.")) return;
+    await unwrap(api.POST("/runs/{runId}/close", { params: { path: { runId }, query: { reopen: reopen ? "true" : "false" } } }));
+    await qc.invalidateQueries({ queryKey: ["run", runId] });
+    await qc.invalidateQueries({ queryKey: ["runs", productId] });
+  }
 
   if (!board) return <main className="shell"><p className="meta">Loading the testing day…</p></main>;
   const { run, flows, counts, total, notReached } = board;
@@ -40,6 +52,9 @@ export function Day() {
         <div className="flex gap-2 items-center flex-wrap">
           {here.map((a) => <span key={a} className="tag" dir="auto">{a}</span>)}
           <span className={`pill ${run.closedAt ? "skip" : "open"}`}><span className="dot" />{run.closedAt ? "Closed" : "In progress"}</span>
+          {run.closedAt
+            ? <button className="btn sm" onClick={() => void close(true)}>Reopen</button>
+            : <button className="btn sm" onClick={() => void close(false)}>Close the day</button>}
         </div>
       </div>
 
@@ -52,6 +67,16 @@ export function Day() {
       <div className="stack">
         {flows.map((f) => <FlowCard key={f.flow.id} productId={productId} runId={runId} progress={f} />)}
       </div>
+      <h2>Report</h2>
+      {issues.data && issues.data.issues.length ? (
+        <div className="stack">
+          {issues.data.issues.map((i, n) => <IssueCard key={n} feed={issues.data!} issue={i} productId={productId} runId={runId} />)}
+        </div>
+      ) : (
+        <p className="meta">{issues.data ? "Nothing has gone wrong so far." : "…"}</p>
+      )}
+      {notReached ? <p className="meta" style={{ marginTop: 12 }}>{notReached} test{notReached === 1 ? "" : "s"} not reached yet — in scope, with no result at all.</p> : null}
+
       <p className="meta" style={{ marginTop: 24 }}>
         This day runs against a snapshot of the template taken at{" "}
         {new Date(run.snapshot.takenAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}. Edits made now apply the next time it is run.
@@ -93,8 +118,8 @@ function FlowCard({ productId, runId, progress }: { productId: string; runId: st
   const cta = mine ? (
     <Link className="btn primary" to="/products/$productId/runs/$runId/flows/$flowRunId" params={{ productId, runId, flowRunId: mine.id }}>Continue</Link>
   ) : (
-    <button className="btn primary" disabled={busy} onClick={() => void claim()}>
-      {state === "open" ? "Claim flow" : "Run it too"}
+    <button className={`btn${state === "done" ? "" : " primary"}`} disabled={busy} onClick={() => void claim()}>
+      {state === "open" ? "Claim flow" : state === "done" ? "Run it again" : "Run it too"}
     </button>
   );
 

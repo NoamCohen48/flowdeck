@@ -1147,6 +1147,235 @@
           "templateName",
           "templateStatus"
         ]
+      },
+      "Issue": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "failure",
+              "minor",
+              "invalid_test",
+              "pass"
+            ]
+          },
+          "test": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "versionId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "version": {
+                "type": "integer"
+              },
+              "title": {
+                "type": "string"
+              },
+              "expected": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "versionId",
+              "version",
+              "title",
+              "expected"
+            ]
+          },
+          "context": {
+            "type": "object",
+            "properties": {
+              "flowId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "flow": {
+                "type": "string"
+              },
+              "stepId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "stepNumber": {
+                "type": "integer",
+                "minimum": 0,
+                "exclusiveMinimum": true
+              },
+              "stepText": {
+                "type": "string"
+              },
+              "device": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "flowId",
+              "flow",
+              "stepId",
+              "stepNumber",
+              "stepText",
+              "device"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "recordedBy": {
+            "type": "string"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "type",
+          "test",
+          "context",
+          "note",
+          "attachments",
+          "blocking",
+          "recordedBy",
+          "recordedAt"
+        ]
+      },
+      "IssueFeed": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "date": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "closedAt": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              },
+              "product": {
+                "type": "string"
+              },
+              "productId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "template": {
+                "type": "string"
+              },
+              "templateId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "id",
+              "date",
+              "closedAt",
+              "product",
+              "productId",
+              "template",
+              "templateId"
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Issue"
+            }
+          }
+        },
+        "required": [
+          "run",
+          "issues"
+        ]
+      },
+      "TestHistoryEntry": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "template": {
+            "type": "string"
+          },
+          "flow": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "expected": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "minor",
+              "skipped"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "recordedBy": {
+            "type": "string"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "runId",
+          "runDate",
+          "template",
+          "flow",
+          "version",
+          "title",
+          "expected",
+          "verdict",
+          "note",
+          "blocking",
+          "recordedBy",
+          "recordedAt"
+        ]
       }
     },
     "parameters": {}
@@ -3452,6 +3681,173 @@
                     "templates",
                     "usages"
                   ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such test",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{runId}/issues": {
+      "get": {
+        "tags": [
+          "Runs",
+          "Integration"
+        ],
+        "summary": "The issue feed: every non-pass result, self-contained",
+        "description": "Typed `failure | minor | invalid_test` (D28). Flowdeck does not filter — the adapter routes failures to the bug tracker and invalid tests to suite maintenance. Pass `includePass=true` for the whole day's data.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "runId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "required": false,
+            "name": "includePass",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The feed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueFeed"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{runId}/close": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Close a testing day (or reopen it)",
+        "description": "Bookkeeping, not a lock: a closed run leaves the 'open days' list and its report is final. Flows still claimed are left as they are. `reopen=true` undoes it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "runId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "required": false,
+            "name": "reopen",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tests/{testId}/history": {
+      "get": {
+        "tags": [
+          "Tests",
+          "Runs"
+        ],
+        "summary": "One test over time",
+        "description": "Every result ever recorded for the test, newest first, each against the version it ran against — a result from March stays readable against March's wording.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "testId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "History",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TestHistoryEntry"
+                  }
                 }
               }
             }

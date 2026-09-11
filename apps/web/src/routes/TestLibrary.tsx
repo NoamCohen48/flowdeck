@@ -9,6 +9,8 @@ import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Test } from "../lib/api.ts";
 import { useLiveCoverage, useTestIndex } from "../lib/editor-model.ts";
+import { useLiveResults } from "../lib/run-model.ts";
+import { worstResultByTest, type Verdict } from "@flowdeck/domain";
 import { useTitle } from "../lib/title.ts";
 
 type Filter = "all" | "uncovered" | "archived";
@@ -23,6 +25,10 @@ export function TestLibrary() {
   const templates = useQuery({ queryKey: ["templates", productId], queryFn: () => unwrap(api.GET("/products/{productId}/templates", { params: { path: { productId } } })) });
   const covered = useQuery({ queryKey: ["coverage", productId], queryFn: () => unwrap(api.GET("/products/{productId}/coverage", { params: { path: { productId } } })) });
   const templateName = (id: string) => templates.data?.find((t) => t.id === id)?.name ?? "…";
+  const runs = useQuery({ queryKey: ["runs", productId], queryFn: () => unwrap(api.GET("/products/{productId}/runs", { params: { path: { productId } } })) });
+  // "Today" is the most recent open day; its verdicts come live off the run's results shape.
+  const today = (runs.data ?? []).filter((r) => !r.closedAt).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const todayVerdicts = useTodayVerdicts(today?.id);
 
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -90,7 +96,7 @@ export function TestLibrary() {
 
       <div className="tbl" style={{ overflowX: "auto" }}>
         <table>
-          <thead><tr><th style={{ width: 60 }}>Ver.</th><th>Test</th><th style={{ width: 260 }}>Covered by</th></tr></thead>
+          <thead><tr><th style={{ width: 60 }}>Ver.</th><th>Test</th><th style={{ width: 260 }}>Covered by</th><th style={{ width: 130 }}>Today</th></tr></thead>
           <tbody>
             {rows.map((t) => {
               const n = coverage.markCount(t.id);
@@ -106,10 +112,11 @@ export function TestLibrary() {
                       : n === 0 ? <span className="pill fail"><span className="dot" />Not in any template</span>
                       : <div className="flex gap-1 flex-wrap">{tplIds.map((id) => <span key={id} className="tag" dir="auto">{templateName(id)}</span>)}{tplIds.length === 0 ? <span className="meta">{n} step{n === 1 ? "" : "s"}</span> : null}</div>}
                   </td>
+                  <td><TodayPill verdict={todayVerdicts.get(t.id)} /></td>
                 </tr>
               );
             })}
-            {!rows.length ? <tr><td colSpan={3} className="meta">Nothing matches.</td></tr> : null}
+            {!rows.length ? <tr><td colSpan={4} className="meta">Nothing matches.</td></tr> : null}
           </tbody>
         </table>
       </div>
@@ -134,10 +141,11 @@ function tagsOf(t: Test): string[] {
 
 function TestDetail({ test, productId, onEdit, onChanged }: { test: Test; productId: string; onEdit: () => void; onChanged: () => Promise<unknown> }) {
   const usages = useQuery({ queryKey: ["usages", test.id], queryFn: () => unwrap(api.GET("/tests/{testId}/usages", { params: { path: { testId: test.id } } })) });
+  const history = useQuery({ queryKey: ["history", test.id], queryFn: () => unwrap(api.GET("/tests/{testId}/history", { params: { path: { testId: test.id } } })) });
   const versions = useQuery({ queryKey: ["versions", test.id], queryFn: () => unwrap(api.GET("/tests/{testId}/versions", { params: { path: { testId: test.id } } })), enabled: false });
-  const [history, setHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  useEffect(() => { setHistory(false); setConfirming(false); }, [test.id]);
+  useEffect(() => { setShowHistory(false); setConfirming(false); }, [test.id]);
 
   async function archive(undo: boolean) {
     await unwrap(api.POST("/tests/{testId}/archive", { params: { path: { testId: test.id }, query: { undo: undo ? "true" : "false" } } }));
@@ -156,7 +164,7 @@ function TestDetail({ test, productId, onEdit, onChanged }: { test: Test; produc
             <p className="meta" style={{ margin: "2px 0 0" }}>Version {test.current.version} · edited by {test.current.createdBy} on {new Date(test.current.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}</p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button className="btn sm" onClick={() => { setHistory((h) => !h); if (!versions.data) void versions.refetch(); }}>Version history</button>
+            <button className="btn sm" onClick={() => { setShowHistory((h) => !h); if (!versions.data) void versions.refetch(); }}>Version history</button>
             {!test.archived ? <button className="btn sm" onClick={onEdit}>Edit</button> : null}
             {test.archived
               ? <button className="btn sm" onClick={() => void archive(true)}>Restore</button>
@@ -190,7 +198,25 @@ function TestDetail({ test, productId, onEdit, onChanged }: { test: Test; produc
           ))}
         </div>
 
-        {history ? (
+        <label className="f">Over time</label>
+        {history.data && history.data.length === 0 ? <p className="meta" style={{ margin: 0 }}>Never executed.</p> : null}
+        {history.data && history.data.length ? (
+          <div className="tbl"><table><tbody>
+            {history.data.map((h, i) => (
+              <tr key={i}>
+                <td style={{ width: 130 }} className="meta">{new Date(h.runDate).toLocaleDateString()}</td>
+                <td style={{ width: 120 }}><TodayPill verdict={h.verdict} /></td>
+                <td>
+                  <span dir="auto">{h.template} → {h.flow}</span>
+                  <span className="meta"> · v{h.version} · {h.recordedBy}</span>
+                  {h.note ? <div className="meta" dir="auto" style={{ marginTop: 2 }}>{h.note}</div> : null}
+                </td>
+              </tr>
+            ))}
+          </tbody></table></div>
+        ) : null}
+
+        {showHistory ? (
           <>
             <label className="f">Version history</label>
             <div className="tbl"><table><tbody>
@@ -257,5 +283,24 @@ function TestDialog({ open, mode, test, onSubmit, onClose }: { open: boolean; mo
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+const PILL: Record<Verdict, [string, string]> = { pass: ["pass", "Passed"], fail: ["fail", "Failed"], minor: ["minor", "Minor"], skipped: ["skip", "Test is wrong"] };
+
+function TodayPill({ verdict }: { verdict: Verdict | undefined }) {
+  if (!verdict) return <span className="meta">—</span>;
+  const [cls, label] = PILL[verdict];
+  return <span className={`pill ${cls}`}><span className="dot" />{label}</span>;
+}
+
+/** A nil run id keeps the hook order stable when no day is open; its shape is simply empty. */
+const NO_RUN = "00000000-0000-4000-8000-000000000000";
+
+function useTodayVerdicts(runId: string | undefined) {
+  const { rows } = useLiveResults(runId ?? NO_RUN);
+  return useMemo(
+    () => (runId ? worstResultByTest(rows.map((r) => ({ testId: r.test_id, verdict: r.verdict }))) : new Map<string, Verdict>()),
+    [rows, runId],
   );
 }

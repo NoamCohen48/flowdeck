@@ -37,7 +37,10 @@ let templateId: string;
 
 beforeAll(async () => {
   const [p] = await query<{ id: string }>(raw`select id from product where name = 'Relay'`);
-  const [r] = await query<{ id: string }>(raw`select id from run limit 1`);
+  const [r] = await query<{ id: string }>(raw`
+    select r.id from run r
+    order by (select count(*) from test_result tr join flow_run fr on fr.id = tr.flow_run_id where fr.run_id = r.id) desc
+    limit 1`);
   if (!p || !r) throw new Error("database is not seeded");
   relayId = p.id;
   runId = r.id;

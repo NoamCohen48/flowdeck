@@ -1,7 +1,11 @@
 /** Product overview, milestone-3 cut: templates to start a day from, and recent days. */
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRunBoard } from "../lib/run-model.ts";
+import { useTestIndex } from "../lib/editor-model.ts";
+import { Bar } from "../components/Progress.tsx";
+import { IssueCard, type IssueFeed } from "../components/Issues.tsx";
 import { api, ApiError, unwrap } from "../lib/api.ts";
 import { useTitle } from "../lib/title.ts";
 
@@ -34,8 +38,19 @@ export function ProductHome() {
     if (tpl) void navigate({ to: "/products/$productId/templates/$templateId", params: { productId, templateId: tpl.id } });
   }
 
-  if (!product.data) return <main className="shell"><p className="meta">Loading…</p></main>;
   const open = (runs.data ?? []).filter((r) => !r.closedAt);
+  const feeds = useQueries({
+    queries: open.map((r) => ({
+      queryKey: ["issues", r.id, "home"],
+      queryFn: () => unwrap(api.GET("/runs/{runId}/issues", { params: { path: { runId: r.id } } })),
+      refetchInterval: 15_000,
+    })),
+  });
+  const { byId } = useTestIndex(productId);
+
+  if (!product.data) return <main className="shell"><p className="meta">Loading…</p></main>;
+  const uncovered = (coverage.data?.tests ?? []).filter((t) => t.needsAttention);
+  const todaysIssues = feeds.flatMap((q) => (q.data ? q.data.issues.filter((i) => i.type !== "minor").map((i) => ({ feed: q.data as IssueFeed, issue: i })) : []));
 
   return (
     <main className="shell">
@@ -56,15 +71,7 @@ export function ProductHome() {
       <h2>Today's testing day</h2>
       {open.length ? (
         <div className="stack">
-          {open.map((r) => (
-            <div key={r.id} className="panel pad row-split">
-              <div>
-                <h3 dir="auto">{r.templateName}</h3>
-                <span className="meta">Started by {r.startedBy} · {new Date(r.date).toLocaleString()}</span>
-              </div>
-              <Link className="btn primary" to="/products/$productId/runs/$runId" params={{ productId, runId: r.id }}>Open the board</Link>
-            </div>
-          ))}
+          {open.map((r) => <OpenRun key={r.id} productId={productId} runId={r.id} templateName={r.templateName} startedBy={r.startedBy} date={r.date} />)}
         </div>
       ) : (
         <p className="meta">No testing day is open. Start one from a template below.</p>
@@ -100,6 +107,24 @@ export function ProductHome() {
         ))}
       </div>
 
+      {uncovered.length || todaysIssues.length ? (
+        <>
+          <h2>Needs attention</h2>
+          <div className="stack">
+            {uncovered.map((t) => (
+              <div key={t.testId} className="panel pad row-split" style={{ boxShadow: "inset 3px 0 0 var(--color-fail)" }}>
+                <div>
+                  <b dir="auto">{byId.get(t.testId)?.current.title ?? "…"}</b>
+                  <p className="meta" style={{ margin: "2px 0 0" }}>In no template at all. It will never be checked on a testing day.</p>
+                </div>
+                <Link className="btn sm" to="/products/$productId/tests" params={{ productId }} search={{ test: t.testId }}>Review</Link>
+              </div>
+            ))}
+            {todaysIssues.map(({ feed, issue }, n) => <IssueCard key={n} feed={feed} issue={issue} productId={productId} />)}
+          </div>
+        </>
+      ) : null}
+
       {(runs.data ?? []).some((r) => r.closedAt) ? (
         <>
           <h2>Past testing days</h2>
@@ -129,6 +154,33 @@ function NewTemplate({ onSave, onCancel }: { onSave: (name: string, description:
         <button className="btn primary" disabled={!name.trim()} onClick={() => void onSave(name.trim(), description.trim())}>Create</button>
         <button className="btn" onClick={onCancel}>Cancel</button>
       </div>
+    </div>
+  );
+}
+
+/** An open day's card, with its progress live off the same collections the board uses. */
+function OpenRun({ productId, runId, templateName, startedBy, date }: { productId: string; runId: string; templateName: string; startedBy: string; date: string }) {
+  const board = useRunBoard(runId);
+  return (
+    <div className="panel pad">
+      <div className="row-split">
+        <div>
+          <h3 dir="auto">{templateName}</h3>
+          <span className="meta">
+            Started by {startedBy} · {new Date(date).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+            {board ? ` · ${board.flows.length} flows · ${new Set(board.flows.flatMap((f) => f.holders)).size} testers on it` : ""}
+          </span>
+        </div>
+        <Link className="btn primary" to="/products/$productId/runs/$runId" params={{ productId, runId }}>Open the board</Link>
+      </div>
+      {board ? (
+        <div style={{ marginTop: 14 }}>
+          <Bar counts={board.counts} total={board.total} />
+          <p className="meta" style={{ margin: "8px 0 0" }}>
+            {board.counts.pass} passed · {board.counts.fail} failed · {board.counts.minor} minor · {board.counts.skipped} skipped · {board.notReached} not reached yet
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

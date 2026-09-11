@@ -215,6 +215,70 @@ export const CreateTemplateSchema = z
 
 /* ── Structural editing (07 §1) ────────────────────────────────────────── */
 
+/* ── The issue feed (08, D27, D28) ──────────────────────────────────────
+   Every non-pass result, self-contained: enough context to become a ticket
+   without a second lookup. Flowdeck labels; the adapter decides. */
+
+export const IssueTypeSchema = z.enum(["failure", "minor", "invalid_test", "pass"]);
+
+export const IssueSchema = z
+  .object({
+    type: IssueTypeSchema,
+    test: z.object({
+      id: Uuid,
+      versionId: Uuid,
+      version: z.number().int(),
+      title: z.string(),
+      expected: z.string(),
+    }),
+    context: z.object({
+      flowId: Uuid,
+      flow: z.string(),
+      stepId: Uuid,
+      stepNumber: z.number().int().positive(),
+      stepText: z.string(),
+      device: z.string(),
+    }),
+    note: z.string().nullable(),
+    attachments: z.array(z.string()),
+    blocking: z.boolean(),
+    recordedBy: z.string(),
+    recordedAt: z.string().datetime(),
+  })
+  .openapi("Issue");
+
+export const IssueFeedSchema = z
+  .object({
+    run: z.object({
+      id: Uuid,
+      date: z.string().datetime(),
+      closedAt: z.string().datetime().nullable(),
+      product: z.string(),
+      productId: Uuid,
+      template: z.string(),
+      templateId: Uuid,
+    }),
+    issues: z.array(IssueSchema),
+  })
+  .openapi("IssueFeed");
+
+export const TestHistoryEntrySchema = z
+  .object({
+    runId: Uuid,
+    runDate: z.string().datetime(),
+    template: z.string(),
+    flow: z.string(),
+    version: z.number().int(),
+    title: z.string(),
+    expected: z.string(),
+    verdict: VerdictSchema,
+    note: z.string().nullable(),
+    blocking: z.boolean(),
+    recordedBy: z.string(),
+    recordedAt: z.string().datetime(),
+  })
+  .openapi("TestHistoryEntry");
+
 export const UpdateTemplateSchema = z
   .object({
     name: z.string().min(1).optional(),
