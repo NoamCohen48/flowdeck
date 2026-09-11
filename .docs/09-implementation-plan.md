@@ -156,8 +156,12 @@ that matters:
 | `coverageOf(test, marks)` | Covered if marked anywhere, archived templates included (D3) |
 | `verdictRequiresNote(v)` | Fail and skipped require a note (D13) |
 | `blockedStepsAfter(step)` | Blocking failure propagation (D11) |
-| `deviceColor(label)` | Deterministic label → palette slot (see D38) |
-| Zod schemas | The whole API contract |
+| `deviceColor(slot)` | Palette slot → colour (see D39) |
+
+The API contract lives in `apps/server/src/http/schemas.ts` rather than here, because
+it needs Zod and this package stays dependency-free. The web app does not import those
+schemas either — it consumes a client generated from the OpenAPI document, so there is
+one contract and the UI exercises the same API the adapters do (D35).
 
 **`computeHandoffs` is the one to be careful about.** `07-open-items.md` calls it out: a hand-off
 banner is derived state — "the first step using this device label" — and every insert or reorder can
@@ -287,14 +291,52 @@ These are not design changes; the demo is wrong or incomplete on them.
 | I1 | **Dark theme** ✓ | A tester three hours into a testing day, possibly in a dim lab. The demo is already fully tokenised, so this is a second `@theme` block, not a redesign. |
 | I2 | **Keyboard-driven runner** ✓ | `j`/`k` to move, `p` to pass-all, `f` to fail, `?` for help. Over four hours and several hundred steps, on a laptop, this is a large cumulative saving on the product's most-used screen. |
 | I3 | **Jump-to-current-step, and the editor's step map reused in the runner** ✓ | `07` already specifies a titles-only sidebar for the editor. The same component in the runner gives a tester who has scrolled away a way back, and an at-a-glance sense of what remains — which the docs say is asked constantly. |
-| I4 | **A device palette larger than four, deterministically assigned** ✓ | Device labels are free text and unbounded (D16), but the design defines exactly four colours. A flow using five devices currently has no defined behaviour. Proposal: a hash from label to a palette of eight, checked for contrast and colour-blind separation, with a manual override per flow. |
+| I4 | **A device palette larger than four, deterministically assigned** ✓ | Device labels are free text and unbounded (D16), but the design defines exactly four colours. A flow using five devices had no defined behaviour. Built as D39 below — which changed on contact with the colour maths. |
 
 **Live presence is not on this list** because it follows from the realtime requirement rather than
 being an addition: who else is on the run, who holds a flow, who is in the editor (D37).
 
+---
+
+### D39 — Device slots by order of appearance, and a palette of seven
+
+Two corrections to I4 as proposed, both found while building it.
+
+**Assignment is by order of first appearance in the flow, not by hashing the label.**
+Hashing was the proposal, and it has a real attraction: a device would keep the same
+colour across every flow. But two labels in one flow can hash to the same slot, and two
+adjacent steps in indistinguishable colours is precisely the confusion this product
+exists to remove. Order of appearance cannot collide within a flow and reproduces the
+demo's A/B/C/D. Cross-flow consistency is given up; the device *name* is shown
+everywhere, so nothing is actually lost.
+
+A visible consequence: letters are per-flow handles. The demo's fourth flow uses
+devices it labels A and D, with no B or C on screen; under order-of-appearance it shows
+A and B. That reads better, and a flow that jumps from A to D with nothing between
+would be a small puzzle for a tester to solve for no reason.
+
+**Seven slots, not eight.** Hue space is more crowded than it looked. Red, amber, green
+and slate-blue are spoken for by fail, minor, pass and skipped; violet, teal, ochre and
+magenta by the inherited device colours. Every candidate for an eighth sat within about
+20° of something it would be confused with, so the palette stops at seven rather than
+shipping a slot that reads as a verdict. `devices.test.ts` enforces the separation, so
+an eighth can be added the day someone finds one that passes.
+
+**An inherited collision, flagged rather than fixed.** The demo's own ochre (`--dev-c`,
+hue 30) sits 8° from the minor amber `#A66A00`, and its magenta (`--dev-d`, hue 332) is
+28° from the fail red `#C22F2F`. A device C chip beside a minor-verdict pill is
+genuinely hard to tell apart. Matching the demo was the instruction, so both stand,
+pinned by a test that documents them — but this is worth a decision.
+
+---
+
 ### Noted inconsistencies in the docs
 
 - The document map in `00` says the demo lives "in the parent folder"; it is in `.docs/`.
+- The demo's seed data is internally inconsistent: the library view offers an
+  "Uncovered only (1)" filter, but all 25 of its tests are marked by some flow. The
+  seed adds a 26th test that nothing marks, so the red row and the needs-attention
+  panel have something to render.
 - UI copy in `03` and `04` uses short test handles — *"T-42 is marked by 3 flows"* — and the API
   example in `08` uses `T-10`. The agreed decision is opaque IDs with titles shown in the UI, so that
   copy needs rewording. Flagging rather than reopening.

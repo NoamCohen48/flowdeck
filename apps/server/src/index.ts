@@ -8,6 +8,7 @@ import { db, sql } from "./db/client.ts";
 import { sql as raw } from "drizzle-orm";
 import { withActor, type ActorEnv } from "./http/actor.ts";
 import { shapes } from "./http/shapes.ts";
+import { api } from "./http/api.ts";
 
 const app = new Hono<ActorEnv>();
 
@@ -33,6 +34,9 @@ app.get("/health", async (c) => {
 
 /** Live reads (D33). Everything else is REST. */
 app.route("/api/shapes", shapes);
+
+/** The public contract, and the only API the web app uses (D35). */
+app.route("/api", api);
 
 const port = Number(process.env.PORT ?? 8787);
 

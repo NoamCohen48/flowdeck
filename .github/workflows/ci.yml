@@ -41,11 +41,15 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Unit and property tests
-        run: bun test
-
+      # Migrate and seed before the tests, because the API and derived-state
+      # tests run against a real database on purpose — a CHECK that does not
+      # fire and a view that returns the wrong shape are exactly what a mocked
+      # database cannot catch.
       - name: Migrate
         run: bun run db:migrate
 
       - name: Seed
         run: bun run db:seed
+
+      - name: Tests
+        run: bun test

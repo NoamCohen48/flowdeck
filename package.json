@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --build --pretty",
+    "typecheck": "bun run --cwd packages/domain typecheck && bun run --cwd apps/server typecheck",
     "db:up": "docker compose up -d postgres electric",
     "db:down": "docker compose down",
     "db:migrate": "bun run --cwd apps/server db:migrate",
