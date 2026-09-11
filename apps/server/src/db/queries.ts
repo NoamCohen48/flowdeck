@@ -74,29 +74,39 @@ export async function createTests(
   inputs: CreateTestInput[],
   createdBy: string,
 ) {
-  return db.transaction(async (tx) => {
-    const created: { id: string; versionId: string }[] = [];
-    for (const input of inputs) {
-      const [t] = await tx.insert(test).values({ productId }).returning();
-      const [v] = await tx
-        .insert(testVersion)
-        .values({
-          testId: t!.id,
-          version: 1,
-          title: input.title,
-          expectedResult: input.expectedResult,
-          metadata: input.metadata,
-          createdBy,
-        })
-        .returning();
-      await tx
-        .update(test)
-        .set({ currentVersionId: v!.id })
-        .where(eq(test.id, t!.id));
-      created.push({ id: t!.id, versionId: v!.id });
-    }
-    return created;
-  });
+  return db.transaction((tx) => createTestsIn(tx, productId, inputs, createdBy));
+}
+
+/** A transaction handle, so the bundle import can create tests and templates atomically. */
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export async function createTestsIn(
+  tx: Tx,
+  productId: string,
+  inputs: CreateTestInput[],
+  createdBy: string,
+) {
+  const created: { id: string; versionId: string }[] = [];
+  for (const input of inputs) {
+    const [t] = await tx.insert(test).values({ productId }).returning();
+    const [v] = await tx
+      .insert(testVersion)
+      .values({
+        testId: t!.id,
+        version: 1,
+        title: input.title,
+        expectedResult: input.expectedResult,
+        metadata: input.metadata,
+        createdBy,
+      })
+      .returning();
+    await tx
+      .update(test)
+      .set({ currentVersionId: v!.id })
+      .where(eq(test.id, t!.id));
+    created.push({ id: t!.id, versionId: v!.id });
+  }
+  return created;
 }
 
 /**
@@ -206,55 +216,75 @@ export async function createTemplates(
   productId: string,
   inputs: CreateTemplateInput[],
 ) {
-  return db.transaction(async (tx) => {
-    const created: string[] = [];
-    for (const input of inputs) {
-      const [tpl] = await tx
-        .insert(template)
+  return db.transaction((tx) => createTemplatesIn(tx, productId, inputs));
+}
+
+export async function createTemplatesIn(
+  tx: Tx,
+  productId: string,
+  inputs: CreateTemplateInput[],
+) {
+  const created: string[] = [];
+  for (const input of inputs) {
+    const [tpl] = await tx
+      .insert(template)
+      .values({
+        productId,
+        name: input.name,
+        description: input.description,
+        status: input.status,
+      })
+      .returning();
+
+    for (const [flowIndex, f] of input.flows.entries()) {
+      const [flowRow] = await tx
+        .insert(flow)
         .values({
-          productId,
-          name: input.name,
-          description: input.description,
-          status: input.status,
+          templateId: tpl!.id,
+          name: f.name,
+          precondition: f.precondition,
+          estimatedMinutes: f.estimatedMinutes,
+          position: flowIndex,
         })
         .returning();
 
-      for (const [flowIndex, f] of input.flows.entries()) {
-        const [flowRow] = await tx
-          .insert(flow)
+      for (const [stepIndex, s] of f.steps.entries()) {
+        const [stepRow] = await tx
+          .insert(step)
           .values({
-            templateId: tpl!.id,
-            name: f.name,
-            precondition: f.precondition,
-            estimatedMinutes: f.estimatedMinutes,
-            position: flowIndex,
+            flowId: flowRow!.id,
+            position: stepIndex,
+            kind: s.kind,
+            text: s.text,
+            expectedResult: s.expectedResult,
+            deviceLabel: s.deviceLabel,
           })
           .returning();
 
-        for (const [stepIndex, s] of f.steps.entries()) {
-          const [stepRow] = await tx
-            .insert(step)
-            .values({
-              flowId: flowRow!.id,
-              position: stepIndex,
-              kind: s.kind,
-              text: s.text,
-              expectedResult: s.expectedResult,
-              deviceLabel: s.deviceLabel,
-            })
-            .returning();
-
-          if (s.marks.length) {
-            await tx
-              .insert(stepMark)
-              .values(s.marks.map((testId) => ({ stepId: stepRow!.id, testId })));
-          }
+        if (s.marks.length) {
+          await tx
+            .insert(stepMark)
+            .values(s.marks.map((testId) => ({ stepId: stepRow!.id, testId })));
         }
       }
-      created.push(tpl!.id);
     }
-    return created;
-  });
+    created.push(tpl!.id);
+  }
+  return created;
+}
+
+/**
+ * Which of these test ids exist in the product. Marks referencing anything else
+ * would fail the foreign key deep inside a transaction; checking first turns
+ * that into a 400 that names the id.
+ */
+export async function existingTestIds(productId: string, ids: string[]) {
+  if (ids.length === 0) return new Set<string>();
+  const rows = await db
+    .select({ id: test.id })
+    .from(test)
+    .where(and(eq(test.productId, productId), inArray(test.id, ids)));
+  return new Set(rows.map((r) => r.id));
 }
 
 export type TemplateSummaryRow = {

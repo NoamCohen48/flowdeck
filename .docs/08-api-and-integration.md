@@ -102,10 +102,27 @@ re-import while the parser is still wrong. If that becomes painful, an optional 
 on tests would make re-import safe — it can be added later without breaking existing callers, since
 it is optional on create.
 
+### One-phase, using caller keys
+
+`POST /api/products/{id}/import` folds the two phases into one transaction: each test carries a
+caller-chosen `key`, steps mark by key (or by the id of an existing test), and the response returns
+the key → id mapping. Same non-idempotency, one fewer thing for the script to hold. The two-phase
+contract stays for scripts that produce tests and templates at different times.
+
+### Identity for scripts
+
+Writes are attributed. A script has no cookie jar, so it sends `X-Flowdeck-Actor: <name>` on every
+request instead of `PUT /api/me`; the header wins over the cookie when both are present. Still a
+name picker, not authentication (D38).
+
+The how-to for all of this — guide, endpoint reference, generated OpenAPI file, examples — is in
+[`docs/`](../docs/README.md).
+
 ### Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
+| `POST` | `/api/products/{id}/import` | Tests and templates together, keyed, one transaction |
 | `POST` | `/api/products/{id}/tests` | Bulk-create tests |
 | `PATCH` | `/api/tests/{id}` | Edit — creates a new version |
 | `POST` | `/api/tests/{id}/archive` | Archive |

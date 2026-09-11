@@ -26,11 +26,12 @@ bun run dev        # API on :8787
 bun run dev:web    # Vite on :5173, proxies /api
 bun test           # needs the two containers
 bun run typecheck
-bun run api:generate   # after changing any route: regenerates packages/api-client
+bun run docs:api       # after changing any route: regenerates packages/api-client and docs/openapi.json
 ```
 
-The OpenAPI document is at `/api/openapi.json`; the parser you write against it uses the
-two-phase import in [`.docs/08-api-and-integration.md`](.docs/08-api-and-integration.md).
+Everything the web app does is also plain REST — see [`docs/`](docs/README.md) for the API
+guide, the endpoint reference and the OpenAPI definition. A script identifies itself with an
+`X-Flowdeck-Actor` header and loads a whole suite with `POST /api/products/{id}/import`.
 
 ## Layout
 
@@ -40,4 +41,5 @@ two-phase import in [`.docs/08-api-and-integration.md`](.docs/08-api-and-integra
 | `apps/server` | Hono API, Drizzle schema, Electric shape proxy, attachments |
 | `packages/api-client` | Typed client generated from the OpenAPI document |
 | `apps/web` | React app: board, runner, editor, library, dashboards |
+| `docs` | API guide, endpoint reference, generated OpenAPI definition, import examples |
 | `compose.yaml` | postgres + electric + app + caddy |

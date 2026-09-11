@@ -16,6 +16,15 @@ import { getSignedCookie, setSignedCookie } from "hono/cookie";
 export const ACTOR_COOKIE = "flowdeck_actor";
 
 /**
+ * The same identity, for scripts. An import script or a tracker adapter has no
+ * cookie jar; it names itself on every request instead. The header wins over the
+ * cookie when both are present, so a script run from a signed-in machine is still
+ * attributed to the name it chose.
+ */
+export const ACTOR_HEADER = "X-Flowdeck-Actor";
+export const ACTOR_NAME_MAX = 60;
+
+/**
  * Empty counts as unset: `.env` files ship `COOKIE_SECRET=` blank, and an
  * empty HMAC key makes the signer throw on every sign-in with a DataError that
  * says nothing about cookies. Fail at boot with the real reason instead.
@@ -34,8 +43,13 @@ const SECRET = (() => {
 export type ActorEnv = { Variables: { actor: string | null } };
 
 export const withActor = createMiddleware<ActorEnv>(async (c, next) => {
-  const name = await getSignedCookie(c, SECRET, ACTOR_COOKIE);
-  c.set("actor", typeof name === "string" && name.length > 0 ? name : null);
+  const header = c.req.header(ACTOR_HEADER)?.trim() ?? "";
+  if (header.length > 0) {
+    c.set("actor", header.slice(0, ACTOR_NAME_MAX));
+  } else {
+    const name = await getSignedCookie(c, SECRET, ACTOR_COOKIE);
+    c.set("actor", typeof name === "string" && name.length > 0 ? name : null);
+  }
   await next();
 });
 
@@ -66,7 +80,9 @@ export function requireActor(c: { get: (k: "actor") => string | null }): string 
 
 export class ActorRequiredError extends Error {
   constructor() {
-    super("Tell us who you are before recording anything.");
+    super(
+      "Tell us who you are before recording anything: sign in with PUT /api/me, or send an X-Flowdeck-Actor header.",
+    );
     this.name = "ActorRequiredError";
   }
 }

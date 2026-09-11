@@ -1,0 +1,70 @@
+{
+  "tests": [
+    {
+      "key": "T-10",
+      "title": "Sending a message shows it optimistically",
+      "expectedResult": "The message appears in the thread immediately, with a pending clock icon until the server confirms it.",
+      "metadata": { "priority": "high", "tags": ["messaging"] }
+    },
+    {
+      "key": "T-11",
+      "title": "Emoji reaction syncs across devices",
+      "expectedResult": "The reaction and its count are identical on both devices."
+    },
+    {
+      "key": "T-20",
+      "title": "Wrong password is rejected",
+      "expectedResult": "An error appears under the password field; the user stays on the sign-in screen."
+    }
+  ],
+  "templates": [
+    {
+      "name": "Monthly regression — fresh install",
+      "description": "Two phones, clean install, QA account.",
+      "flows": [
+        {
+          "name": "Sign in",
+          "precondition": "Relay installed, signed out. You have the qa-1 credentials.",
+          "estimatedMinutes": 5,
+          "steps": [
+            { "kind": "action", "text": "Open Relay and tap Sign in.", "deviceLabel": "Phone" },
+            { "kind": "action", "text": "Enter qa-1 with a wrong password and submit.", "deviceLabel": "Phone" },
+            {
+              "kind": "assertion",
+              "text": "Look under the password field.",
+              "expectedResult": "An error is shown and you are still on the sign-in screen.",
+              "deviceLabel": "Phone",
+              "marks": ["T-20"]
+            },
+            { "kind": "action", "text": "Enter the correct password and submit.", "deviceLabel": "Phone" }
+          ]
+        },
+        {
+          "name": "Messaging across two devices",
+          "precondition": "Relay installed on both phones, signed in as qa-1 on Device A and qa-2 on Device B.",
+          "estimatedMinutes": 25,
+          "steps": [
+            { "kind": "action", "text": "On Device A, open the chat with qa-2.", "deviceLabel": "Device A" },
+            { "kind": "action", "text": "Send the message 'hello'.", "deviceLabel": "Device A" },
+            {
+              "kind": "assertion",
+              "text": "Watch the thread as the message is sent.",
+              "expectedResult": "It appears immediately, with a pending clock icon.",
+              "deviceLabel": "Device A",
+              "marks": ["T-10"]
+            },
+            { "kind": "action", "text": "Pick up Device B and open the same chat.", "deviceLabel": "Device B" },
+            { "kind": "action", "text": "React to 'hello' with 👍.", "deviceLabel": "Device B" },
+            {
+              "kind": "assertion",
+              "text": "Compare the reaction on both screens.",
+              "expectedResult": "Same emoji, same count, on both.",
+              "deviceLabel": "Device A",
+              "marks": ["T-11"]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

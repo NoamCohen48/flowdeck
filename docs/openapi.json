@@ -1,0 +1,4127 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Flowdeck",
+    "version": "0.1.0",
+    "description": "Manual testing as human flows. A test says what must be true; a flow says what a human does. Flowdeck integrates with nothing directly — it emits structured data and accepts structured data, and adapters written outside it decide what becomes a ticket."
+  },
+  "security": [
+    {
+      "actorHeader": []
+    },
+    {
+      "actorCookie": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "/api",
+      "description": "Relative to the Flowdeck origin"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Products",
+      "description": "Independent systems under test (D23)"
+    },
+    {
+      "name": "Tests",
+      "description": "Assertions, versioned and never hard-deleted"
+    },
+    {
+      "name": "Templates",
+      "description": "Reusable testing days, one per setup"
+    },
+    {
+      "name": "Import",
+      "description": "A whole suite in one request: tests keyed by the caller, templates marking by key"
+    },
+    {
+      "name": "Coverage",
+      "description": "Is every test reachable by some flow?"
+    },
+    {
+      "name": "Runs",
+      "description": "Testing days: claiming, verdicts, blocking"
+    },
+    {
+      "name": "Identity",
+      "description": "The name picker, and presence"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "actorHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Flowdeck-Actor",
+        "description": "The name every write is attributed to. Not a secret and not authentication — Flowdeck is a name picker (D38). Required on every write; ignored on reads."
+      },
+      "actorCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "flowdeck_actor",
+        "description": "The signed cookie set by PUT /api/me. What the web app uses."
+      }
+    },
+    "schemas": {
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "details": {
+            "nullable": true
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "CreateProduct": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "TestVersion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "testId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "title": {
+            "type": "string"
+          },
+          "expectedResult": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "testId",
+          "version",
+          "title",
+          "expectedResult",
+          "metadata",
+          "createdAt",
+          "createdBy"
+        ]
+      },
+      "Test": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "current": {
+            "$ref": "#/components/schemas/TestVersion"
+          }
+        },
+        "required": [
+          "id",
+          "productId",
+          "archived",
+          "current"
+        ]
+      },
+      "TestCoverage": {
+        "type": "object",
+        "properties": {
+          "testId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "covered": {
+            "type": "boolean"
+          },
+          "needsAttention": {
+            "type": "boolean"
+          },
+          "templateIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "testId",
+          "covered",
+          "needsAttention",
+          "templateIds"
+        ]
+      },
+      "CoverageReport": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "covered": {
+            "type": "integer"
+          },
+          "uncovered": {
+            "type": "integer"
+          },
+          "tests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TestCoverage"
+            }
+          }
+        },
+        "required": [
+          "productId",
+          "total",
+          "covered",
+          "uncovered",
+          "tests"
+        ]
+      },
+      "CreateTest": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectedResult": {
+            "type": "string",
+            "minLength": 1
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            },
+            "default": {}
+          }
+        },
+        "required": [
+          "title",
+          "expectedResult"
+        ]
+      },
+      "CreateTests": {
+        "type": "object",
+        "properties": {
+          "tests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateTest"
+            },
+            "minItems": 1,
+            "maxItems": 1000
+          }
+        },
+        "required": [
+          "tests"
+        ]
+      },
+      "UpdateTest": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectedResult": {
+            "type": "string",
+            "minLength": 1
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          }
+        }
+      },
+      "TemplateSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          },
+          "flowCount": {
+            "type": "integer"
+          },
+          "marksTestCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "productId",
+          "name",
+          "description",
+          "status",
+          "flowCount",
+          "marksTestCount"
+        ]
+      },
+      "Step": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "action",
+              "assertion"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "expectedResult": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceLabel": {
+            "type": "string"
+          },
+          "marks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "position",
+          "kind",
+          "text",
+          "expectedResult",
+          "deviceLabel",
+          "marks"
+        ]
+      },
+      "Flow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "templateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "precondition": {
+            "type": "string"
+          },
+          "estimatedMinutes": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "exclusiveMinimum": true
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "templateId",
+          "name",
+          "precondition",
+          "estimatedMinutes",
+          "position",
+          "steps"
+        ]
+      },
+      "Template": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          },
+          "flows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Flow"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "productId",
+          "name",
+          "description",
+          "status",
+          "flows"
+        ]
+      },
+      "CreateStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "action",
+              "assertion"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectedResult": {
+            "type": "string",
+            "nullable": true,
+            "default": null
+          },
+          "deviceLabel": {
+            "type": "string",
+            "minLength": 1
+          },
+          "marks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "kind",
+          "text",
+          "deviceLabel"
+        ]
+      },
+      "CreateFlow": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "precondition": {
+            "type": "string",
+            "default": ""
+          },
+          "estimatedMinutes": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "exclusiveMinimum": true,
+            "default": null
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateStep"
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "CreateTemplate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "default": ""
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "default": "active"
+          },
+          "flows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateFlow"
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "CreateTemplates": {
+        "type": "object",
+        "properties": {
+          "templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateTemplate"
+            },
+            "minItems": 1,
+            "maxItems": 200
+          }
+        },
+        "required": [
+          "templates"
+        ]
+      },
+      "Me": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "Presence": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "pattern": "^(run|flow|template):[0-9a-f-]{36}$"
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "RunSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "templateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "templateName": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "startedBy": {
+            "type": "string"
+          },
+          "closedAt": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "templateId",
+          "templateName",
+          "date",
+          "startedBy",
+          "closedAt"
+        ]
+      },
+      "TemplateSnapshot": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "takenAt": {
+            "type": "string"
+          },
+          "flows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "precondition": {
+                  "type": "string"
+                },
+                "estimatedMinutes": {
+                  "type": "integer",
+                  "nullable": true
+                },
+                "position": {
+                  "type": "integer"
+                },
+                "steps": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Step"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "precondition",
+                "estimatedMinutes",
+                "position",
+                "steps"
+              ]
+            }
+          },
+          "tests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "versionId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "expectedResult": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "versionId",
+                "title",
+                "expectedResult"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "takenAt",
+          "flows",
+          "tests"
+        ]
+      },
+      "FlowRun": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "txid": {
+            "type": "integer"
+          },
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "flowId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "claimedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "claimed",
+              "finished",
+              "abandoned",
+              "released"
+            ]
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "finishedAt": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "runId",
+          "flowId",
+          "claimedBy",
+          "state",
+          "startedAt",
+          "finishedAt"
+        ]
+      },
+      "TestResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "txid": {
+            "type": "integer"
+          },
+          "flowRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stepId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "testId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "testVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "minor",
+              "skipped"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "recordedBy": {
+            "type": "string"
+          },
+          "recordedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "flowRunId",
+          "stepId",
+          "testId",
+          "testVersionId",
+          "verdict",
+          "note",
+          "blocking",
+          "recordedBy",
+          "recordedAt"
+        ]
+      },
+      "Run": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "templateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "date": {
+            "type": "string"
+          },
+          "startedBy": {
+            "type": "string"
+          },
+          "closedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/TemplateSnapshot"
+          },
+          "flowRuns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FlowRun"
+            }
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TestResult"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "templateId",
+          "date",
+          "startedBy",
+          "closedAt",
+          "snapshot",
+          "flowRuns",
+          "results"
+        ]
+      },
+      "ClaimResponse": {
+        "type": "object",
+        "properties": {
+          "flowRun": {
+            "$ref": "#/components/schemas/FlowRun"
+          },
+          "txid": {
+            "type": "integer"
+          },
+          "alsoRunning": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FlowRun"
+            }
+          }
+        },
+        "required": [
+          "flowRun",
+          "txid",
+          "alsoRunning"
+        ]
+      },
+      "RecordResult": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "testId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "minor",
+              "skipped"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "default": null
+          },
+          "blocking": {
+            "type": "boolean",
+            "default": false
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "stepId",
+          "testId",
+          "verdict",
+          "idempotencyKey"
+        ]
+      },
+      "PassAll": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idempotencyKeyPrefix": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "stepId",
+          "idempotencyKeyPrefix"
+        ]
+      },
+      "Attachment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "testResultId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "width": {
+            "type": "integer",
+            "nullable": true
+          },
+          "height": {
+            "type": "integer",
+            "nullable": true
+          },
+          "originalName": {
+            "type": "string",
+            "nullable": true
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "testResultId",
+          "mime",
+          "bytes",
+          "width",
+          "height",
+          "originalName",
+          "url"
+        ]
+      },
+      "UpdateTemplate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          }
+        }
+      },
+      "TxidResponse": {
+        "type": "object",
+        "properties": {
+          "txid": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "txid"
+        ]
+      },
+      "Reorder": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      },
+      "UpdateFlow": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "precondition": {
+            "type": "string"
+          },
+          "estimatedMinutes": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "exclusiveMinimum": true
+          }
+        }
+      },
+      "StepWrite": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "$ref": "#/components/schemas/Step"
+          },
+          "txid": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "step",
+          "txid"
+        ]
+      },
+      "InsertStep": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateStep"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "position": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "position"
+            ]
+          }
+        ]
+      },
+      "UpdateStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "action",
+              "assertion"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectedResult": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceLabel": {
+            "type": "string",
+            "minLength": 1
+          },
+          "marks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "TestUsage": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stepText": {
+            "type": "string"
+          },
+          "stepIndex": {
+            "type": "integer"
+          },
+          "deviceLabel": {
+            "type": "string"
+          },
+          "flowId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "flowName": {
+            "type": "string"
+          },
+          "templateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "templateName": {
+            "type": "string"
+          },
+          "templateStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          }
+        },
+        "required": [
+          "stepId",
+          "stepText",
+          "stepIndex",
+          "deviceLabel",
+          "flowId",
+          "flowName",
+          "templateId",
+          "templateName",
+          "templateStatus"
+        ]
+      },
+      "Issue": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "failure",
+              "minor",
+              "invalid_test",
+              "pass"
+            ]
+          },
+          "test": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "versionId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "version": {
+                "type": "integer"
+              },
+              "title": {
+                "type": "string"
+              },
+              "expected": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "versionId",
+              "version",
+              "title",
+              "expected"
+            ]
+          },
+          "context": {
+            "type": "object",
+            "properties": {
+              "flowId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "flow": {
+                "type": "string"
+              },
+              "stepId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "stepNumber": {
+                "type": "integer",
+                "minimum": 0,
+                "exclusiveMinimum": true
+              },
+              "stepText": {
+                "type": "string"
+              },
+              "device": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "flowId",
+              "flow",
+              "stepId",
+              "stepNumber",
+              "stepText",
+              "device"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "recordedBy": {
+            "type": "string"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "type",
+          "test",
+          "context",
+          "note",
+          "attachments",
+          "blocking",
+          "recordedBy",
+          "recordedAt"
+        ]
+      },
+      "IssueFeed": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "date": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "closedAt": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              },
+              "product": {
+                "type": "string"
+              },
+              "productId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "template": {
+                "type": "string"
+              },
+              "templateId": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "required": [
+              "id",
+              "date",
+              "closedAt",
+              "product",
+              "productId",
+              "template",
+              "templateId"
+            ]
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Issue"
+            }
+          }
+        },
+        "required": [
+          "run",
+          "issues"
+        ]
+      },
+      "TestHistoryEntry": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "template": {
+            "type": "string"
+          },
+          "flow": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "expected": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "minor",
+              "skipped"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "recordedBy": {
+            "type": "string"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "runId",
+          "runDate",
+          "template",
+          "flow",
+          "version",
+          "title",
+          "expected",
+          "verdict",
+          "note",
+          "blocking",
+          "recordedBy",
+          "recordedAt"
+        ]
+      },
+      "ImportResult": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "tests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Test"
+            }
+          },
+          "templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Template"
+            }
+          }
+        },
+        "required": [
+          "keys",
+          "tests",
+          "templates"
+        ]
+      },
+      "BundleTest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateTest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "key"
+            ]
+          }
+        ]
+      },
+      "BundleStep": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateStep"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "marks": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "default": []
+              }
+            }
+          }
+        ]
+      },
+      "BundleFlow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateFlow"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "steps": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BundleStep"
+                },
+                "default": []
+              }
+            }
+          }
+        ]
+      },
+      "BundleTemplate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateTemplate"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "flows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BundleFlow"
+                },
+                "default": []
+              }
+            }
+          }
+        ]
+      },
+      "ImportBundle": {
+        "type": "object",
+        "properties": {
+          "tests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BundleTest"
+            },
+            "maxItems": 1000,
+            "default": []
+          },
+          "templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BundleTemplate"
+            },
+            "maxItems": 200,
+            "default": []
+          }
+        }
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/products": {
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "List products",
+        "description": "Products are fully independent (D23) — different systems, different teams, no shared data.",
+        "responses": {
+          "200": {
+            "description": "Every product on this instance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Product"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Create a product",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProduct"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created product",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products/{productId}": {
+      "get": {
+        "tags": [
+          "Products"
+        ],
+        "summary": "Get one product",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "productId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The product",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such product",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products/{productId}/tests": {
+      "get": {
+        "tags": [
+          "Tests"
+        ],
+        "summary": "List a product's tests",
+        "description": "A flat searchable list. The feature-table grouping that mattered in a document is replaced by search and tags.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "productId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "required": false,
+            "name": "includeArchived",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The library",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Test"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Tests"
+        ],
+        "summary": "Bulk-create tests",
+        "description": "Returns the created tests in request order, which is what lets an importing script hold the mapping from its source rows to Flowdeck IDs (D29). Import is knowingly not idempotent: running a parser twice creates everything twice.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "productId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTests"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created tests, in request order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Test"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such product",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tests/{testId}": {
+      "get": {
+        "tags": [
+          "Tests"
+        ],
+        "summary": "Get a test at its current version",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "testId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The test",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Test"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such test",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Tests"
+        ],
+        "summary": "Edit a test — creates a new version",
+        "description": "The old version is never modified. Flows reference the test ID, so nothing needs repointing; that is the whole reason identity and versioning are separate (D6).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "testId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The test at its new version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Test"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such test",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tests/{testId}/versions": {
+      "get": {
+        "tags": [
+          "Tests"
+        ],
+        "summary": "Every version of a test, oldest first",
+        "description": "The old version is never modified and never deleted, so a result recorded in March stays readable against March's wording after six edits (D6).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "testId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Version history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TestVersion"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products/{productId}/coverage": {
+      "get": {
+        "tags": [
+          "Tests",
+          "Coverage"
+        ],
+        "summary": "Coverage state for every test in a product",
+        "description": "During a migration this is the progress bar: start with everything uncovered, finish when nothing is.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "productId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Coverage per test, plus the totals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverageReport"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such product",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tests/{testId}/archive": {
+      "post": {
+        "tags": [
+          "Tests"
+        ],
+        "summary": "Archive a test",
+        "description": "Archiving stops the test counting toward coverage; existing marks render as 'archived test' and historical runs stay intact. Hard deletion is never offered — a test referenced in six flows and three runs cannot be safely erased (D7).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "testId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "required": false,
+            "name": "undo",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The archived test, and how many places marked it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "test": {
+                      "$ref": "#/components/schemas/Test"
+                    },
+                    "marks": {
+                      "type": "object",
+                      "properties": {
+                        "steps": {
+                          "type": "integer"
+                        },
+                        "flows": {
+                          "type": "integer"
+                        },
+                        "templates": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "steps",
+                        "flows",
+                        "templates"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "test",
+                    "marks"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such test",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products/{productId}/templates": {
+      "get": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "List a product's templates",
+        "description": "Several templates per product is the norm — one per setup. Archived templates are included, because they stop appearing in the run picker but keep counting toward coverage (D3).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "productId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Templates with their flow and marked-test counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Bulk-create templates with their flows and steps",
+        "description": "Phase two of an import (D29). Steps reference tests by the IDs returned from phase one, so the importing script holds the mapping rather than Flowdeck knowing anything about the source.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "productId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTemplates"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Template"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such product",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/templates/{templateId}": {
+      "get": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "A template with its flows and steps",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Template"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Rename, describe or archive a template",
+        "description": "Archived templates leave the 'start a testing day' picker but keep counting toward coverage.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTemplate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Template"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/templates/{templateId}/scope": {
+      "get": {
+        "tags": [
+          "Templates",
+          "Coverage"
+        ],
+        "summary": "What this template covers, and what it misses",
+        "description": "The 'covers 20 of 25 tests' line, and the list behind 'see what it misses'. A report, not a form.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scope report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "templateId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "covers": {
+                      "type": "integer"
+                    },
+                    "productTotal": {
+                      "type": "integer"
+                    },
+                    "misses": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    }
+                  },
+                  "required": [
+                    "templateId",
+                    "covers",
+                    "productTotal",
+                    "misses"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows/{flowId}/devices": {
+      "get": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Devices a flow uses, and where each is introduced",
+        "description": "Computed from the step list by @flowdeck/domain, the same function the editor and the runner use. Never stored: a hand-off banner is 'the first step using this device label', and storing it would make every insert and reorder a chance to leave a step orphaned above its own introduction.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Devices in order of first appearance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "flowId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "devices": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "letter": {
+                            "type": "string"
+                          },
+                          "slot": {
+                            "type": "integer"
+                          },
+                          "introducedAtStepId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "introducedAtIndex": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "label",
+                          "letter",
+                          "slot",
+                          "introducedAtStepId",
+                          "introducedAtIndex"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "flowId",
+                    "devices"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such flow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Who this browser says it is",
+        "responses": {
+          "200": {
+            "description": "Name or null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Pick a name",
+        "description": "A name picker, not authentication. Seven people in one room, no roles, every change attributed (D24, D38).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/actors": {
+      "get": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Names seen on this instance, for the picker",
+        "responses": {
+          "200": {
+            "description": "Most recently seen first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/presence": {
+      "put": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "Heartbeat: I am looking at this run / flow / template",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Presence"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Recorded"
+          },
+          "401": {
+            "description": "No identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Identity"
+        ],
+        "summary": "I have left this scope",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Presence"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Removed"
+          }
+        }
+      }
+    },
+    "/products/{productId}/runs": {
+      "get": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Testing days for a product, newest first",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "productId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/templates/{templateId}/runs": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Start a testing day",
+        "description": "Takes a frozen snapshot of the template (D21). Edits made during the day apply to the next run, never this one. Warns, via 409, if a run is already open for this template unless `force=true` (D24).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "required": false,
+            "name": "force",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The new run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A run is already open for this template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "openRunId": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "openRunId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{runId}": {
+      "get": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Full run state: snapshot, flow runs, every result",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "runId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{runId}/flows/{flowId}/claim": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Claim a flow",
+        "description": "Advisory, not exclusive (D26). If someone already holds it, you get your own FlowRun alongside theirs and the response lists them, so the UI can ask 'Dana is on step 12 of 34 — run it anyway?' before this is called with confirm=true.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "runId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "required": false,
+            "name": "confirm",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Claimed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such run or flow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already claimed by someone else; confirm to run alongside",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "alsoRunning": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FlowRun"
+                      }
+                    }
+                  },
+                  "required": [
+                    "alsoRunning"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flow-runs/{flowRunId}/finish": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Finish a flow",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowRunId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such flow run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flow-runs/{flowRunId}/abandon": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Abandon a flow — the next person starts from step 1 (D10)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowRunId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such flow run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flow-runs/{flowRunId}/results": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Record a verdict for one test on one step",
+        "description": "Per test, not per step (D12). Fail and skipped require a note (D13). Idempotent on the client key (D36). A blocking failure marks every later step in the flow as blocked; their tests report as not verified, never as failures (D11).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowRunId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordResult"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such flow run, step or test",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This step is blocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flow-runs/{flowRunId}/pass-all": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Pass every test a step marks, in one click",
+        "description": "The common case stays as fast as the old per-step checkbox (D12).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowRunId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PassAll"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TestResult"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such flow run or step",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This step is blocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/results/{resultId}/attachments": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Attach an image to a result",
+        "description": "Multipart: `file` (image), optional `width` and `height` from the client's own decode. Several per result are fine — before/after, both devices.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "resultId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "height": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not an image, or too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "Disk budget exhausted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Images attached to a result",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "resultId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attachments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Attachment"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/attachments/usage": {
+      "get": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Disk used by attachments, against the budget",
+        "responses": {
+          "200": {
+            "description": "Usage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "usedBytes": {
+                      "type": "number"
+                    },
+                    "budgetBytes": {
+                      "type": "number"
+                    },
+                    "files": {
+                      "type": "number"
+                    },
+                    "nearBudget": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "usedBytes",
+                    "budgetBytes",
+                    "files",
+                    "nearBudget"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/templates/{templateId}/flows/order": {
+      "put": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Reorder a template's flows",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reorder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reordered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxidResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The ids are not exactly this template's flows — someone changed it under you",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/templates/{templateId}/flows": {
+      "post": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Add a flow to a template",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFlow"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new flow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Flow"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows/{flowId}": {
+      "patch": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Edit a flow's name, precondition or estimate",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFlow"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The flow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "templateId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "precondition": {
+                      "type": "string"
+                    },
+                    "estimatedMinutes": {
+                      "type": "integer",
+                      "nullable": true,
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "position": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "templateId",
+                    "name",
+                    "precondition",
+                    "estimatedMinutes",
+                    "position"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such flow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Delete a flow and its steps",
+        "description": "Runs already started keep their snapshot (D21), so nothing historical is lost. Marks vanish with the steps, which can uncover tests — the template page reports that.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such flow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows/{flowId}/steps": {
+      "post": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Insert a step at a position",
+        "description": "Insert anywhere (07 §1): the step takes the given index and what was there moves down. Hand-off banners are derived from order, so they follow automatically.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InsertStep"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new step and its transaction",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepWrite"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such flow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/steps/{stepId}": {
+      "patch": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Edit one step",
+        "description": "Last write wins per step (D37). Changing kind to action drops the expected result.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "stepId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStep"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The step as saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepWrite"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such step",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Delete a step",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "stepId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxidResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such step",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows/{flowId}/steps/order": {
+      "put": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Reorder a flow's steps",
+        "description": "The whole order in one transaction. Rejected unless the ids are exactly the flow's steps, which is what a drag against a flow someone else just edited looks like — the client re-syncs and the author drags again.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reorder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reordered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxidResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The ids are not exactly this flow's steps",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/steps/{stepId}/marks/{testId}": {
+      "put": {
+        "tags": [
+          "Templates",
+          "Coverage"
+        ],
+        "summary": "Mark a test on a step",
+        "description": "Idempotent. The same test may be marked on any number of steps (D19).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "stepId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "testId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Marked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxidResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such step or test",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Templates",
+          "Coverage"
+        ],
+        "summary": "Unmark a test from a step",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "stepId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "testId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unmarked (or was never marked)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxidResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tests/{testId}/usages": {
+      "get": {
+        "tags": [
+          "Tests",
+          "Coverage"
+        ],
+        "summary": "Every step that marks this test",
+        "description": "Answers 'if I change this, what am I affecting?' (04), and gives the archive confirmation its numbers before anything happens (D24).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "testId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "steps": {
+                      "type": "integer"
+                    },
+                    "flows": {
+                      "type": "integer"
+                    },
+                    "templates": {
+                      "type": "integer"
+                    },
+                    "usages": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TestUsage"
+                      }
+                    }
+                  },
+                  "required": [
+                    "steps",
+                    "flows",
+                    "templates",
+                    "usages"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such test",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{runId}/issues": {
+      "get": {
+        "tags": [
+          "Runs",
+          "Integration"
+        ],
+        "summary": "The issue feed: every non-pass result, self-contained",
+        "description": "Typed `failure | minor | invalid_test` (D28). Flowdeck does not filter — the adapter routes failures to the bug tracker and invalid tests to suite maintenance. Pass `includePass=true` for the whole day's data.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "runId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "required": false,
+            "name": "includePass",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The feed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueFeed"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{runId}/close": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Close a testing day (or reopen it)",
+        "description": "Bookkeeping, not a lock: a closed run leaves the 'open days' list and its report is final. Flows still claimed are left as they are. `reopen=true` undoes it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "runId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            },
+            "required": false,
+            "name": "reopen",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tests/{testId}/history": {
+      "get": {
+        "tags": [
+          "Tests",
+          "Runs"
+        ],
+        "summary": "One test over time",
+        "description": "Every result ever recorded for the test, newest first, each against the version it ran against — a result from March stays readable against March's wording.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "testId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "History",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TestHistoryEntry"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such test",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products/{productId}/import": {
+      "post": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Import tests and templates together, in one transaction",
+        "description": "The one-request form of the two-phase import. Each test carries a caller-chosen `key`; steps mark tests by that key (or by the id of a test that already exists in the product). Either the whole bundle lands or none of it does. Not idempotent: importing the same bundle twice creates everything twice (D29).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "productId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportBundle"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "What was created, and the key → id mapping",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A duplicate key, or a mark that resolves to nothing; `details` names each by path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such product",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

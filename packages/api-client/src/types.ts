@@ -2349,6 +2349,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/products/{productId}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import tests and templates together, in one transaction
+         * @description The one-request form of the two-phase import. Each test carries a caller-chosen `key`; steps mark tests by that key (or by the id of a test that already exists in the product). Either the whole bundle lands or none of it does. Not idempotent: importing the same bundle twice creates everything twice (D29).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    productId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ImportBundle"];
+                };
+            };
+            responses: {
+                /** @description What was created, and the key → id mapping */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ImportResult"];
+                    };
+                };
+                /** @description A duplicate key, or a mark that resolves to nothing; `details` names each by path */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No identity on the request */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No such product */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2733,6 +2805,34 @@ export interface components {
             recordedBy: string;
             /** Format: date-time */
             recordedAt: string;
+        };
+        ImportResult: {
+            keys: {
+                [key: string]: string;
+            };
+            tests: components["schemas"]["Test"][];
+            templates: components["schemas"]["Template"][];
+        };
+        BundleTest: components["schemas"]["CreateTest"] & {
+            key: string;
+        };
+        BundleStep: components["schemas"]["CreateStep"] & {
+            /** @default [] */
+            marks: string[];
+        };
+        BundleFlow: components["schemas"]["CreateFlow"] & {
+            /** @default [] */
+            steps: components["schemas"]["BundleStep"][];
+        };
+        BundleTemplate: components["schemas"]["CreateTemplate"] & {
+            /** @default [] */
+            flows: components["schemas"]["BundleFlow"][];
+        };
+        ImportBundle: {
+            /** @default [] */
+            tests: components["schemas"]["BundleTest"][];
+            /** @default [] */
+            templates: components["schemas"]["BundleTemplate"][];
         };
     };
     responses: never;

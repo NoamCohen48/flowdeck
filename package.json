@@ -18,7 +18,8 @@
     "db:seed": "bun run --cwd apps/server db:seed",
     "dev": "bun run --cwd apps/server dev",
     "dev:web": "bun run --cwd apps/web dev",
-    "api:generate": "bun run --cwd packages/api-client generate"
+    "api:generate": "bun run --cwd packages/api-client generate",
+    "docs:api": "bun run api:generate && cp packages/api-client/openapi.json docs/openapi.json"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

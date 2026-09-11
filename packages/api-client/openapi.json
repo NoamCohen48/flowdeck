@@ -2,9 +2,68 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Flowdeck",
-    "version": "0.1.0"
+    "version": "0.1.0",
+    "description": "Manual testing as human flows. A test says what must be true; a flow says what a human does. Flowdeck integrates with nothing directly — it emits structured data and accepts structured data, and adapters written outside it decide what becomes a ticket."
   },
+  "security": [
+    {
+      "actorHeader": []
+    },
+    {
+      "actorCookie": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "/api",
+      "description": "Relative to the Flowdeck origin"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Products",
+      "description": "Independent systems under test (D23)"
+    },
+    {
+      "name": "Tests",
+      "description": "Assertions, versioned and never hard-deleted"
+    },
+    {
+      "name": "Templates",
+      "description": "Reusable testing days, one per setup"
+    },
+    {
+      "name": "Import",
+      "description": "A whole suite in one request: tests keyed by the caller, templates marking by key"
+    },
+    {
+      "name": "Coverage",
+      "description": "Is every test reachable by some flow?"
+    },
+    {
+      "name": "Runs",
+      "description": "Testing days: claiming, verdicts, blocking"
+    },
+    {
+      "name": "Identity",
+      "description": "The name picker, and presence"
+    }
+  ],
   "components": {
+    "securitySchemes": {
+      "actorHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Flowdeck-Actor",
+        "description": "The name every write is attributed to. Not a secret and not authentication — Flowdeck is a name picker (D38). Required on every write; ignored on reads."
+      },
+      "actorCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "flowdeck_actor",
+        "description": "The signed cookie set by PUT /api/me. What the web app uses."
+      }
+    },
     "schemas": {
       "Product": {
         "type": "object",
@@ -1376,6 +1435,134 @@
           "recordedBy",
           "recordedAt"
         ]
+      },
+      "ImportResult": {
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "tests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Test"
+            }
+          },
+          "templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Template"
+            }
+          }
+        },
+        "required": [
+          "keys",
+          "tests",
+          "templates"
+        ]
+      },
+      "BundleTest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateTest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "key"
+            ]
+          }
+        ]
+      },
+      "BundleStep": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateStep"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "marks": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "default": []
+              }
+            }
+          }
+        ]
+      },
+      "BundleFlow": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateFlow"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "steps": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BundleStep"
+                },
+                "default": []
+              }
+            }
+          }
+        ]
+      },
+      "BundleTemplate": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateTemplate"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "flows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BundleFlow"
+                },
+                "default": []
+              }
+            }
+          }
+        ]
+      },
+      "ImportBundle": {
+        "type": "object",
+        "properties": {
+          "tests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BundleTest"
+            },
+            "maxItems": 1000,
+            "default": []
+          },
+          "templates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BundleTemplate"
+            },
+            "maxItems": 200,
+            "default": []
+          }
+        }
       }
     },
     "parameters": {}
@@ -3854,6 +4041,77 @@
           },
           "404": {
             "description": "No such test",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products/{productId}/import": {
+      "post": {
+        "tags": [
+          "Import"
+        ],
+        "summary": "Import tests and templates together, in one transaction",
+        "description": "The one-request form of the two-phase import. Each test carries a caller-chosen `key`; steps mark tests by that key (or by the id of a test that already exists in the product). Either the whole bundle lands or none of it does. Not idempotent: importing the same bundle twice creates everything twice (D29).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "productId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportBundle"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "What was created, and the key → id mapping",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A duplicate key, or a mark that resolves to nothing; `details` names each by path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such product",
             "content": {
               "application/json": {
                 "schema": {

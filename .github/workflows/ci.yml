@@ -26,7 +26,7 @@ jobs:
       # committed copy is stale, the web app is typechecking against a contract
       # the server no longer has.
       - name: API client is up to date
-        run: bun run api:generate && git diff --exit-code packages/api-client
+        run: bun run docs:api && git diff --exit-code packages/api-client docs/openapi.json
 
       - name: Typecheck
         run: bun run typecheck

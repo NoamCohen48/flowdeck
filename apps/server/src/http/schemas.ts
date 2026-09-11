@@ -339,6 +339,54 @@ export const CreateTemplatesSchema = z
   .object({ templates: z.array(CreateTemplateSchema).min(1).max(200) })
   .openapi("CreateTemplates");
 
+/* ── Bundle import ───────────────────────────────────────────────────────
+   The two-phase import (tests, then templates marking the returned IDs) is the
+   contract; this is the one-request form of it for a script that has the whole
+   suite in hand. Tests carry a caller-chosen `key`, steps mark by that key, and
+   the mapping the script would otherwise have to hold is resolved server-side,
+   inside one transaction — either everything lands or nothing does. */
+
+/** A caller-chosen handle for a test within one bundle: a spreadsheet row, a Jira key. */
+export const BundleKey = z.string().min(1).max(200);
+
+export const BundleTestSchema = CreateTestSchema.extend({
+  key: BundleKey,
+}).openapi("BundleTest");
+
+export const BundleStepSchema = CreateStepSchema.extend({
+  /** Keys of tests in this bundle, or ids of tests that already exist in the product. */
+  marks: z.array(z.string().min(1)).default([]),
+}).openapi("BundleStep");
+
+export const BundleFlowSchema = CreateFlowSchema.extend({
+  steps: z.array(BundleStepSchema).default([]),
+}).openapi("BundleFlow");
+
+export const BundleTemplateSchema = CreateTemplateSchema.extend({
+  flows: z.array(BundleFlowSchema).default([]),
+}).openapi("BundleTemplate");
+
+export const ImportBundleSchema = z
+  .object({
+    tests: z.array(BundleTestSchema).max(1000).default([]),
+    templates: z.array(BundleTemplateSchema).max(200).default([]),
+  })
+  .refine((b) => b.tests.length > 0 || b.templates.length > 0, {
+    message: "a bundle must contain at least one test or template",
+  })
+  .openapi("ImportBundle");
+
+export const ImportResultSchema = z
+  .object({
+    /** Bundle key → the created test's id, for the script's own records. */
+    keys: z.record(Uuid),
+    tests: z.array(TestSchema),
+    templates: z.array(TemplateSchema),
+  })
+  .openapi("ImportResult");
+
+export type ImportBundleInput = z.infer<typeof ImportBundleSchema>;
+
 /* ── Errors ──────────────────────────────────────────────────────────── */
 
 export const ErrorSchema = z
