@@ -30,13 +30,13 @@ Four facts about this system decide almost everything:
 | Database | **PostgreSQL 17** (`wal_level=logical`) |
 | Data access | **Drizzle ORM** + plain SQL migrations |
 | Realtime | **ElectricSQL** shapes for the live read path |
-| Frontend | **React 19** + **Vite** + **TanStack Router** + **TanStack Query** |
+| Frontend | **React 19** + **Vite** + **TanStack Router** + **TanStack Query**; **TanStack DB** holds the Electric-synced rows and applies optimistic writes, reconciled on the txid each write returns |
 | Styling | **Tailwind v4**, tokens lifted from `flowdeck-demo.html` |
 | Primitives | **Radix** (dialog, popover, focus) — no component library |
 | Drag and drop | **dnd-kit** |
 | Validation | **Zod**, shared between client and server |
-| Tests | **Vitest** + **fast-check**; **Playwright** for multi-context E2E |
-| Deployment | **docker compose** — postgres, electric, app, caddy |
+| Tests | **bun test** + **fast-check**; **Playwright** for multi-context E2E |
+| Deployment | **docker compose** — postgres, electric, app, caddy. Caddy terminates TLS so the browser gets HTTP/2: the editor alone holds five shape long-polls, and HTTP/1.1 caps a browser at ~6 per origin |
 
 TypeScript throughout, one Bun workspace.
 

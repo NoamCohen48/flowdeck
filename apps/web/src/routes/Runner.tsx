@@ -268,7 +268,13 @@ function RunnerBody({
           })}
         </ol>
         <aside className="hidden md:block">
-          <StepMap steps={flow.steps} handoffs={handoffs} current={current} view={view} onJump={scrollTo} />
+          <StepMap
+            steps={flow.steps}
+            handoffs={handoffs}
+            current={current}
+            onJump={scrollTo}
+            isDone={(s) => s.marks.length > 0 && s.marks.every((t) => view.byStepTest.has(`${s.id}|${t}`))}
+          />
         </aside>
       </div>
 

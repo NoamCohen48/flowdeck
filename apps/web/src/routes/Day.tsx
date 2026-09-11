@@ -5,13 +5,11 @@
  */
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { useLiveQuery } from "@tanstack/react-db";
 import { computeHandoffs } from "@flowdeck/domain";
 import { api, ApiError, unwrap } from "../lib/api.ts";
-import { presenceOf } from "../lib/collections.ts";
 import { useRunBoard, type FlowProgress } from "../lib/run-model.ts";
 import { useMe } from "../lib/identity.tsx";
-import { usePresence } from "../lib/presence.ts";
+import { usePeers, usePresence } from "../lib/presence.ts";
 import { useTitle } from "../lib/title.ts";
 import { DeviceChip } from "../components/Device.tsx";
 import { Bar, Kpis } from "../components/Progress.tsx";
@@ -20,8 +18,7 @@ export function Day() {
   const { productId, runId } = useParams({ strict: false }) as { productId: string; runId: string };
   const board = useRunBoard(runId);
   usePresence(`run:${runId}`);
-  const presence = presenceOf(`run:${runId}`);
-  const here = useLiveQuery(() => presence, [presence]);
+  const here = usePeers(`run:${runId}`);
   useTitle(board ? `Testing day · ${board.run.snapshot.name} — Flowdeck` : "Flowdeck");
 
   if (!board) return <main className="shell"><p className="meta">Loading the testing day…</p></main>;
@@ -41,7 +38,7 @@ export function Day() {
           </p>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
-          {(here.data ?? []).map((p) => <span key={p.actor} className="tag" dir="auto">{p.actor}</span>)}
+          {here.map((a) => <span key={a} className="tag" dir="auto">{a}</span>)}
           <span className={`pill ${run.closedAt ? "skip" : "open"}`}><span className="dot" />{run.closedAt ? "Closed" : "In progress"}</span>
         </div>
       </div>

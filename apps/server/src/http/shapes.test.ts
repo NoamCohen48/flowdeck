@@ -33,6 +33,7 @@ async function shape(path: string) {
 
 let relayId: string;
 let runId: string;
+let templateId: string;
 
 beforeAll(async () => {
   const [p] = await query<{ id: string }>(raw`select id from product where name = 'Relay'`);
@@ -40,6 +41,8 @@ beforeAll(async () => {
   if (!p || !r) throw new Error("database is not seeded");
   relayId = p.id;
   runId = r.id;
+  const [t] = await query<{ id: string }>(raw`select id from template where product_id = ${p.id} limit 1`);
+  templateId = t!.id;
 });
 
 describe("the allowlist", () => {
@@ -99,6 +102,21 @@ describe("shapes serve the seeded data, filtered", () => {
       (t) => !marked.has(t.value.id) && t.value.archived !== "true" && t.value.archived !== true,
     );
     expect(uncovered.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("flow.steps and flow.marks are one flow's editor state", async () => {
+    const [flow] = await query<{ id: string; steps: number; marks: number }>(raw`
+      select f.id,
+        (select count(*) from step s where s.flow_id = f.id)::int as steps,
+        (select count(*) from step_mark sm join step s on s.id = sm.step_id where s.flow_id = f.id)::int as marks
+      from flow f where f.template_id = ${templateId}
+      order by marks desc limit 1`);
+    const steps = await shape(`/api/shapes/flow.steps?flowId=${flow!.id}&offset=-1`);
+    const marks = await shape(`/api/shapes/flow.marks?flowId=${flow!.id}&offset=-1`);
+    expect(steps.rows).toHaveLength(flow!.steps);
+    expect(marks.rows).toHaveLength(flow!.marks);
+    const stepIds = new Set(steps.rows.map((r) => r.value.id));
+    expect(marks.rows.every((m) => stepIds.has(m.value.step_id as string))).toBe(true);
   });
 
   test("the response carries Electric's resume headers through the proxy", async () => {

@@ -15,6 +15,7 @@ import { tests } from "./routes/tests.ts";
 import { templates } from "./routes/templates.ts";
 import { runs } from "./routes/runs.ts";
 import { attachments } from "./routes/attachments.ts";
+import { authoring } from "./routes/authoring.ts";
 
 /** Validation failures name the field; see `router.ts` for why that is shared. */
 export const api = createRouter();
@@ -24,6 +25,7 @@ api.route("/", tests);
 api.route("/", templates);
 api.route("/", runs);
 api.route("/", attachments);
+api.route("/", authoring);
 
 api.onError((error, c) => {
   if (error instanceof ActorRequiredError) {

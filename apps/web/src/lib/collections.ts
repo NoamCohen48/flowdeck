@@ -156,3 +156,133 @@ export function testsOf(productId: string) {
     ),
   );
 }
+
+/* ── The flow editor (D37) ──────────────────────────────────────────────
+   Steps and marks of one flow. Writes are optimistic: the author sees the
+   change at once, the API confirms it with a txid, and the stream carries the
+   same rows to any other author with the flow open. */
+
+export type StepRow = {
+  id: string;
+  flow_id: string;
+  position: number;
+  kind: "action" | "assertion";
+  text: string;
+  expected_result: string | null;
+  device_label: string;
+  updated_at: string;
+};
+
+/** A drag passes the whole new order here, so one request carries one transaction. */
+export const ORDER = "order";
+
+export function stepsOf(flowId: string) {
+  return memo(`steps:${flowId}`, () =>
+    createCollection(
+      electricCollectionOptions<StepRow>({
+        id: `steps:${flowId}`,
+        shapeOptions: { url: shapeUrl("flow.steps"), params: { flowId } },
+        getKey: (r) => r.id,
+        onInsert: async ({ transaction }) => {
+          const txids = await Promise.all(
+            transaction.mutations.map(async (m) => {
+              const r = m.modified;
+              const created = await unwrap(
+                api.POST("/flows/{flowId}/steps", {
+                  params: { path: { flowId: r.flow_id } },
+                  body: {
+                    // The optimistic row sits half a slot above the step it displaces.
+                    position: Math.ceil(r.position),
+                    kind: r.kind,
+                    text: r.text,
+                    expectedResult: r.expected_result,
+                    deviceLabel: r.device_label,
+                    marks: (m.metadata as { marks?: string[] } | undefined)?.marks ?? [],
+                  },
+                }),
+              );
+              return created.txid;
+            }),
+          );
+          return { txid: txids };
+        },
+        onUpdate: async ({ transaction }) => {
+          const first = transaction.mutations[0];
+          const order = (first?.metadata as { [ORDER]?: string[] } | undefined)?.[ORDER];
+          if (order && first) {
+            const done = await unwrap(
+              api.PUT("/flows/{flowId}/steps/order", {
+                params: { path: { flowId: first.modified.flow_id } },
+                body: { ids: order },
+              }),
+            );
+            return { txid: done.txid };
+          }
+          const txids = await Promise.all(
+            transaction.mutations.map(async (m) => {
+              const c = m.changes;
+              const saved = await unwrap(
+                api.PATCH("/steps/{stepId}", {
+                  params: { path: { stepId: m.key as string } },
+                  body: {
+                    ...(c.kind !== undefined ? { kind: c.kind } : {}),
+                    ...(c.text !== undefined ? { text: c.text } : {}),
+                    ...(c.expected_result !== undefined ? { expectedResult: c.expected_result } : {}),
+                    ...(c.device_label !== undefined ? { deviceLabel: c.device_label } : {}),
+                  },
+                }),
+              );
+              return saved.txid;
+            }),
+          );
+          return { txid: txids };
+        },
+        onDelete: async ({ transaction }) => {
+          const txids = await Promise.all(
+            transaction.mutations.map(async (m) => {
+              const gone = await unwrap(
+                api.DELETE("/steps/{stepId}", { params: { path: { stepId: m.key as string } } }),
+              );
+              return gone.txid;
+            }),
+          );
+          return { txid: txids };
+        },
+      }),
+    ),
+  );
+}
+
+export function flowMarksOf(flowId: string) {
+  return memo(`flow_marks:${flowId}`, () =>
+    createCollection(
+      electricCollectionOptions<StepMarkRow>({
+        id: `flow_marks:${flowId}`,
+        shapeOptions: { url: shapeUrl("flow.marks"), params: { flowId } },
+        getKey: (r) => `${r.step_id}|${r.test_id}`,
+        onInsert: async ({ transaction }) => ({
+          txid: await Promise.all(
+            transaction.mutations.map(async (m) =>
+              (await unwrap(
+                api.PUT("/steps/{stepId}/marks/{testId}", {
+                  params: { path: { stepId: m.modified.step_id, testId: m.modified.test_id } },
+                }),
+              )).txid,
+            ),
+          ),
+        }),
+        onDelete: async ({ transaction }) => ({
+          txid: await Promise.all(
+            transaction.mutations.map(async (m) =>
+              (await unwrap(
+                api.DELETE("/steps/{stepId}/marks/{testId}", {
+                  params: { path: { stepId: m.original.step_id, testId: m.original.test_id } },
+                }),
+              )).txid,
+            ),
+          ),
+        }),
+      }),
+    ),
+  );
+}

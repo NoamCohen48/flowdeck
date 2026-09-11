@@ -14,6 +14,7 @@ export function ProductHome() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [warn, setWarn] = useState<{ templateId: string; openRunId: string } | null>(null);
+  const [creating, setCreating] = useState(false);
   useTitle(product.data ? `${product.data.name} — Flowdeck` : "Flowdeck");
 
   async function start(templateId: string, force = false) {
@@ -25,6 +26,12 @@ export function ProductHome() {
       if (e instanceof ApiError && e.status === 409) setWarn({ templateId, openRunId: (e.body as { openRunId: string }).openRunId });
       else throw e;
     }
+  }
+
+  async function createTemplate(name: string, description: string) {
+    const [tpl] = await unwrap(api.POST("/products/{productId}/templates", { params: { path: { productId } }, body: { templates: [{ name, description, status: "active", flows: [] }] } }));
+    await qc.invalidateQueries({ queryKey: ["templates", productId] });
+    if (tpl) void navigate({ to: "/products/$productId/templates/$templateId", params: { productId, templateId: tpl.id } });
   }
 
   if (!product.data) return <main className="shell"><p className="meta">Loading…</p></main>;
@@ -63,13 +70,17 @@ export function ProductHome() {
         <p className="meta">No testing day is open. Start one from a template below.</p>
       )}
 
-      <h2>Templates</h2>
-      <div className="stack">
+      <div className="row-split" style={{ marginTop: 34 }}>
+        <h2 style={{ margin: 0 }}>Templates</h2>
+        <button className="btn sm" onClick={() => setCreating(true)}>＋ New template</button>
+      </div>
+      <div className="stack" style={{ marginTop: 12 }}>
+        {creating ? <NewTemplate onSave={createTemplate} onCancel={() => setCreating(false)} /> : null}
         {(templates.data ?? []).map((t) => (
           <div key={t.id} className="panel pad">
             <div className="row-split">
               <div style={{ flex: 1, minWidth: 220 }}>
-                <h3 dir="auto">{t.name} {t.status === "archived" ? <span className="tag">archived</span> : null}</h3>
+                <h3><Link className="lnk" to="/products/$productId/templates/$templateId" params={{ productId, templateId: t.id }} dir="auto">{t.name}</Link> {t.status === "archived" ? <span className="tag">archived</span> : null}</h3>
                 <p className="meta" style={{ margin: "2px 0 0" }} dir="auto">{t.description}</p>
                 <p className="meta" style={{ margin: "4px 0 0" }}>{t.flowCount} flows · marks {t.marksTestCount} tests</p>
               </div>
@@ -102,5 +113,22 @@ export function ProductHome() {
         </>
       ) : null}
     </main>
+  );
+}
+
+function NewTemplate({ onSave, onCancel }: { onSave: (name: string, description: string) => Promise<void>; onCancel: () => void }) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  return (
+    <div className="panel pad">
+      <label className="f" htmlFor="tpl-name" style={{ marginTop: 0 }}>Template name</label>
+      <input id="tpl-name" type="text" autoFocus value={name} onChange={(e) => setName(e.target.value)} dir="auto" placeholder="Monthly regression — fresh install" onKeyDown={(e) => { if (e.key === "Escape") onCancel(); }} />
+      <label className="f" htmlFor="tpl-desc">What setup does it target?</label>
+      <textarea id="tpl-desc" value={description} onChange={(e) => setDescription(e.target.value)} dir="auto" placeholder="Fresh install on a phone and a tablet, signed into the QA workspace. The setup is the whole reason several templates exist." style={{ minHeight: 56 }} />
+      <div className="flex gap-2 mt-3">
+        <button className="btn primary" disabled={!name.trim()} onClick={() => void onSave(name.trim(), description.trim())}>Create</button>
+        <button className="btn" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
   );
 }

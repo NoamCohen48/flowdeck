@@ -213,6 +213,64 @@ export const CreateTemplateSchema = z
   })
   .openapi("CreateTemplate");
 
+/* ── Structural editing (07 §1) ────────────────────────────────────────── */
+
+export const UpdateTemplateSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    description: z.string().optional(),
+    status: TemplateStatusSchema.optional(),
+  })
+  .openapi("UpdateTemplate");
+
+export const UpdateFlowSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    precondition: z.string().optional(),
+    estimatedMinutes: z.number().int().positive().nullable().optional(),
+  })
+  .openapi("UpdateFlow");
+
+export const InsertStepSchema = CreateStepSchema.extend({
+  /** Index the new step takes; what was there moves down. Past the end appends. */
+  position: z.number().int().nonnegative(),
+}).openapi("InsertStep");
+
+export const UpdateStepSchema = z
+  .object({
+    kind: StepKindSchema.optional(),
+    text: z.string().min(1).optional(),
+    expectedResult: z.string().nullable().optional(),
+    deviceLabel: z.string().min(1).optional(),
+    /** Replaces the step's marks when present. */
+    marks: z.array(Uuid).optional(),
+  })
+  .openapi("UpdateStep");
+
+export const ReorderSchema = z
+  .object({ ids: z.array(Uuid).min(1) })
+  .openapi("Reorder");
+
+export const StepWriteSchema = z
+  .object({ step: StepSchema, txid: Txid })
+  .openapi("StepWrite");
+
+export const TxidSchema = z.object({ txid: Txid }).openapi("TxidResponse");
+
+export const TestUsageSchema = z
+  .object({
+    stepId: Uuid,
+    stepText: z.string(),
+    stepIndex: z.number().int(),
+    deviceLabel: z.string(),
+    flowId: Uuid,
+    flowName: z.string(),
+    templateId: Uuid,
+    templateName: z.string(),
+    templateStatus: TemplateStatusSchema,
+  })
+  .openapi("TestUsage");
+
 export const CreateTemplatesSchema = z
   .object({ templates: z.array(CreateTemplateSchema).min(1).max(200) })
   .openapi("CreateTemplates");

@@ -81,6 +81,12 @@ const SHAPES: Record<string, ShapeDefinition> = {
     required: ["flowId"],
     where: (p) => `flow_id = '${p.flowId}'`,
   },
+  /** The marks of one flow's steps, so the editor's test rows move live too. */
+  "flow.marks": {
+    table: "step_mark",
+    required: ["flowId"],
+    where: (p) => `step_id in (select id from step where flow_id = '${p.flowId}')`,
+  },
 };
 
 /**

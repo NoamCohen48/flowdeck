@@ -110,7 +110,7 @@ export async function snapshotTemplate(
  * compare against Electric's stream. A write handler returns it so the client's
  * optimistic state is dropped exactly when the real row arrives, not on a timer.
  */
-async function currentTxid(tx: { execute: typeof db.execute }): Promise<number> {
+export async function currentTxid(tx: { execute: typeof db.execute }): Promise<number> {
   const rows = (await tx.execute(
     raw`select pg_current_xact_id()::xid::text::bigint as txid`,
   )) as unknown as { txid: string | number }[];

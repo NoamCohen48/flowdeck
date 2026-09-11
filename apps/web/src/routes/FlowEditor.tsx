@@ -1,0 +1,461 @@
+/**
+ * The flow editor (`02-authoring.md`, `07-open-items.md` §1).
+ *
+ * The same visual language as the runner — device colours, action/check
+ * markers, attached test rows — so authors see what testers will see. Steps and
+ * marks are live: another author's edits arrive as they happen, and hand-off
+ * banners are recomputed from order after every insert and drag (07 §1's
+ * derived-state trap).
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useParams } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { computeHandoffs, type DeviceAssignment, type StepKind } from "@flowdeck/domain";
+import { api, unwrap, type SnapshotStep, type Test } from "../lib/api.ts";
+import { ORDER } from "../lib/collections.ts";
+import { useEditorSteps, useLiveCoverage, useTestIndex } from "../lib/editor-model.ts";
+import { useMe } from "../lib/identity.tsx";
+import { usePeers, usePresence } from "../lib/presence.ts";
+import { useTitle } from "../lib/title.ts";
+import { DeviceChip, Pickup, deviceStyle } from "../components/Device.tsx";
+import { StepMap } from "../components/StepMap.tsx";
+import { TestPicker } from "../components/TestPicker.tsx";
+
+type Draft = { kind: StepKind; text: string; expectedResult: string; deviceLabel: string };
+
+export function FlowEditor() {
+  const { productId, templateId, flowId } = useParams({ strict: false }) as { productId: string; templateId: string; flowId: string };
+  const qc = useQueryClient();
+  const me = useMe();
+  const template = useQuery({
+    queryKey: ["template", templateId],
+    queryFn: () => unwrap(api.GET("/templates/{templateId}", { params: { path: { templateId } } })),
+  });
+  const flow = template.data?.flows.find((f) => f.id === flowId);
+  const { steps, ready, collection, marks } = useEditorSteps(flowId);
+  const { tests, byId } = useTestIndex(productId);
+  const coverage = useLiveCoverage(productId);
+
+  usePresence(`flow:${flowId}`);
+  const others = usePeers(`flow:${flowId}`).filter((a) => a !== me.name);
+
+  useTitle(flow ? `Editing ${flow.name} — Flowdeck` : "Flowdeck");
+
+  const handoffs = useMemo(() => computeHandoffs(steps), [steps]);
+  const knownLabels = useMemo(() => {
+    const labels = new Set<string>();
+    for (const f of template.data?.flows ?? []) for (const s of f.steps) labels.add(s.deviceLabel);
+    for (const s of steps) labels.add(s.deviceLabel);
+    return [...labels].sort();
+  }, [template.data, steps]);
+
+  const [current, setCurrent] = useState(0);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ index: number; kind: StepKind } | null>(null);
+  const [picking, setPicking] = useState<string | null>(null);
+  const stepRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+
+  const scrollTo = useCallback((i: number) => {
+    setCurrent(i);
+    const s = steps[i];
+    if (s) stepRefs.current.get(s.id)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [steps]);
+
+  /* ── Writes: every one optimistic, every one one transaction ─────────── */
+
+  function reorder(from: number, to: number) {
+    if (from === to) return;
+    const ids = arrayMove(steps.map((s) => s.id), from, to);
+    const changed = ids.filter((id, i) => steps[i]?.id !== id);
+    collection.update(changed, { metadata: { [ORDER]: ids } }, (drafts) => {
+      for (const d of drafts) d.position = ids.indexOf(d.id);
+    });
+    setCurrent(to);
+  }
+
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    reorder(steps.findIndex((s) => s.id === active.id), steps.findIndex((s) => s.id === over.id));
+  }
+
+  function insert(index: number, d: Draft) {
+    const previous = steps[index - 1];
+    collection.insert(
+      {
+        id: `optimistic:${crypto.randomUUID()}`,
+        flow_id: flowId,
+        // Half a slot above the step it displaces; sorts right until the stream confirms.
+        position: index - 0.5,
+        kind: d.kind,
+        text: d.text,
+        expected_result: d.kind === "assertion" ? d.expectedResult || null : null,
+        device_label: d.deviceLabel || previous?.deviceLabel || "Device",
+        updated_at: new Date().toISOString(),
+      },
+      { metadata: { marks: [] } },
+    );
+    setDraft(null);
+    setCurrent(index);
+  }
+
+  function save(step: SnapshotStep, d: Draft) {
+    collection.update(step.id, (row) => {
+      if (row.kind !== d.kind) row.kind = d.kind;
+      if (row.text !== d.text) row.text = d.text;
+      const expected = d.kind === "assertion" ? d.expectedResult || null : null;
+      if (row.expected_result !== expected) row.expected_result = expected;
+      if (row.device_label !== d.deviceLabel) row.device_label = d.deviceLabel;
+    });
+    setEditing(null);
+  }
+
+  function remove(step: SnapshotStep) {
+    const n = step.marks.length;
+    if (!confirm(`Delete step ${steps.indexOf(step) + 1}?${n ? ` It marks ${n} test${n === 1 ? "" : "s"}; those marks go with it.` : ""}`)) return;
+    collection.delete(step.id);
+    setEditing(null);
+  }
+
+  function toggleMark(stepId: string, testId: string, on: boolean) {
+    const key = `${stepId}|${testId}`;
+    if (on && !marks.has(key)) marks.insert({ step_id: stepId, test_id: testId });
+    if (!on && marks.has(key)) marks.delete(key);
+  }
+
+  async function saveFlow(patch: { name?: string; precondition?: string; estimatedMinutes?: number | null }) {
+    await unwrap(api.PATCH("/flows/{flowId}", { params: { path: { flowId } }, body: patch }));
+    await qc.invalidateQueries({ queryKey: ["template", templateId] });
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  // Escape closes whatever is open; nothing else is keyboard-bound here — authors type.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setEditing(null); setDraft(null); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  if (template.isPending || !ready) return <main className="shell"><p className="meta">Loading the flow…</p></main>;
+  if (!template.data || !flow) return <main className="shell"><p className="note">This flow does not exist.</p></main>;
+
+  const markedTests = new Set(steps.flatMap((s) => s.marks));
+  const ids = steps.map((s) => s.id);
+
+  return (
+    <main className="shell wide">
+      <p className="crumb">
+        <Link to="/products/$productId" params={{ productId }} className="lnk">Templates</Link> ›{" "}
+        <Link to="/products/$productId/templates/$templateId" params={{ productId, templateId }} className="lnk" dir="auto">{template.data.name}</Link> ›{" "}
+        <span dir="auto">{flow.name}</span>
+      </p>
+
+      <FlowHead
+        flow={flow}
+        stepCount={steps.length}
+        markedCount={markedTests.size}
+        devices={handoffs.devices}
+        others={others}
+        onSave={saveFlow}
+      />
+
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-[minmax(0,1fr)_240px]">
+        <div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+              <ol className="steps">
+                {steps.map((step, i) => {
+                  const intro = handoffs.introductions.get(step.id);
+                  const device = handoffs.byLabel.get(step.deviceLabel)!;
+                  return (
+                    <SortableStep
+                      key={step.id}
+                      id={step.id}
+                      refCb={(el) => { if (el) stepRefs.current.set(step.id, el); else stepRefs.current.delete(step.id); }}
+                      style={deviceStyle(device.slot)}
+                    >
+                      {draft?.index === i ? (
+                        <DraftCard
+                          kind={draft.kind}
+                          index={i}
+                          initialDevice={steps[i - 1]?.deviceLabel ?? knownLabels[0] ?? ""}
+                          labels={knownLabels}
+                          onSave={(d) => insert(i, d)}
+                          onCancel={() => setDraft(null)}
+                        />
+                      ) : (
+                        <Between onAdd={(kind) => { setEditing(null); setDraft({ index: i, kind }); }} />
+                      )}
+                      {intro && i > 0 ? <Pickup device={intro} /> : null}
+                      {intro && i === 0 ? <div className="hand">Start on <DeviceChip device={intro} /></div> : null}
+                      {editing === step.id ? (
+                        <EditCard
+                          step={step}
+                          index={i}
+                          device={device}
+                          labels={knownLabels}
+                          onSave={(d) => save(step, d)}
+                          onCancel={() => setEditing(null)}
+                          onDelete={() => remove(step)}
+                        />
+                      ) : (
+                        <StepView
+                          step={step}
+                          index={i}
+                          device={device}
+                          isCurrent={i === current}
+                          byId={byId}
+                          onFocus={() => setCurrent(i)}
+                          onEdit={() => { setDraft(null); setEditing(step.id); }}
+                          onUnmark={(testId) => toggleMark(step.id, testId, false)}
+                          onPick={() => setPicking(step.id)}
+                        />
+                      )}
+                    </SortableStep>
+                  );
+                })}
+              </ol>
+            </SortableContext>
+          </DndContext>
+
+          {draft?.index === steps.length ? (
+            <DraftCard
+              kind={draft.kind}
+              index={steps.length}
+              initialDevice={steps[steps.length - 1]?.deviceLabel ?? knownLabels[0] ?? ""}
+              labels={knownLabels}
+              onSave={(d) => insert(steps.length, d)}
+              onCancel={() => setDraft(null)}
+            />
+          ) : (
+            <div className="flex gap-2 mt-3">
+              <button className="btn" onClick={() => { setEditing(null); setDraft({ index: steps.length, kind: "action" }); }}>＋ Add action</button>
+              <button className="btn" onClick={() => { setEditing(null); setDraft({ index: steps.length, kind: "assertion" }); }}>＋ Add check</button>
+            </div>
+          )}
+          {!steps.length && !draft ? (
+            <p className="meta" style={{ marginTop: 12 }}>
+              No steps yet. Start with what the tester does first — "Open the app on the Pixel" — and add checks where something must be true.
+            </p>
+          ) : null}
+          <p className="meta" style={{ marginTop: 26 }}>
+            A test can be marked in more than one flow. When that happens, the worst result of the day wins on the dashboard.
+          </p>
+        </div>
+
+        <aside className="hidden md:block">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+              <StepMap steps={steps} handoffs={handoffs} current={current} onJump={scrollTo} sortable />
+            </SortableContext>
+          </DndContext>
+          {steps.length > 1 ? <p className="meta" style={{ fontSize: 12, marginTop: 8 }}>Drag here to reorder the flow.</p> : null}
+        </aside>
+      </div>
+
+      <TestPicker
+        open={picking !== null}
+        tests={tests}
+        marked={new Set(picking ? steps.find((s) => s.id === picking)?.marks ?? [] : [])}
+        markCount={coverage.markCount}
+        onToggle={(testId, on) => picking && toggleMark(picking, testId, on)}
+        onClose={() => setPicking(null)}
+      />
+    </main>
+  );
+}
+
+/* ── Pieces ──────────────────────────────────────────────────────────── */
+
+function SortableStep({ id, refCb, style, children }: { id: string; refCb: (el: HTMLLIElement | null) => void; style: React.CSSProperties; children: React.ReactNode }) {
+  const { setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <li
+      ref={(el) => { setNodeRef(el); refCb(el); }}
+      style={{ ...style, transform: CSS.Transform.toString(transform), transition }}
+      className={isDragging ? "dragging" : undefined}
+    >
+      {children}
+    </li>
+  );
+}
+
+function Grip({ id }: { id: string }) {
+  const { attributes, listeners, setActivatorNodeRef } = useSortable({ id });
+  return (
+    <button ref={setActivatorNodeRef} className="grip" title="Drag to reorder" aria-label="Drag to reorder" {...attributes} {...listeners}>⋮⋮</button>
+  );
+}
+
+/** The affordance on the boundary between two steps (07 §1). */
+function Between({ onAdd }: { onAdd: (kind: StepKind) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`between${open ? " open" : ""}`} onMouseLeave={() => setOpen(false)}>
+      {open ? (
+        <div className="menu">
+          <button className="btn sm" onClick={() => { setOpen(false); onAdd("action"); }}>▸ Action</button>
+          <button className="btn sm" onClick={() => { setOpen(false); onAdd("assertion"); }}>◉ Check</button>
+          <button className="btn sm" onClick={() => setOpen(false)}>Cancel</button>
+        </div>
+      ) : (
+        <button className="btn sm" onClick={() => setOpen(true)} aria-label="Insert a step here">＋ Insert here</button>
+      )}
+    </div>
+  );
+}
+
+function StepView({
+  step, index, device, isCurrent, byId, onFocus, onEdit, onUnmark, onPick,
+}: {
+  step: SnapshotStep; index: number; device: DeviceAssignment; isCurrent: boolean;
+  byId: Map<string, Test>; onFocus: () => void; onEdit: () => void; onUnmark: (testId: string) => void; onPick: () => void;
+}) {
+  const isCheck = step.kind === "assertion";
+  return (
+    <div className={`step${isCurrent ? " now" : ""}`} id={`step-${step.id}`} onClick={onFocus} aria-current={isCurrent ? "step" : undefined}>
+      <div className="sline">
+        <Grip id={step.id} />
+        <span className="snum">{index + 1}</span>
+        <DeviceChip device={device} />
+        <span className="meta">{isCheck ? "Check" : "Action"}</span>
+        <span style={{ flex: 1 }} />
+        <button className="btn sm" onClick={(e) => { e.stopPropagation(); onEdit(); }}>Edit</button>
+      </div>
+      <div className="stop">
+        <span className={`kind ${isCheck ? "chk" : "act"}`} aria-hidden>{isCheck ? "◉" : "▸"}</span>
+        <p className="stext" dir="auto">{step.text}</p>
+      </div>
+      {isCheck && step.expectedResult ? <div className="expect" dir="auto"><b>Expected:</b> {step.expectedResult}</div> : null}
+      <div className="tests">
+        <div className="cap">{step.marks.length ? `Tests marked here` : "No tests marked on this step"}</div>
+        {step.marks.map((testId) => {
+          const t = byId.get(testId);
+          return (
+            <div className="trow" key={testId}>
+              <span className="tname" dir="auto">
+                {t ? t.current.title : <i className="meta">unknown test</i>}
+                {t?.archived ? <span className="tag" style={{ marginLeft: 6 }}>archived</span> : null}
+              </span>
+              <button className="btn sm" onClick={(e) => { e.stopPropagation(); onUnmark(testId); }}>Unmark</button>
+            </div>
+          );
+        })}
+        <button className="btn sm" style={{ marginTop: 8 }} onClick={(e) => { e.stopPropagation(); onPick(); }}>＋ Mark a test</button>
+      </div>
+    </div>
+  );
+}
+
+function StepForm({
+  initial, index, labels, submitLabel, onSave, onCancel, onDelete,
+}: {
+  initial: Draft; index: number; labels: string[]; submitLabel: string;
+  onSave: (d: Draft) => void; onCancel: () => void; onDelete?: () => void;
+}) {
+  const [d, setD] = useState<Draft>(initial);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { textRef.current?.focus(); }, []);
+  const isCheck = d.kind === "assertion";
+  const canSave = d.text.trim().length > 0 && d.deviceLabel.trim().length > 0;
+  const submit = () => canSave && onSave({ ...d, text: d.text.trim(), deviceLabel: d.deviceLabel.trim(), expectedResult: d.expectedResult.trim() });
+  return (
+    <div className="step now editform" onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submit(); }}>
+      <div className="row">
+        <span className="snum">{index + 1}</span>
+        <span className="kindpick" role="radiogroup" aria-label="Step kind">
+          <button type="button" className={d.kind === "action" ? "on" : ""} onClick={() => setD({ ...d, kind: "action" })}>▸ Action</button>
+          <button type="button" className={isCheck ? "on" : ""} onClick={() => setD({ ...d, kind: "assertion" })}>◉ Check</button>
+        </span>
+        <input className="devin" type="text" list="device-labels" value={d.deviceLabel} onChange={(e) => setD({ ...d, deviceLabel: e.target.value })} placeholder="Device (e.g. Pixel 8)" dir="auto" aria-label="Device label" />
+        <datalist id="device-labels">{labels.map((l) => <option key={l} value={l} />)}</datalist>
+      </div>
+      <textarea ref={textRef} value={d.text} onChange={(e) => setD({ ...d, text: e.target.value })} dir="auto" placeholder={isCheck ? "Compare the reaction on both screens." : 'Long-press "ping 1" and add a 👍 reaction.'} aria-label="Step text" />
+      {isCheck ? (
+        <textarea value={d.expectedResult} onChange={(e) => setD({ ...d, expectedResult: e.target.value })} dir="auto" placeholder="Expected: same emoji and count on both." aria-label="Expected result" />
+      ) : null}
+      <div className="row">
+        <button className="btn primary sm" disabled={!canSave} onClick={submit}>{submitLabel}</button>
+        <button className="btn sm" onClick={onCancel}>Cancel</button>
+        <span className="meta" style={{ fontSize: 12 }}><span className="kbd">⌘↵</span> save · <span className="kbd">esc</span> cancel</span>
+        <span style={{ flex: 1 }} />
+        {onDelete ? <button className="btn sm danger" onClick={onDelete}>Delete step</button> : null}
+      </div>
+    </div>
+  );
+}
+
+function DraftCard({ kind, index, initialDevice, labels, onSave, onCancel }: { kind: StepKind; index: number; initialDevice: string; labels: string[]; onSave: (d: Draft) => void; onCancel: () => void }) {
+  return <StepForm initial={{ kind, text: "", expectedResult: "", deviceLabel: initialDevice }} index={index} labels={labels} submitLabel="Add step" onSave={onSave} onCancel={onCancel} />;
+}
+
+function EditCard({ step, index, device, labels, onSave, onCancel, onDelete }: { step: SnapshotStep; index: number; device: DeviceAssignment; labels: string[]; onSave: (d: Draft) => void; onCancel: () => void; onDelete: () => void }) {
+  return (
+    <div style={deviceStyle(device.slot)}>
+      <StepForm
+        initial={{ kind: step.kind, text: step.text, expectedResult: step.expectedResult ?? "", deviceLabel: step.deviceLabel }}
+        index={index} labels={labels} submitLabel="Save" onSave={onSave} onCancel={onCancel} onDelete={onDelete}
+      />
+    </div>
+  );
+}
+
+function FlowHead({
+  flow, stepCount, markedCount, devices, others, onSave,
+}: {
+  flow: { name: string; precondition: string; estimatedMinutes: number | null };
+  stepCount: number; markedCount: number; devices: readonly DeviceAssignment[]; others: string[];
+  onSave: (patch: { name?: string; precondition?: string; estimatedMinutes?: number | null }) => Promise<void>;
+}) {
+  const [name, setName] = useState(flow.name);
+  const [pre, setPre] = useState(flow.precondition);
+  const [mins, setMins] = useState(flow.estimatedMinutes?.toString() ?? "");
+  useEffect(() => { setName(flow.name); setPre(flow.precondition); setMins(flow.estimatedMinutes?.toString() ?? ""); }, [flow]);
+
+  const commit = () => {
+    const patch: { name?: string; precondition?: string; estimatedMinutes?: number | null } = {};
+    if (name.trim() && name.trim() !== flow.name) patch.name = name.trim();
+    if (pre !== flow.precondition) patch.precondition = pre;
+    const m = mins.trim() ? Number(mins) : null;
+    if ((Number.isInteger(m) && m! > 0 ? m : null) !== flow.estimatedMinutes) patch.estimatedMinutes = Number.isInteger(m) && m! > 0 ? m : null;
+    if (Object.keys(patch).length) void onSave(patch);
+  };
+
+  return (
+    <div className="flowhead">
+      <div className="row-split">
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} onBlur={commit} dir="auto" aria-label="Flow name" style={{ fontWeight: 600, fontSize: 16 }} />
+        </div>
+        <div className="flex gap-2 items-center flex-wrap">
+          <span className="meta">~</span>
+          <input className="mins" type="text" inputMode="numeric" value={mins} onChange={(e) => setMins(e.target.value)} onBlur={commit} placeholder="min" aria-label="Estimated minutes" style={{ width: 70 }} />
+          <span className="meta">min · {stepCount} steps · marks {markedCount} tests</span>
+        </div>
+      </div>
+      <label className="f" htmlFor="flow-pre">Before you start</label>
+      <textarea id="flow-pre" value={pre} onChange={(e) => setPre(e.target.value)} onBlur={commit} dir="auto" placeholder="The state the product must be in before step 1. 'Relay uninstalled from the Pixel. You have valid credentials for the QA workspace.'" style={{ minHeight: 56 }} />
+      <div className="flex gap-2 items-center flex-wrap mt-3">
+        <span className="meta">Devices used:</span>
+        {devices.map((d) => <DeviceChip key={d.label} device={d} />)}
+        <span className="meta">— each appears at the step that first needs it</span>
+        <span style={{ flex: 1 }} />
+        {others.length ? (
+          <span className="who" title="Also editing this flow">
+            <span className="meta">Also here:</span>
+            {others.map((a) => <span key={a} className="tag" dir="auto">{a}</span>)}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}

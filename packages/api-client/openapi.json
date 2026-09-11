@@ -968,6 +968,185 @@
           "originalName",
           "url"
         ]
+      },
+      "UpdateTemplate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          }
+        }
+      },
+      "TxidResponse": {
+        "type": "object",
+        "properties": {
+          "txid": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "txid"
+        ]
+      },
+      "Reorder": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      },
+      "UpdateFlow": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "precondition": {
+            "type": "string"
+          },
+          "estimatedMinutes": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "exclusiveMinimum": true
+          }
+        }
+      },
+      "StepWrite": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "$ref": "#/components/schemas/Step"
+          },
+          "txid": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "step",
+          "txid"
+        ]
+      },
+      "InsertStep": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateStep"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "position": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "position"
+            ]
+          }
+        ]
+      },
+      "UpdateStep": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "action",
+              "assertion"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectedResult": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceLabel": {
+            "type": "string",
+            "minLength": 1
+          },
+          "marks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "TestUsage": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stepText": {
+            "type": "string"
+          },
+          "stepIndex": {
+            "type": "integer"
+          },
+          "deviceLabel": {
+            "type": "string"
+          },
+          "flowId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "flowName": {
+            "type": "string"
+          },
+          "templateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "templateName": {
+            "type": "string"
+          },
+          "templateStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          }
+        },
+        "required": [
+          "stepId",
+          "stepText",
+          "stepIndex",
+          "deviceLabel",
+          "flowId",
+          "flowName",
+          "templateId",
+          "templateName",
+          "templateStatus"
+        ]
       }
     },
     "parameters": {}
@@ -1577,6 +1756,65 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Template"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Rename, describe or archive a template",
+        "description": "Archived templates leave the 'start a testing day' picker but keep counting toward coverage.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTemplate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Template"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -2558,6 +2796,672 @@
                     "files",
                     "nearBudget"
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/templates/{templateId}/flows/order": {
+      "put": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Reorder a template's flows",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reorder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reordered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxidResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The ids are not exactly this template's flows — someone changed it under you",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/templates/{templateId}/flows": {
+      "post": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Add a flow to a template",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "templateId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFlow"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new flow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Flow"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows/{flowId}": {
+      "patch": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Edit a flow's name, precondition or estimate",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFlow"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The flow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "templateId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "precondition": {
+                      "type": "string"
+                    },
+                    "estimatedMinutes": {
+                      "type": "integer",
+                      "nullable": true,
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "position": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "templateId",
+                    "name",
+                    "precondition",
+                    "estimatedMinutes",
+                    "position"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such flow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Delete a flow and its steps",
+        "description": "Runs already started keep their snapshot (D21), so nothing historical is lost. Marks vanish with the steps, which can uncover tests — the template page reports that.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such flow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows/{flowId}/steps": {
+      "post": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Insert a step at a position",
+        "description": "Insert anywhere (07 §1): the step takes the given index and what was there moves down. Hand-off banners are derived from order, so they follow automatically.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InsertStep"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new step and its transaction",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepWrite"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such flow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/steps/{stepId}": {
+      "patch": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Edit one step",
+        "description": "Last write wins per step (D37). Changing kind to action drops the expected result.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "stepId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStep"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The step as saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepWrite"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such step",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Delete a step",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "stepId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxidResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such step",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows/{flowId}/steps/order": {
+      "put": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Reorder a flow's steps",
+        "description": "The whole order in one transaction. Rejected unless the ids are exactly the flow's steps, which is what a drag against a flow someone else just edited looks like — the client re-syncs and the author drags again.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reorder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reordered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxidResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The ids are not exactly this flow's steps",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/steps/{stepId}/marks/{testId}": {
+      "put": {
+        "tags": [
+          "Templates",
+          "Coverage"
+        ],
+        "summary": "Mark a test on a step",
+        "description": "Idempotent. The same test may be marked on any number of steps (D19).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "stepId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "testId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Marked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxidResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such step or test",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Templates",
+          "Coverage"
+        ],
+        "summary": "Unmark a test from a step",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "stepId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "testId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unmarked (or was never marked)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TxidResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity on the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tests/{testId}/usages": {
+      "get": {
+        "tags": [
+          "Tests",
+          "Coverage"
+        ],
+        "summary": "Every step that marks this test",
+        "description": "Answers 'if I change this, what am I affecting?' (04), and gives the archive confirmation its numbers before anything happens (D24).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "testId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "steps": {
+                      "type": "integer"
+                    },
+                    "flows": {
+                      "type": "integer"
+                    },
+                    "templates": {
+                      "type": "integer"
+                    },
+                    "usages": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TestUsage"
+                      }
+                    }
+                  },
+                  "required": [
+                    "steps",
+                    "flows",
+                    "templates",
+                    "usages"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such test",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

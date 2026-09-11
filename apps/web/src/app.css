@@ -339,6 +339,47 @@
   .stepmap .n { min-width: 18px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .stepmap .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  /* ---- Flow editor (07 §1) ---- */
+  .stepmap a.dragging { opacity: 0.4; }
+  .grip { cursor: grab; color: var(--muted); border: 0; background: none; padding: 2px 6px; font-size: 16px; line-height: 1; touch-action: none; }
+  .grip:active { cursor: grabbing; }
+  .step.dragging { opacity: 0.35; }
+  /* The between-steps affordance: a hairline that grows a button on hover or focus,
+     so a step lands exactly where the author is already looking. */
+  .between { position: relative; height: 14px; margin: -3px 0; display: flex; align-items: center; justify-content: center; }
+  .between:before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: transparent; }
+  .between button { opacity: 0; font-size: 12.5px; padding: 1px 9px; transition: opacity 120ms; }
+  .between:hover:before, .between:focus-within:before { background: var(--focus); }
+  .between:hover button, .between:focus-within button, .between.open button { opacity: 1; }
+  .between .menu { position: absolute; z-index: 5; top: 100%; display: flex; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-r); padding: 6px; box-shadow: 0 8px 24px rgba(22, 32, 43, 0.14); }
+  .between .menu button { opacity: 1; }
+  @media (pointer: coarse) { .between { height: 28px; } .between button { opacity: 1; } }
+
+  .editform { display: grid; gap: 8px; margin-top: 8px; }
+  .editform .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .editform textarea { min-height: 56px; }
+  .editform .kindpick { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-r); overflow: hidden; }
+  .editform .kindpick button { border: 0; background: var(--surface); padding: 6px 11px; color: var(--ink-2); font-size: 13.5px; }
+  .editform .kindpick button.on { background: var(--ink); color: var(--paper); }
+  .editform input.devin { width: 200px; flex: none; }
+  .editform input.mins { width: 90px; flex: none; }
+
+  .picker { max-width: 620px; }
+  .picklist { list-style: none; margin: 10px 0 0; padding: 0; max-height: 55vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-r); }
+  .picklist li + li { border-top: 1px solid var(--line-soft); }
+  .picklist label { display: flex; gap: 10px; align-items: center; padding: 8px 10px; cursor: pointer; }
+  .picklist label:hover { background: var(--surface-2); }
+  .picklist .body { flex: 1; min-width: 0; display: grid; }
+  .picklist .body b { font-weight: 500; font-size: 14px; }
+  .picklist .body .meta { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nowrap { white-space: nowrap; }
+  .btn.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .who { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+
+  /* ---- Test library ---- */
+  .tbl tr.sel td { background: color-mix(in srgb, var(--focus) 8%, var(--surface)); }
+  .tbl tr.pick { cursor: pointer; }
+
   .kbd { font-family: ui-monospace, monospace; font-size: 12px; padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--surface-2); }
 
   @media (max-width: 640px) {

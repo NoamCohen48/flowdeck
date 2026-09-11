@@ -30,6 +30,7 @@ export function Root() {
         ) : null}
         <nav className="topnav">
           {productId ? <Link to="/products/$productId" params={{ productId }} activeOptions={{ exact: true }}>Overview</Link> : null}
+          {productId ? <Link to="/products/$productId/tests" params={{ productId }} search={{ test: undefined }}>Tests</Link> : null}
           <button onClick={cycleTheme} title={`Theme: ${theme}`} aria-label={`Theme: ${theme}. Click to change.`}>
             {theme === "dark" ? "☾" : theme === "light" ? "☼" : "◐"}
           </button>
