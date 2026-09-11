@@ -61,13 +61,14 @@ services:
     environment:
       DATABASE_URL: postgresql://flowdeck:${POSTGRES_PASSWORD:-flowdeck-dev}@postgres:5432/flowdeck
       ELECTRIC_URL: http://electric:3000
-      # Signs the identity cookie. Any long random string; see .env.example.
-      COOKIE_SECRET: ${COOKIE_SECRET:?set COOKIE_SECRET in .env (see .env.example)}
+      # Signs the identity cookie. Optional: left empty, one is generated on first
+      # boot and kept on the data volume.
+      COOKIE_SECRET: ${COOKIE_SECRET:-}
       ATTACHMENTS_BUDGET_MB: ${ATTACHMENTS_BUDGET_MB:-2048}
       # Set to "true" for a first boot with the fictional Relay data (idempotent: skips when present).
       SEED_DEMO: ${SEED_DEMO:-false}
     volumes:
-      - attachments:/data/attachments
+      - data:/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,6 +99,6 @@ services:
 
 volumes:
   postgres-data:
-  attachments:
+  data:
   caddy-data:
   caddy-config:

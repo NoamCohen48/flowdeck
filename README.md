@@ -7,14 +7,14 @@ The design lives in [`.docs/`](.docs/00-product-overview.md).
 ## Run it
 
 ```sh
-cp .env.example .env          # set COOKIE_SECRET (openssl rand -hex 32)
+cp .env.example .env          # defaults are fine for a first run
 docker compose up -d --wait
 open https://localhost         # Caddy's own certificate on localhost; trust it or click through
 ```
 
 `SEED_DEMO=true` (the default in `.env.example`) loads the fictional Relay product on the
 first boot. Set `SITE_ADDRESS` to a real hostname on a server and Caddy fetches a public
-certificate. Attachments live in the `attachments` volume; `ATTACHMENTS_BUDGET_MB` caps them.
+certificate. Attachments (and the generated cookie secret) live in the `data` volume; `ATTACHMENTS_BUDGET_MB` caps them.
 
 ## Develop
 

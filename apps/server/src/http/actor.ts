@@ -15,13 +15,21 @@ import { getSignedCookie, setSignedCookie } from "hono/cookie";
 
 export const ACTOR_COOKIE = "flowdeck_actor";
 
-const SECRET =
-  process.env.COOKIE_SECRET ??
-  (process.env.NODE_ENV === "production"
-    ? (() => {
-        throw new Error("COOKIE_SECRET must be set in production");
-      })()
-    : "dev-only-not-a-secret");
+/**
+ * Empty counts as unset: `.env` files ship `COOKIE_SECRET=` blank, and an
+ * empty HMAC key makes the signer throw on every sign-in with a DataError that
+ * says nothing about cookies. Fail at boot with the real reason instead.
+ */
+const SECRET = (() => {
+  const given = process.env.COOKIE_SECRET?.trim() ?? "";
+  if (given.length >= 16) return given;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      given ? "COOKIE_SECRET is too short: use at least 16 characters (openssl rand -hex 32)" : "COOKIE_SECRET must be set in production (openssl rand -hex 32)",
+    );
+  }
+  return "dev-only-not-a-secret";
+})();
 
 export type ActorEnv = { Variables: { actor: string | null } };
 

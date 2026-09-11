@@ -45,6 +45,7 @@ function NamePicker({ onPick }: { onPick: (name: string) => Promise<void> }) {
   });
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "Who are you? — Flowdeck";
@@ -54,8 +55,11 @@ function NamePicker({ onPick }: { onPick: (name: string) => Promise<void> }) {
     const trimmed = name.trim();
     if (!trimmed) return;
     setBusy(true);
+    setError(null);
     try {
       await onPick(trimmed);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -97,6 +101,11 @@ function NamePicker({ onPick }: { onPick: (name: string) => Promise<void> }) {
             Continue
           </button>
         </form>
+        {error ? (
+          <p className="note" style={{ margin: 0 }}>
+            Could not sign you in: {error}. The server log has the reason.
+          </p>
+        ) : null}
       </div>
     </main>
   );
