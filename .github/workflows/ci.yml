@@ -54,6 +54,23 @@ jobs:
       - name: Tests
         run: bun test
 
+      # Two browsers on one testing day: a claim and a verdict in one must land
+      # on the other's board with no reload. The API tests cannot see this; only
+      # a browser holding a real shape stream can.
+      - name: Install Chromium
+        run: cd apps/web && bunx playwright install --with-deps chromium
+
+      - name: End to end
+        run: bun run --cwd apps/web e2e
+
+      - name: Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/test-results
+          if-no-files-found: ignore
+
       - name: Service logs on failure
         if: failure()
         run: docker compose logs --tail 60
