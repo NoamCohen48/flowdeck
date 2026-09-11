@@ -21,7 +21,7 @@ export type Db = typeof db;
  * wrapper always executes, and carries the row type so call sites stop needing
  * `as unknown as T[]`.
  */
-export async function query<T extends Record<string, unknown>>(
+export async function query<T extends object>(
   statement: SQL,
 ): Promise<T[]> {
   const result = await db.execute(statement);

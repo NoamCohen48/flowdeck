@@ -221,3 +221,160 @@ export const ErrorSchema = z
 
 export type CreateTestInput = z.infer<typeof CreateTestSchema>;
 export type CreateTemplateInput = z.infer<typeof CreateTemplateSchema>;
+
+/* ── Runs and execution ──────────────────────────────────────────────────
+   The template is the class; the run is the object (D8). */
+
+export const SnapshotStepSchema = StepSchema;
+export const SnapshotFlowSchema = z.object({
+  id: Uuid,
+  name: z.string(),
+  precondition: z.string(),
+  estimatedMinutes: z.number().int().nullable(),
+  position: z.number().int(),
+  steps: z.array(SnapshotStepSchema),
+});
+export const SnapshotTestSchema = z.object({
+  id: Uuid,
+  versionId: Uuid,
+  title: z.string(),
+  expectedResult: z.string(),
+});
+export const TemplateSnapshotSchema = z
+  .object({
+    id: Uuid,
+    name: z.string(),
+    description: z.string(),
+    takenAt: z.string(),
+    flows: z.array(SnapshotFlowSchema),
+    tests: z.array(SnapshotTestSchema),
+  })
+  .openapi("TemplateSnapshot");
+
+export const FlowRunSchema = z
+  .object({
+    id: Uuid,
+    runId: Uuid,
+    flowId: Uuid,
+    claimedBy: z.string().nullable(),
+    state: FlowRunStateSchema,
+    startedAt: z.string(),
+    finishedAt: z.string().nullable(),
+  })
+  .openapi("FlowRun");
+
+export const AttachmentSchema = z
+  .object({
+    id: Uuid,
+    testResultId: Uuid,
+    mime: z.string(),
+    bytes: z.number().int(),
+    width: z.number().int().nullable(),
+    height: z.number().int().nullable(),
+    originalName: z.string().nullable(),
+    url: z.string(),
+  })
+  .openapi("Attachment");
+
+export const TestResultSchema = z
+  .object({
+    id: Uuid,
+    flowRunId: Uuid,
+    stepId: Uuid,
+    testId: Uuid,
+    testVersionId: Uuid,
+    verdict: VerdictSchema,
+    note: z.string().nullable(),
+    blocking: z.boolean(),
+    recordedBy: z.string(),
+    recordedAt: z.string(),
+  })
+  .openapi("TestResult");
+
+export const RunSummarySchema = z
+  .object({
+    id: Uuid,
+    templateId: Uuid,
+    templateName: z.string(),
+    date: z.string(),
+    startedBy: z.string(),
+    closedAt: z.string().nullable(),
+  })
+  .openapi("RunSummary");
+
+export const RunSchema = z
+  .object({
+    id: Uuid,
+    templateId: Uuid,
+    date: z.string(),
+    startedBy: z.string(),
+    closedAt: z.string().nullable(),
+    snapshot: TemplateSnapshotSchema,
+    flowRuns: z.array(FlowRunSchema),
+    results: z.array(TestResultSchema),
+  })
+  .openapi("Run");
+
+/**
+ * Recording a verdict (D12, D13, D36). Per test, not per step. The note rule
+ * is enforced here and again by a CHECK constraint, so no path can record a
+ * bug report with no description.
+ */
+export const RecordResultSchema = z
+  .object({
+    stepId: Uuid,
+    testId: Uuid,
+    verdict: VerdictSchema,
+    note: z.string().trim().nullable().default(null),
+    /** Only meaningful with `fail`: does this wedge the rest of the flow? (D11) */
+    blocking: z.boolean().default(false),
+    /** Client-generated. The same key twice records once. */
+    idempotencyKey: z.string().min(8).max(200),
+  })
+  .superRefine((v, ctx) => {
+    if ((v.verdict === "fail" || v.verdict === "skipped") && !v.note) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["note"],
+        message:
+          v.verdict === "fail"
+            ? "Say what went wrong — a failure without a description is not actionable."
+            : "Say what is wrong with the test — skipped is how the suite gets fixed.",
+      });
+    }
+    if (v.blocking && v.verdict !== "fail") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["blocking"],
+        message: "Only a failure can block the rest of a flow.",
+      });
+    }
+  })
+  .openapi("RecordResult");
+
+/** "Pass all" on a step: every test the step marks, passed, in one request. */
+export const PassAllSchema = z
+  .object({
+    stepId: Uuid,
+    /** One key per test, so a double-tap on the button still records once each. */
+    idempotencyKeyPrefix: z.string().min(8).max(160),
+  })
+  .openapi("PassAll");
+
+export const ClaimResponseSchema = z
+  .object({
+    flowRun: FlowRunSchema,
+    /** Other testers already on this flow — what the confirmation shows (D26). */
+    alsoRunning: z.array(FlowRunSchema),
+  })
+  .openapi("ClaimResponse");
+
+export const MeSchema = z
+  .object({ name: z.string().nullable() })
+  .openapi("Me");
+
+export const PresenceSchema = z
+  .object({
+    scope: z.string().regex(/^(run|flow|template):[0-9a-f-]{36}$/i),
+  })
+  .openapi("Presence");

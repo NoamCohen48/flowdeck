@@ -28,6 +28,7 @@ import {
   testVersion,
 } from "./schema.ts";
 import seedData from "./seed-data.json" with { type: "json" };
+import { snapshotTemplate } from "./runs.ts";
 import type { StepKind, TemplateStatus, Verdict } from "@flowdeck/domain";
 
 const args = new Set(process.argv.slice(2));
@@ -164,7 +165,7 @@ for (const p of seedData.products) {
   if ("run" in p && p.run) {
     const r = p.run;
     const templateId = templateIdByKey.get(r.templateKey)!;
-    const snapshot = await snapshotTemplate(templateId);
+    const snapshot = (await snapshotTemplate(templateId))!;
 
     const [runRow] = await db
       .insert(run)
@@ -227,37 +228,6 @@ if (WITH_VOLUME) await seedVolumeProduct();
 await sql.end();
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
-
-/**
- * The frozen copy a run executes against (D21). Taken at start, never re-read from
- * the live template, so an edit during the day cannot reshuffle a tester's checklist.
- */
-async function snapshotTemplate(templateId: string) {
-  const rows = await db.execute(raw`
-    select
-      tpl.id, tpl.name, tpl.description, tpl.status,
-      coalesce(jsonb_agg(
-        jsonb_build_object(
-          'id', f.id, 'name', f.name, 'precondition', f.precondition,
-          'estimatedMinutes', f.estimated_minutes, 'position', f.position,
-          'steps', (
-            select coalesce(jsonb_agg(jsonb_build_object(
-              'id', s.id, 'position', s.position, 'kind', s.kind, 'text', s.text,
-              'expectedResult', s.expected_result, 'deviceLabel', s.device_label,
-              'marks', (select coalesce(jsonb_agg(sm.test_id), '[]'::jsonb)
-                        from step_mark sm where sm.step_id = s.id)
-            ) order by s.position), '[]'::jsonb)
-            from step s where s.flow_id = f.id
-          )
-        ) order by f.position
-      ) filter (where f.id is not null), '[]'::jsonb) as flows
-    from template tpl
-    left join flow f on f.template_id = tpl.id
-    where tpl.id = ${templateId}
-    group by tpl.id
-  `);
-  return rows[0] as unknown as { id: string; flows: { id: string }[] };
-}
 
 /**
  * Scale, not realism. `07-open-items.md` specifies a summary sidebar precisely

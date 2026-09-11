@@ -13,6 +13,8 @@ import { createRouter } from "./router.ts";
 import { products } from "./routes/products.ts";
 import { tests } from "./routes/tests.ts";
 import { templates } from "./routes/templates.ts";
+import { runs } from "./routes/runs.ts";
+import { attachments } from "./routes/attachments.ts";
 
 /** Validation failures name the field; see `router.ts` for why that is shared. */
 export const api = createRouter();
@@ -20,6 +22,8 @@ export const api = createRouter();
 api.route("/products", products);
 api.route("/", tests);
 api.route("/", templates);
+api.route("/", runs);
+api.route("/", attachments);
 
 api.onError((error, c) => {
   if (error instanceof ActorRequiredError) {
@@ -47,5 +51,7 @@ api.doc("/openapi.json", {
     { name: "Tests", description: "Assertions, versioned and never hard-deleted" },
     { name: "Templates", description: "Reusable testing days, one per setup" },
     { name: "Coverage", description: "Is every test reachable by some flow?" },
+    { name: "Runs", description: "Testing days: claiming, verdicts, blocking" },
+    { name: "Identity", description: "The name picker, and presence" },
   ],
 });

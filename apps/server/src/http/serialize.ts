@@ -114,3 +114,71 @@ export function templateDto(row: TemplateRow) {
     flows: row.flows.map(flowDto),
   };
 }
+
+export function flowRunDto(row: {
+  id: string;
+  runId: string;
+  flowId: string;
+  claimedBy: string | null;
+  state: "open" | "claimed" | "finished" | "abandoned" | "released";
+  startedAt: Date | string;
+  finishedAt: Date | string | null;
+}) {
+  return {
+    id: row.id,
+    runId: row.runId,
+    flowId: row.flowId,
+    claimedBy: row.claimedBy,
+    state: row.state,
+    startedAt: iso(row.startedAt),
+    finishedAt: row.finishedAt ? iso(row.finishedAt) : null,
+  };
+}
+
+export function resultDto(row: {
+  id: string;
+  flowRunId: string;
+  stepId: string;
+  testId: string;
+  testVersionId: string;
+  verdict: "pass" | "fail" | "minor" | "skipped";
+  note: string | null;
+  blocking: boolean;
+  recordedBy: string;
+  recordedAt: Date | string;
+}) {
+  return {
+    id: row.id,
+    flowRunId: row.flowRunId,
+    stepId: row.stepId,
+    testId: row.testId,
+    testVersionId: row.testVersionId,
+    verdict: row.verdict,
+    note: row.note,
+    blocking: row.blocking,
+    recordedBy: row.recordedBy,
+    recordedAt: iso(row.recordedAt),
+  };
+}
+
+export function runDto(row: {
+  id: string;
+  templateId: string;
+  date: Date | string;
+  startedBy: string;
+  closedAt: Date | string | null;
+  snapshot: unknown;
+  flowRuns: Parameters<typeof flowRunDto>[0][];
+  results: Parameters<typeof resultDto>[0][];
+}) {
+  return {
+    id: row.id,
+    templateId: row.templateId,
+    date: iso(row.date),
+    startedBy: row.startedBy,
+    closedAt: row.closedAt ? iso(row.closedAt) : null,
+    snapshot: row.snapshot as import("../db/runs.ts").TemplateSnapshot,
+    flowRuns: row.flowRuns.map(flowRunDto),
+    results: row.results.map(resultDto),
+  };
+}
