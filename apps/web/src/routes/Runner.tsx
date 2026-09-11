@@ -1,9 +1,12 @@
 /**
  * The flow runner (`.docs/03-execution.md`). One long list; no pagination, no
  * wizard, no collapsing. The tester's mental model is "I am walking down a list".
+ *
+ * Verdicts are a local draft until Finish: only then are they recorded, so an
+ * abandoned flow leaves nothing behind and the board never shows half a run.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   computeHandoffs,
@@ -12,7 +15,8 @@ import {
   type Verdict,
 } from "@flowdeck/domain";
 import { api, unwrap, type SnapshotFlow, type SnapshotStep, type TemplateSnapshot } from "../lib/api.ts";
-import { resultsOf, type TestResultRow } from "../lib/collections.ts";
+import type { TestResultRow } from "../lib/collections.ts";
+import { dataUrlToBlob, fileToDataUrl, useDraftResults } from "../lib/draft-results.ts";
 import { flowRunView, useLiveFlowRuns, useLiveResults, useRun } from "../lib/run-model.ts";
 import { useMe } from "../lib/identity.tsx";
 import { usePresence } from "../lib/presence.ts";
@@ -87,9 +91,15 @@ function RunnerBody({
   const me = useMe();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const collection = resultsOf(runId);
   const handoffs = useMemo(() => computeHandoffs(flow.steps), [flow.steps]);
-  const view = useMemo(() => flowRunView(flow, flowRunId, results), [flow, flowRunId, results]);
+  const readOnly = state !== "claimed";
+  const isMine = claimedBy === me.name;
+  const editable = !readOnly && isMine;
+
+  // My own claimed run reads from the draft; anyone else's (or a finished one) from what was recorded.
+  const draft = useDraftResults(flowRunId, me.name);
+  const rows = editable ? draft.rows : results;
+  const view = useMemo(() => flowRunView(flow, flowRunId, rows), [flow, flowRunId, rows]);
   const testTitle = useCallback(
     (id: string) => snapshot.tests.find((t) => t.id === id)?.title ?? "(archived test)",
     [snapshot.tests],
@@ -101,32 +111,24 @@ function RunnerBody({
   const stepRefs = useRef<(HTMLLIElement | null)[]>([]);
 
   const [dialog, setDialog] = useState<{ step: SnapshotStep; testId: string; verdict: Verdict } | null>(null);
-  const readOnly = state !== "claimed";
+  const [committing, setCommitting] = useState<string | null>(null);
 
-  /** Idempotent by construction: the same intent twice yields the same key (D36). */
-  const keyFor = (stepId: string, testId: string, verdict: Verdict) =>
-    `${flowRunId}:${stepId}:${testId}:${verdict}`;
+  // Leaving with unrecorded verdicts — in-app navigation or closing the tab — asks first.
+  const leaving = useRef(false);
+  const dirty = editable && draft.count > 0 && !leaving.current;
+  useBlocker({
+    shouldBlockFn: () => dirty && !confirm(`You have ${draft.count} unrecorded verdict${draft.count === 1 ? "" : "s"}. Leave without finishing? They stay on this device until you come back.`),
+    enableBeforeUnload: () => dirty,
+  });
 
-  function record(step: SnapshotStep, testId: string, verdict: Verdict, note: string | null, blocking: boolean) {
+  function record(step: SnapshotStep, testId: string, verdict: Verdict, note: string | null, blocking: boolean, attachments: { name: string; dataUrl: string; width: number; height: number }[] = []) {
     const test = snapshot.tests.find((t) => t.id === testId);
     if (!test || !me.name) return;
-    return collection.insert({
-      id: `optimistic:${crypto.randomUUID()}`,
-      flow_run_id: flowRunId,
-      step_id: step.id,
-      test_id: testId,
-      test_version_id: test.versionId,
-      verdict,
-      note,
-      blocking,
-      recorded_by: me.name,
-      recorded_at: new Date().toISOString(),
-      idempotency_key: keyFor(step.id, testId, verdict),
-    });
+    draft.set({ stepId: step.id, testId, testVersionId: test.versionId, verdict, note, blocking, attachments });
   }
 
   function pick(step: SnapshotStep, testId: string, verdict: Verdict) {
-    if (readOnly || view.blocked.blockedStepIds.has(step.id)) return;
+    if (!editable || view.blocked.blockedStepIds.has(step.id)) return;
     if (verdict === "pass") {
       record(step, testId, "pass", null, false);
     } else {
@@ -136,36 +138,64 @@ function RunnerBody({
 
   async function submitDialog(s: VerdictSubmission) {
     if (!dialog) return;
-    const tx = record(dialog.step, dialog.testId, s.verdict, s.note || null, s.blocking);
-    setDialog(null);
-    if (!tx || !s.files.length) return;
-    // Attachments go up after the result exists; the optimistic row has no real id
-    // yet, so wait for the API's row and then upload against it.
-    await tx.isPersisted.promise;
-    const real = collection.toArray.find(
-      (r) => r.idempotency_key === keyFor(dialog.step.id, dialog.testId, s.verdict) && !r.id.startsWith("optimistic:"),
-    );
-    if (!real) return;
+    const attachments = [];
     for (const file of s.files) {
       const { blob, width, height } = await shrinkImage(file);
-      const form = new FormData();
-      form.set("file", new File([blob], file.name.replace(/\.[^.]+$/, ".webp"), { type: blob.type }));
-      form.set("width", String(width));
-      form.set("height", String(height));
-      await fetch(`/api/results/${real.id}/attachments`, { method: "POST", body: form });
+      attachments.push({ name: file.name.replace(/\.[^.]+$/, ".webp"), dataUrl: await fileToDataUrl(blob), width, height });
     }
+    record(dialog.step, dialog.testId, s.verdict, s.note || null, s.blocking, attachments);
+    setDialog(null);
   }
 
   function passAll(step: SnapshotStep) {
-    if (readOnly || view.blocked.blockedStepIds.has(step.id)) return;
+    if (!editable || view.blocked.blockedStepIds.has(step.id)) return;
     for (const testId of step.marks) {
       if (!view.byStepTest.get(`${step.id}|${testId}`)) record(step, testId, "pass", null, false);
     }
   }
 
-  async function finish(action: "finish" | "abandon") {
-    if (action === "abandon" && !confirm("Abandon this flow? The next person starts it from step 1.")) return;
-    await unwrap(api.POST(`/flow-runs/{flowRunId}/${action}`, { params: { path: { flowRunId } } }));
+  /** Finish records every drafted verdict, in step order, then closes the flow run. */
+  async function finish() {
+    // A blocking fail recorded after later steps were passed: those verdicts are void (D11).
+    const entries = Object.values(draft.draft).filter((r) => !view.blocked.blockedStepIds.has(r.stepId));
+    const order = new Map(flow.steps.map((st, i) => [st.id, i]));
+    entries.sort((a, b) => (order.get(a.stepId) ?? 0) - (order.get(b.stepId) ?? 0));
+    const unverified = view.remaining;
+    if (unverified && !confirm(`${unverified} test${unverified === 1 ? "" : "s"} still ${unverified === 1 ? "has" : "have"} no verdict and will report as not reached. Finish anyway?`)) return;
+    try {
+      for (const [i, r] of entries.entries()) {
+        setCommitting(`Recording ${i + 1} of ${entries.length}…`);
+        const recorded = await unwrap(api.POST("/flow-runs/{flowRunId}/results", {
+          params: { path: { flowRunId } },
+          body: { stepId: r.stepId, testId: r.testId, verdict: r.verdict, note: r.note, blocking: r.blocking, idempotencyKey: `${flowRunId}:${r.stepId}:${r.testId}:${r.verdict}` },
+        }));
+        for (const a of r.attachments) {
+          const form = new FormData();
+          form.set("file", new File([await dataUrlToBlob(a.dataUrl)], a.name, { type: "image/webp" }));
+          form.set("width", String(a.width));
+          form.set("height", String(a.height));
+          await fetch(`/api/results/${recorded.id}/attachments`, { method: "POST", body: form });
+        }
+      }
+      setCommitting("Finishing…");
+      await unwrap(api.POST("/flow-runs/{flowRunId}/finish", { params: { path: { flowRunId } } }));
+    } catch (e) {
+      setCommitting(null);
+      alert(`Could not record the results: ${e instanceof Error ? e.message : String(e)}. Nothing is lost — try again.`);
+      return;
+    }
+    leaving.current = true;
+    draft.clear();
+    await qc.invalidateQueries({ queryKey: ["run", runId] });
+    void navigate({ to: "/products/$productId/runs/$runId", params: { productId, runId } });
+  }
+
+  async function abandon() {
+    const n = draft.count;
+    if (!confirm(`Abandon this flow?${n ? ` Your ${n} verdict${n === 1 ? " is" : "s are"} discarded.` : ""} The next person starts it from step 1.`)) return;
+    leaving.current = true;
+    draft.clear();
+    await unwrap(api.POST("/flow-runs/{flowRunId}/abandon", { params: { path: { flowRunId } } }));
     await qc.invalidateQueries({ queryKey: ["run", runId] });
     void navigate({ to: "/products/$productId/runs/$runId", params: { productId, runId } });
   }
@@ -198,7 +228,6 @@ function RunnerBody({
   const [help, setHelp] = useState(false);
 
   const devicesInPlay = devicesInPlayAt(handoffs, current);
-  const isMine = claimedBy === me.name;
 
   return (
     <main className="shell wide">
@@ -223,7 +252,7 @@ function RunnerBody({
               <button className="btn" onClick={() => setHelp((h) => !h)} title="Keyboard shortcuts">
                 <span className="kbd">?</span>
               </button>
-              <button className="btn danger" onClick={() => void finish("abandon")}>Abandon flow</button>
+              <button className="btn danger" onClick={() => void abandon()}>Abandon flow</button>
             </div>
           ) : null}
         </div>
@@ -287,9 +316,11 @@ function RunnerBody({
       ) : null}
 
       <div className="hand">End of flow</div>
-      {!readOnly && isMine ? (
-        <div className="text-center">
-          <button className="btn primary" onClick={() => void finish("finish")}>Finish flow</button>
+      {editable ? (
+        <div className="finishbox">
+          <b>Finish to record your verdicts</b>
+          <span className="meta">{draft.count ? `${draft.count} verdict${draft.count === 1 ? "" : "s"} on this device, not yet on the board.` : "Nothing recorded yet."} Abandoning discards them.</span>
+          <button className="btn primary" disabled={!!committing} onClick={() => void finish()}>{committing ?? "Finish flow"}</button>
         </div>
       ) : null}
 

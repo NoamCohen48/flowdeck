@@ -48,12 +48,20 @@ test("a claim and a verdict in one browser land on the other's board without a r
   await expect(danaCard.getByText("Claimed by Noa")).toBeVisible({ timeout: 15_000 });
   await expect(dana.getByText("Noa", { exact: true }).first()).toBeVisible();
 
-  // Noa passes the first marked test; Dana's board counts it.
+  // Noa passes the first marked test. It is a draft on Noa's machine: Dana's
+  // board must not move until Noa finishes the flow.
   const passedBefore = await dana.locator(".kpi").innerText();
   await noa.locator(".trow .v.pass").first().click();
   await expect(noa.locator(".trow .v.on.pass")).toHaveCount(1);
+  await noa.waitForTimeout(1500);
+  expect(await dana.locator(".kpi").innerText()).toBe(passedBefore);
+
+  // Finishing records it; Dana's board counts it without a reload.
+  noa.once("dialog", (d) => void d.accept());
+  await noa.getByRole("button", { name: "Finish flow" }).click();
+  await noa.waitForURL(new RegExp(`${run.id}$`));
   await expect.poll(async () => dana.locator(".kpi").innerText(), { timeout: 15_000 }).not.toBe(passedBefore);
-  await expect(danaCard.locator(".tag")).toContainText("1/");
+  await expect(danaCard.locator(".resultrow")).toContainText("1 of");
 });
 
 test("an edit in the flow editor reaches a second author live", async ({ browser }) => {

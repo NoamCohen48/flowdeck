@@ -7,7 +7,8 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { computeHandoffs } from "@flowdeck/domain";
 import { api, ApiError, unwrap } from "../lib/api.ts";
-import { useRunBoard, type FlowProgress } from "../lib/run-model.ts";
+import { useLiveResults, useRunBoard, type FlowProgress } from "../lib/run-model.ts";
+import { worstResultByTest, type Verdict } from "@flowdeck/domain";
 import { useMe } from "../lib/identity.tsx";
 import { usePeers, usePresence } from "../lib/presence.ts";
 import { useTitle } from "../lib/title.ts";
@@ -86,7 +87,7 @@ export function Day() {
 }
 
 function FlowCard({ productId, runId, progress }: { productId: string; runId: string; progress: FlowProgress }) {
-  const { flow, flowRuns, testCount, reached, counts, state, holders } = progress;
+  const { flow, flowRuns, testCount, state, holders } = progress;
   const me = useMe();
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState<{ holders: string[] } | null>(null);
@@ -114,7 +115,7 @@ function FlowCard({ productId, runId, progress }: { productId: string; runId: st
     }
   }
 
-  const finished = flowRuns.filter((fr) => fr.state === "finished");
+  const finished = flowRuns.filter((fr) => fr.state === "finished").sort((a, b) => (b.finished_at ?? "").localeCompare(a.finished_at ?? ""));
   const cta = mine ? (
     <Link className="btn primary" to="/products/$productId/runs/$runId/flows/$flowRunId" params={{ productId, runId, flowRunId: mine.id }}>Continue</Link>
   ) : (
@@ -124,32 +125,29 @@ function FlowCard({ productId, runId, progress }: { productId: string; runId: st
   );
 
   return (
-    <div className="panel pad">
+    <div className={`panel pad flowcard ${state}`}>
       <div className="row-split">
         <div style={{ flex: 1, minWidth: 230 }}>
-          <h3 dir="auto">{flow.name}</h3>
-          <p className="meta" style={{ margin: "2px 0 6px" }}>
+          <div className="flex gap-2 items-center flex-wrap">
+            <h3 dir="auto" style={{ margin: 0 }}>{flow.name}</h3>
+            <span className={`pill ${state === "done" ? "pass" : state === "running" ? "open" : "skip"}`}><span className="dot" />{label}</span>
+          </div>
+          <p className="meta" style={{ margin: "4px 0 0" }}>
             {flow.steps.length} steps · marks {testCount} tests{flow.estimatedMinutes ? ` · ~${flow.estimatedMinutes} min` : ""}
+            {holders.length ? ` · claimed by ${holders.join(", ")}` : !finished.length ? " · nobody has taken this yet" : ""}
           </p>
-          <span className="meta">
-            {holders.length ? `Claimed by ${holders.join(", ")}` : finished.length ? `Run by ${[...new Set(finished.map((f) => f.claimed_by))].join(", ")}` : "Nobody has taken this yet"}
-          </span>
         </div>
         <div className="flex gap-1.5 flex-wrap">{devices.map((d) => <DeviceChip key={d.label} device={d} ghost />)}</div>
         {cta}
       </div>
-      <div className="row-split" style={{ marginTop: 12 }}>
-        <div style={{ flex: 1 }}><Bar counts={counts} total={testCount} /></div>
-        <span className="tag">{label}{reached ? ` · ${reached}/${testCount}` : ""}</span>
-      </div>
       {flow.precondition ? <div className="pre" style={{ fontSize: 13.5 }} dir="auto"><b>Before you start:</b> {flow.precondition}</div> : null}
-      {finished.map((fr) => (
-        <p key={fr.id} className="meta" style={{ margin: "8px 0 0" }}>
-          <Link className="lnk" to="/products/$productId/runs/$runId/flows/$flowRunId" params={{ productId, runId, flowRunId: fr.id }}>
-            View {fr.claimed_by}'s results
-          </Link>
-        </p>
-      ))}
+      {finished.length ? (
+        <div className="results">
+          {finished.map((fr) => <ResultRow key={fr.id} productId={productId} runId={runId} flowRunId={fr.id} by={fr.claimed_by ?? "someone"} at={fr.finished_at} testCount={testCount} />)}
+        </div>
+      ) : state === "running" ? (
+        <p className="meta" style={{ margin: "10px 0 0", fontSize: 13 }}>Results appear here when the flow is finished.</p>
+      ) : null}
       {confirming ? (
         <div className="note skp" style={{ marginLeft: 0 }}>
           <b>{confirming.holders.join(" and ")} {confirming.holders.length > 1 ? "are" : "is"} already on this flow.</b> You can run it too — both sets of results are kept, and if either of you hits a bug the day reports it.
@@ -160,5 +158,34 @@ function FlowCard({ productId, runId, progress }: { productId: string; runId: st
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** One finished run of a flow: who, when, and the verdicts they recorded. */
+function ResultRow({ productId, runId, flowRunId, by, at, testCount }: { productId: string; runId: string; flowRunId: string; by: string; at: string | null; testCount: number }) {
+  const { rows } = useLiveResults(runId);
+  const mine = rows.filter((r) => r.flow_run_id === flowRunId);
+  const worst = worstResultByTest(mine.map((r) => ({ testId: r.test_id, verdict: r.verdict })));
+  const counts: Record<Verdict, number> = { pass: 0, fail: 0, minor: 0, skipped: 0 };
+  for (const v of worst.values()) counts[v] += 1;
+  const when = at ? new Date(at) : null;
+  return (
+    <Link className="resultrow" to="/products/$productId/runs/$runId/flows/$flowRunId" params={{ productId, runId, flowRunId }}>
+      <span className="avatar" aria-hidden>{by.trim().charAt(0).toUpperCase()}</span>
+      <span className="who">
+        <b dir="auto">{by}</b>
+        <span className="meta">
+          {when ? `Finished ${when.toLocaleDateString(undefined, { day: "numeric", month: "short" })} at ${when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}` : "Finished"} · {worst.size} of {testCount} tests reached
+        </span>
+      </span>
+      <span className="tally">
+        <span className="pill pass"><span className="dot" />{counts.pass}</span>
+        <span className={`pill fail${counts.fail ? "" : " off"}`}><span className="dot" />{counts.fail}</span>
+        <span className={`pill minor${counts.minor ? "" : " off"}`}><span className="dot" />{counts.minor}</span>
+        <span className={`pill skip${counts.skipped ? "" : " off"}`}><span className="dot" />{counts.skipped}</span>
+      </span>
+      <Bar counts={counts} total={testCount} />
+      <span className="go">View results</span>
+    </Link>
   );
 }
