@@ -51,9 +51,24 @@ const SHAPES: Record<string, ShapeDefinition> = {
     required: ["scope"],
     where: (p) => `scope = '${p.scope}'`,
   },
-  /** The library's red rows, updating as an author marks tests. */
-  "product.coverage": {
-    table: "test_coverage",
+  /**
+   * The library's red rows, updating live as an author marks tests.
+   *
+   * Electric follows logical replication, so it cannot sync a view — the
+   * `test_coverage` view serves the REST endpoint, and this shape syncs the raw
+   * marks instead. The browser computes covered/uncovered from them with
+   * `coverageOf` from @flowdeck/domain, the same rule the API uses. Which
+   * templates cover a test (the chips) is not live; that reads through REST.
+   */
+  "product.marks": {
+    table: "step_mark",
+    required: ["productId"],
+    where: (p) =>
+      `test_id in (select id from test where product_id = '${p.productId}')`,
+  },
+  /** The library itself — titles and archived flags — so a new test appears live. */
+  "product.tests": {
+    table: "test",
     required: ["productId"],
     where: (p) => `product_id = '${p.productId}'`,
   },

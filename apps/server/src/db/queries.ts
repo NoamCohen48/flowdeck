@@ -4,7 +4,7 @@
  * and drift.
  */
 import { and, asc, eq, inArray, sql as raw } from "drizzle-orm";
-import { db } from "./client.ts";
+import { db, query } from "./client.ts";
 import {
   flow,
   product,
@@ -148,16 +148,14 @@ export type CoverageRow = {
   needs_attention: boolean;
   archived: boolean;
   template_ids: string[] | null;
-  [key: string]: unknown;
 };
 
-export async function coverageForProduct(productId: string) {
-  const rows = await db.execute<CoverageRow>(raw`
+export function coverageForProduct(productId: string) {
+  return query<CoverageRow>(raw`
     select test_id, covered, needs_attention, archived, template_ids
     from test_coverage
     where product_id = ${productId}
   `);
-  return rows as unknown as CoverageRow[];
 }
 
 /* ── Templates ───────────────────────────────────────────────────────── */
@@ -267,12 +265,11 @@ export type TemplateSummaryRow = {
   status: "active" | "archived";
   flow_count: number;
   marks_test_count: number;
-  [key: string]: unknown;
 };
 
 /** Summary counts for the template list. Scope is reported, never declared (D1). */
 export async function listTemplateSummaries(productId: string) {
-  const rows = await db.execute<TemplateSummaryRow>(raw`
+  return query<TemplateSummaryRow>(raw`
     select
       t.id, t.product_id, t.name, t.description, t.status,
       count(distinct f.id)::int  as flow_count,
@@ -285,7 +282,6 @@ export async function listTemplateSummaries(productId: string) {
     group by t.id
     order by t.status asc, t.name asc
   `);
-  return rows as unknown as TemplateSummaryRow[];
 }
 
 /* ── Products ────────────────────────────────────────────────────────── */
@@ -305,8 +301,8 @@ export async function getProduct(productId: string) {
  * confirmation is only honest if it can say how many.
  */
 export async function markCountFor(testId: string) {
-  type MarkCount = { steps: number; flows: number; templates: number; [k: string]: unknown };
-  const rows = await db.execute<MarkCount>(raw`
+  type MarkCount = { steps: number; flows: number; templates: number };
+  const rows = await query<MarkCount>(raw`
     select
       count(*)::int                      as steps,
       count(distinct s.flow_id)::int     as flows,
@@ -316,7 +312,7 @@ export async function markCountFor(testId: string) {
     join flow f on f.id = s.flow_id
     where sm.test_id = ${testId}
   `);
-  return (rows as unknown as MarkCount[])[0]!;
+  return rows[0]!;
 }
 
 export async function setArchived(testId: string, archived: boolean) {

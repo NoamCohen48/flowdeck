@@ -12,3 +12,4 @@ apps/server/dist/
 test-results/
 playwright-report/
 .turbo/
+compose.override.yaml

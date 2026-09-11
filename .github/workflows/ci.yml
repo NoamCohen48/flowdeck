@@ -26,8 +26,20 @@ jobs:
         ports:
           - 54321:5432
 
+      # The shape proxy is tested against a real Electric, because the failure it
+      # once had — pointing a shape at a view, which Electric cannot sync — is
+      # invisible to anything short of the real service.
+      electric:
+        image: electricsql/electric:latest
+        env:
+          DATABASE_URL: postgresql://flowdeck:flowdeck-dev@postgres:5432/flowdeck?sslmode=disable
+          ELECTRIC_INSECURE: "true"
+        ports:
+          - 3010:3000
+
     env:
       DATABASE_URL: postgresql://flowdeck:flowdeck-dev@localhost:54321/flowdeck
+      ELECTRIC_URL: http://localhost:3010
 
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +62,14 @@ jobs:
 
       - name: Seed
         run: bun run db:seed
+
+      - name: Wait for Electric
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3010/v1/health && exit 0
+            sleep 2
+          done
+          echo "Electric never became healthy"; exit 1
 
       - name: Tests
         run: bun test

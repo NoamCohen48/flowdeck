@@ -42,4 +42,10 @@ const port = Number(process.env.PORT ?? 8787);
 
 export default { port, fetch: app.fetch, idleTimeout: 90 };
 
-process.on("SIGTERM", () => void sql.end());
+// Close the pool and then exit. Closing alone leaves a live process that answers
+// every request with a dead connection, which is worse than being down.
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    void sql.end({ timeout: 5 }).finally(() => process.exit(0));
+  });
+}

@@ -49,3 +49,4 @@ alter table flow_run    replica identity full;
 alter table presence    replica identity full;
 alter table step        replica identity full;
 alter table step_mark   replica identity full;
+alter table test         replica identity full;
