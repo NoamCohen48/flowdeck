@@ -24,6 +24,7 @@ import { usePeers, usePresence } from "../lib/presence.ts";
 import { useTitle } from "../lib/title.ts";
 import { DeviceChip, Pickup, deviceStyle } from "../components/Device.tsx";
 import { StepMap } from "../components/StepMap.tsx";
+import { KindBadge, TestsIcon } from "../components/Step.tsx";
 import { TestPicker } from "../components/TestPicker.tsx";
 
 type Draft = { kind: StepKind; text: string; expectedResult: string; deviceLabel: string };
@@ -154,7 +155,7 @@ export function FlowEditor() {
   return (
     <main className="shell wide">
       <p className="crumb">
-        <Link to="/products/$productId" params={{ productId }} className="lnk">Templates</Link> ›{" "}
+        <Link to="/products/$productId/templates" params={{ productId }} className="lnk">Templates</Link> ›{" "}
         <Link to="/products/$productId/templates/$templateId" params={{ productId, templateId }} className="lnk" dir="auto">{template.data.name}</Link> ›{" "}
         <span dir="auto">{flow.name}</span>
       </p>
@@ -168,7 +169,7 @@ export function FlowEditor() {
         onSave={saveFlow}
       />
 
-      <div className="grid gap-6 grid-cols-1 md:grid-cols-[minmax(0,1fr)_240px]">
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-[minmax(0,1fr)_272px]">
         <div>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={ids} strategy={verticalListSortingStrategy}>
@@ -206,6 +207,7 @@ export function FlowEditor() {
                           onSave={(d) => save(step, d)}
                           onCancel={() => setEditing(null)}
                           onDelete={() => remove(step)}
+                          onMove={{ up: i > 0 ? () => reorder(i, i - 1) : null, down: i < steps.length - 1 ? () => reorder(i, i + 1) : null }}
                         />
                       ) : (
                         <StepView
@@ -214,6 +216,7 @@ export function FlowEditor() {
                           device={device}
                           isCurrent={i === current}
                           byId={byId}
+                          productId={productId}
                           onFocus={() => setCurrent(i)}
                           onEdit={() => { setDraft(null); setEditing(step.id); }}
                           onUnmark={(testId) => toggleMark(step.id, testId, false)}
@@ -258,7 +261,6 @@ export function FlowEditor() {
               <StepMap steps={steps} handoffs={handoffs} current={current} onJump={scrollTo} sortable />
             </SortableContext>
           </DndContext>
-          {steps.length > 1 ? <p className="meta" style={{ fontSize: 12, marginTop: 8 }}>Drag here to reorder the flow.</p> : null}
         </aside>
       </div>
 
@@ -289,22 +291,25 @@ function SortableStep({ id, refCb, style, children }: { id: string; refCb: (el: 
   );
 }
 
-function Grip({ id }: { id: string }) {
-  const { attributes, listeners, setActivatorNodeRef } = useSortable({ id });
-  return (
-    <button ref={setActivatorNodeRef} className="grip" title="Drag to reorder" aria-label="Drag to reorder" {...attributes} {...listeners}>⋮⋮</button>
-  );
-}
-
 /** The affordance on the boundary between two steps (07 §1). */
 function Between({ onAdd }: { onAdd: (kind: StepKind) => void }) {
   const [open, setOpen] = useState(false);
+  // Once opened it stays until a click lands anywhere outside it, or Escape.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
   return (
-    <div className={`between${open ? " open" : ""}`} onMouseLeave={() => setOpen(false)}>
+    <div ref={ref} className={`between${open ? " open" : ""}`}>
       {open ? (
         <div className="menu">
-          <button className="btn sm" onClick={() => { setOpen(false); onAdd("action"); }}>▸ Action</button>
-          <button className="btn sm" onClick={() => { setOpen(false); onAdd("assertion"); }}>◉ Check</button>
+          <button className="btn sm" onClick={() => { setOpen(false); onAdd("action"); }}>Action</button>
+          <button className="btn sm" onClick={() => { setOpen(false); onAdd("assertion"); }}>Check</button>
           <button className="btn sm" onClick={() => setOpen(false)}>Cancel</button>
         </div>
       ) : (
@@ -315,52 +320,56 @@ function Between({ onAdd }: { onAdd: (kind: StepKind) => void }) {
 }
 
 function StepView({
-  step, index, device, isCurrent, byId, onFocus, onEdit, onUnmark, onPick,
+  step, index, device, isCurrent, byId, productId, onFocus, onEdit, onUnmark, onPick,
 }: {
-  step: SnapshotStep; index: number; device: DeviceAssignment; isCurrent: boolean;
+  step: SnapshotStep; index: number; device: DeviceAssignment; isCurrent: boolean; productId: string;
   byId: Map<string, Test>; onFocus: () => void; onEdit: () => void; onUnmark: (testId: string) => void; onPick: () => void;
 }) {
   const isCheck = step.kind === "assertion";
   return (
     <div className={`step${isCurrent ? " now" : ""}`} id={`step-${step.id}`} onClick={onFocus} aria-current={isCurrent ? "step" : undefined}>
       <div className="sline">
-        <Grip id={step.id} />
         <span className="snum">{index + 1}</span>
         <DeviceChip device={device} />
-        <span className="meta">{isCheck ? "Check" : "Action"}</span>
+        <KindBadge kind={step.kind} />
         <span style={{ flex: 1 }} />
         <button className="btn sm" onClick={(e) => { e.stopPropagation(); onEdit(); }}>Edit</button>
       </div>
       <div className="stop">
-        <span className={`kind ${isCheck ? "chk" : "act"}`} aria-hidden>{isCheck ? "◉" : "▸"}</span>
         <p className="stext" dir="auto">{step.text}</p>
       </div>
       {isCheck && step.expectedResult ? <div className="expect" dir="auto"><b>Expected:</b> {step.expectedResult}</div> : null}
-      <div className="tests">
-        <div className="cap">{step.marks.length ? `Tests marked here` : "No tests marked on this step"}</div>
+      <div className={`tests${step.marks.length ? "" : " none"}`}>
+        <div className="cap"><TestsIcon />{step.marks.length ? `Verifies ${step.marks.length === 1 ? "1 test" : `${step.marks.length} tests`}` : "Verifies nothing yet"}</div>
         {step.marks.map((testId) => {
           const t = byId.get(testId);
           return (
             <div className="trow" key={testId}>
               <span className="tname" dir="auto">
-                {t ? t.current.title : <i className="meta">unknown test</i>}
+                {t ? (
+                  <Link className="tlink" to="/products/$productId/tests" params={{ productId }} search={{ test: testId }} onClick={(e) => e.stopPropagation()} title="Open in the test library">
+                    {t.current.title}
+                  </Link>
+                ) : <i className="meta">unknown test</i>}
                 {t?.archived ? <span className="tag" style={{ marginLeft: 6 }}>archived</span> : null}
               </span>
               <button className="btn sm" onClick={(e) => { e.stopPropagation(); onUnmark(testId); }}>Unmark</button>
             </div>
           );
         })}
-        <button className="btn sm" style={{ marginTop: 8 }} onClick={(e) => { e.stopPropagation(); onPick(); }}>＋ Mark a test</button>
+        <button className={`btn sm${step.marks.length ? "" : " soft"}`} style={{ marginTop: 8 }} onClick={(e) => { e.stopPropagation(); onPick(); }}>＋ Mark a test</button>
       </div>
     </div>
   );
 }
 
 function StepForm({
-  initial, index, labels, submitLabel, onSave, onCancel, onDelete,
+  initial, index, labels, submitLabel, onSave, onCancel, onDelete, onMove,
 }: {
   initial: Draft; index: number; labels: string[]; submitLabel: string;
   onSave: (d: Draft) => void; onCancel: () => void; onDelete?: () => void;
+  /** Pointer-free reorder (WCAG 2.2 dragging movements): drag is never the only way. */
+  onMove?: { up: (() => void) | null; down: (() => void) | null };
 }) {
   const [d, setD] = useState<Draft>(initial);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -373,8 +382,8 @@ function StepForm({
       <div className="row">
         <span className="snum">{index + 1}</span>
         <span className="kindpick" role="radiogroup" aria-label="Step kind">
-          <button type="button" className={d.kind === "action" ? "on" : ""} onClick={() => setD({ ...d, kind: "action" })}>▸ Action</button>
-          <button type="button" className={isCheck ? "on" : ""} onClick={() => setD({ ...d, kind: "assertion" })}>◉ Check</button>
+          <button type="button" className={d.kind === "action" ? "on" : ""} onClick={() => setD({ ...d, kind: "action" })}>Action</button>
+          <button type="button" className={isCheck ? "on" : ""} onClick={() => setD({ ...d, kind: "assertion" })}>Check</button>
         </span>
         <input className="devin" type="text" list="device-labels" value={d.deviceLabel} onChange={(e) => setD({ ...d, deviceLabel: e.target.value })} placeholder="Device (e.g. Pixel 8)" dir="auto" aria-label="Device label" />
         <datalist id="device-labels">{labels.map((l) => <option key={l} value={l} />)}</datalist>
@@ -388,6 +397,12 @@ function StepForm({
         <button className="btn sm" onClick={onCancel}>Cancel</button>
         <span className="meta" style={{ fontSize: 12 }}><span className="kbd">⌘↵</span> save · <span className="kbd">esc</span> cancel</span>
         <span style={{ flex: 1 }} />
+        {onMove ? (
+          <>
+            <button className="btn sm" disabled={!onMove.up} onClick={onMove.up ?? undefined} aria-label="Move step up">↑ Move up</button>
+            <button className="btn sm" disabled={!onMove.down} onClick={onMove.down ?? undefined} aria-label="Move step down">↓ Move down</button>
+          </>
+        ) : null}
         {onDelete ? <button className="btn sm danger" onClick={onDelete}>Delete step</button> : null}
       </div>
     </div>
@@ -398,12 +413,12 @@ function DraftCard({ kind, index, initialDevice, labels, onSave, onCancel }: { k
   return <StepForm initial={{ kind, text: "", expectedResult: "", deviceLabel: initialDevice }} index={index} labels={labels} submitLabel="Add step" onSave={onSave} onCancel={onCancel} />;
 }
 
-function EditCard({ step, index, device, labels, onSave, onCancel, onDelete }: { step: SnapshotStep; index: number; device: DeviceAssignment; labels: string[]; onSave: (d: Draft) => void; onCancel: () => void; onDelete: () => void }) {
+function EditCard({ step, index, device, labels, onSave, onCancel, onDelete, onMove }: { step: SnapshotStep; index: number; device: DeviceAssignment; labels: string[]; onSave: (d: Draft) => void; onCancel: () => void; onDelete: () => void; onMove: { up: (() => void) | null; down: (() => void) | null } }) {
   return (
     <div style={deviceStyle(device.slot)}>
       <StepForm
         initial={{ kind: step.kind, text: step.text, expectedResult: step.expectedResult ?? "", deviceLabel: step.deviceLabel }}
-        index={index} labels={labels} submitLabel="Save" onSave={onSave} onCancel={onCancel} onDelete={onDelete}
+        index={index} labels={labels} submitLabel="Save" onSave={onSave} onCancel={onCancel} onDelete={onDelete} onMove={onMove}
       />
     </div>
   );

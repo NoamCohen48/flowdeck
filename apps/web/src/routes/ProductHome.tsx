@@ -1,11 +1,15 @@
-/** Product overview, milestone-3 cut: templates to start a day from, and recent days. */
-import { useState } from "react";
+/**
+ * Product overview (04 §Dashboards): library size, covered vs uncovered, template
+ * count, today's run progress, and a "needs attention" list combining uncovered
+ * tests, today's failures and today's skipped tests. Laid out as a board — what is
+ * happening now on the left, what to start from and what happened before on the right.
+ */
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRunBoard } from "../lib/run-model.ts";
 import { useTestIndex } from "../lib/editor-model.ts";
 import { Bar } from "../components/Progress.tsx";
-import { IssueCard, type IssueFeed } from "../components/Issues.tsx";
+import { type IssueFeed, type Issue } from "../components/Issues.tsx";
 import { api, ApiError, unwrap } from "../lib/api.ts";
 import { useTitle } from "../lib/title.ts";
 
@@ -17,28 +21,22 @@ export function ProductHome() {
   const coverage = useQuery({ queryKey: ["coverage", productId], queryFn: () => unwrap(api.GET("/products/{productId}/coverage", { params: { path: { productId } } })) });
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [warn, setWarn] = useState<{ templateId: string; openRunId: string } | null>(null);
-  const [creating, setCreating] = useState(false);
   useTitle(product.data ? `${product.data.name} — Flowdeck` : "Flowdeck");
 
-  async function start(templateId: string, force = false) {
+  async function start(templateId: string) {
     try {
-      const run = await unwrap(api.POST("/templates/{templateId}/runs", { params: { path: { templateId }, query: { force: force ? "true" : "false" } } }));
+      const run = await unwrap(api.POST("/templates/{templateId}/runs", { params: { path: { templateId }, query: { force: "false" } } }));
       await qc.invalidateQueries({ queryKey: ["runs", productId] });
       void navigate({ to: "/products/$productId/runs/$runId", params: { productId, runId: run.id } });
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) setWarn({ templateId, openRunId: (e.body as { openRunId: string }).openRunId });
+      // Already open: the day is the answer, not an error.
+      if (e instanceof ApiError && e.status === 409) void navigate({ to: "/products/$productId/runs/$runId", params: { productId, runId: (e.body as { openRunId: string }).openRunId } });
       else throw e;
     }
   }
 
-  async function createTemplate(name: string, description: string) {
-    const [tpl] = await unwrap(api.POST("/products/{productId}/templates", { params: { path: { productId } }, body: { templates: [{ name, description, status: "active", flows: [] }] } }));
-    await qc.invalidateQueries({ queryKey: ["templates", productId] });
-    if (tpl) void navigate({ to: "/products/$productId/templates/$templateId", params: { productId, templateId: tpl.id } });
-  }
-
   const open = (runs.data ?? []).filter((r) => !r.closedAt);
+  const past = (runs.data ?? []).filter((r) => r.closedAt);
   const feeds = useQueries({
     queries: open.map((r) => ({
       queryKey: ["issues", r.id, "home"],
@@ -51,12 +49,25 @@ export function ProductHome() {
 
   if (!product.data) return <main className="shell"><p className="meta">Loading…</p></main>;
   const uncovered = (coverage.data?.tests ?? []).filter((t) => t.needsAttention);
-  const todaysIssues = feeds.flatMap((q) => (q.data ? q.data.issues.filter((i) => i.type !== "minor").map((i) => ({ feed: q.data as IssueFeed, issue: i })) : []));
+  const todaysIssues = feeds.flatMap((q) => (q.data ? q.data.issues.filter((i) => i.type !== "minor" && i.type !== "pass").map((i) => ({ feed: q.data as IssueFeed, issue: i })) : []));
+  const active = (templates.data ?? []).filter((t) => t.status === "active");
+  const archivedCount = (templates.data?.length ?? 0) - active.length;
+  const cov = coverage.data;
+  const pct = cov && cov.total ? Math.round((cov.covered / cov.total) * 100) : 0;
 
   return (
     <main className="shell">
-      <h1 dir="auto">{product.data.name}</h1>
-      <p className="sub" dir="auto">{product.data.description}</p>
+      <div className="pagehead">
+        <div>
+          <h1 dir="auto">{product.data.name}</h1>
+          <p className="sub" dir="auto">{product.data.description}</p>
+        </div>
+        <div className="flex gap-2">
+          <Link className="btn" to="/products/$productId/tests" params={{ productId }} search={{ test: undefined }}>Test library</Link>
+          <Link className="btn primary" to="/products/$productId/templates" params={{ productId }}>Start a testing day</Link>
+        </div>
+      </div>
+
       {disk.data?.nearBudget ? (
         <div className="note min" style={{ marginLeft: 0, marginBottom: 16 }}>
           Screenshots are using {Math.round(disk.data.usedBytes / 1048576)} MB of the {Math.round(disk.data.budgetBytes / 1048576)} MB budget.
@@ -64,103 +75,143 @@ export function ProductHome() {
         </div>
       ) : null}
 
-      {coverage.data ? (
-        <div className="panel">
-          <div className="kpi">
-            <div><b>{coverage.data.total}</b><span>tests in the library</span></div>
-            <div><b>{coverage.data.covered}</b><span>covered by a template</span></div>
-            <div><b style={{ color: coverage.data.uncovered ? "var(--color-fail)" : undefined }}>{coverage.data.uncovered}</b><span>covered by nothing</span></div>
-            <div><b>{templates.data?.length ?? 0}</b><span>templates</span></div>
-          </div>
-        </div>
-      ) : null}
-
-      <h2>Today's testing day</h2>
-      {open.length ? (
-        <div className="stack">
-          {open.map((r) => <OpenRun key={r.id} productId={productId} runId={r.id} templateName={r.templateName} startedBy={r.startedBy} date={r.date} />)}
-        </div>
-      ) : (
-        <p className="meta">No testing day is open. Start one from a template below.</p>
-      )}
-
-      <div className="row-split" style={{ marginTop: 34 }}>
-        <h2 style={{ margin: 0 }}>Templates</h2>
-        <button className="btn sm" onClick={() => setCreating(true)}>＋ New template</button>
+      <div className="tiles">
+        <Link className="tile" to="/products/$productId/tests" params={{ productId }} search={{ test: undefined }}>
+          <span className="lbl">Tests in the library</span>
+          <span className="num">{cov?.total ?? "–"}</span>
+          <span className="foot">Each one a thing that must be true</span>
+        </Link>
+        <Link className="tile" to="/products/$productId/tests" params={{ productId }} search={{ test: undefined }}>
+          <span className="lbl">Covered by a template</span>
+          <span className="num">{cov?.covered ?? "–"} <small>{cov ? `${pct}%` : ""}</small></span>
+          <span className="foot"><span className="bar"><i className="accent" style={{ width: `${pct}%` }} /></span></span>
+        </Link>
+        <Link className="tile" to="/products/$productId/tests" params={{ productId }} search={{ test: undefined }}>
+          <span className="lbl">Covered by nothing</span>
+          <span className={`num ${cov ? (cov.uncovered ? "bad" : "ok") : ""}`}>{cov?.uncovered ?? "–"}</span>
+          <span className="foot">{cov?.uncovered ? "Will never be checked on a testing day" : "Every test is reachable by some flow"}</span>
+        </Link>
+        <Link className="tile" to="/products/$productId/templates" params={{ productId }}>
+          <span className="lbl">Templates</span>
+          <span className="num">{active.length}</span>
+          <span className="foot">{archivedCount ? `${archivedCount} archived` : "One per setup"}</span>
+        </Link>
       </div>
-      <div className="stack" style={{ marginTop: 12 }}>
-        {creating ? <NewTemplate onSave={createTemplate} onCancel={() => setCreating(false)} /> : null}
-        {(templates.data ?? []).map((t) => (
-          <div key={t.id} className="panel pad">
-            <div className="row-split">
-              <div style={{ flex: 1, minWidth: 220 }}>
-                <h3><Link className="lnk" to="/products/$productId/templates/$templateId" params={{ productId, templateId: t.id }} dir="auto">{t.name}</Link> {t.status === "archived" ? <span className="tag">archived</span> : null}</h3>
-                <p className="meta" style={{ margin: "2px 0 0" }} dir="auto">{t.description}</p>
-                <p className="meta" style={{ margin: "4px 0 0" }}>{t.flowCount} flows · marks {t.marksTestCount} tests</p>
-              </div>
-              {t.status === "active" ? <button className="btn primary" onClick={() => void start(t.id)}>Start a testing day</button> : null}
+
+      <div className="dash">
+        <div className="col">
+          <section className="section">
+            <div className="head">
+              <h2>Today's testing day</h2>
+              {open.length ? <span className="meta">{open.length === 1 ? "1 day open" : `${open.length} days open`}</span> : null}
             </div>
-            {warn?.templateId === t.id ? (
-              <div className="note skp" style={{ marginLeft: 0 }}>
-                A testing day is already open for this template.
-                <div className="flex gap-2 mt-2">
-                  <Link className="btn sm primary" to="/products/$productId/runs/$runId" params={{ productId, runId: warn.openRunId }}>Open it</Link>
-                  <button className="btn sm" onClick={() => void start(t.id, true)}>Start another anyway</button>
-                  <button className="btn sm" onClick={() => setWarn(null)}>Never mind</button>
-                </div>
+            {open.length ? (
+              open.map((r) => <OpenRun key={r.id} productId={productId} runId={r.id} templateName={r.templateName} startedBy={r.startedBy} date={r.date} />)
+            ) : (
+              <div className="empty">
+                <b>No testing day is open</b>
+                <span>Start one from a template and each tester claims a flow.</span>
+                {active[0] ? <button className="btn primary" onClick={() => void start(active[0]!.id)}>Start “{active[0].name}”</button> : null}
               </div>
-            ) : null}
-          </div>
-        ))}
+            )}
+          </section>
+
+          <section className="section">
+            <div className="head">
+              <h2>Needs attention</h2>
+              <span className="meta">{uncovered.length + todaysIssues.length ? `${uncovered.length + todaysIssues.length} items` : "Nothing"}</span>
+            </div>
+            {uncovered.length || todaysIssues.length ? (
+              <div className="panel list">
+                {uncovered.map((t) => (
+                  <div key={t.testId} className="attn">
+                    <span className="sig" style={{ background: "var(--color-fail)" }} aria-hidden />
+                    <div className="body">
+                      <b dir="auto">{byId.get(t.testId)?.current.title ?? "…"}</b>
+                      <span className="meta">In no template at all. It will never be checked on a testing day.</span>
+                    </div>
+                    <Link className="btn sm" to="/products/$productId/tests" params={{ productId }} search={{ test: t.testId }}>Review</Link>
+                  </div>
+                ))}
+                {todaysIssues.map(({ feed, issue }, n) => <AttentionRow key={n} feed={feed} issue={issue} productId={productId} />)}
+              </div>
+            ) : (
+              <div className="empty"><b>All clear</b><span>Every test is covered and nothing has failed today.</span></div>
+            )}
+          </section>
+        </div>
+
+        <div className="col">
+          <section className="section">
+            <div className="head">
+              <h2>Templates</h2>
+              <Link className="btn sm" to="/products/$productId/templates" params={{ productId }}>All templates</Link>
+            </div>
+            {active.length ? (
+              <div className="panel list">
+                {active.map((t) => (
+                  <div key={t.id} className="tplrow">
+                    <div className="body">
+                      <b><Link to="/products/$productId/templates/$templateId" params={{ productId, templateId: t.id }} dir="auto">{t.name}</Link></b>
+                      <span className="meta">{t.flowCount} {t.flowCount === 1 ? "flow" : "flows"} · marks {t.marksTestCount} tests</span>
+                    </div>
+                    <button className="btn sm soft" onClick={() => void start(t.id)}>Start</button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="empty">
+                <b>No templates yet</b>
+                <Link className="btn sm primary" to="/products/$productId/templates" params={{ productId }}>Create one</Link>
+              </div>
+            )}
+          </section>
+
+          <section className="section">
+            <div className="head">
+              <h2>Past testing days</h2>
+              {past.length ? <span className="meta">{past.length}</span> : null}
+            </div>
+            {past.length ? (
+              <div className="panel list">
+                {past.slice(0, 8).map((r) => (
+                  <Link key={r.id} className="histrow" to="/products/$productId/runs/$runId" params={{ productId, runId: r.id }}>
+                    <span dir="auto" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.templateName}</span>
+                    <span className="meta">{new Date(r.date).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="meta" style={{ margin: 0 }}>Closed days appear here with their reports.</p>
+            )}
+          </section>
+        </div>
       </div>
-
-      {uncovered.length || todaysIssues.length ? (
-        <>
-          <h2>Needs attention</h2>
-          <div className="stack">
-            {uncovered.map((t) => (
-              <div key={t.testId} className="panel pad row-split" style={{ boxShadow: "inset 3px 0 0 var(--color-fail)" }}>
-                <div>
-                  <b dir="auto">{byId.get(t.testId)?.current.title ?? "…"}</b>
-                  <p className="meta" style={{ margin: "2px 0 0" }}>In no template at all. It will never be checked on a testing day.</p>
-                </div>
-                <Link className="btn sm" to="/products/$productId/tests" params={{ productId }} search={{ test: t.testId }}>Review</Link>
-              </div>
-            ))}
-            {todaysIssues.map(({ feed, issue }, n) => <IssueCard key={n} feed={feed} issue={issue} productId={productId} />)}
-          </div>
-        </>
-      ) : null}
-
-      {(runs.data ?? []).some((r) => r.closedAt) ? (
-        <>
-          <h2>Past testing days</h2>
-          <div className="stack">
-            {(runs.data ?? []).filter((r) => r.closedAt).map((r) => (
-              <Link key={r.id} className="panel pad row-split lnk" to="/products/$productId/runs/$runId" params={{ productId, runId: r.id }}>
-                <span dir="auto">{r.templateName}</span><span className="meta">{new Date(r.date).toLocaleDateString()}</span>
-              </Link>
-            ))}
-          </div>
-        </>
-      ) : null}
     </main>
   );
 }
 
-function NewTemplate({ onSave, onCancel }: { onSave: (name: string, description: string) => Promise<void>; onCancel: () => void }) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+const ATTN: Record<Issue["type"], { label: string; color: string }> = {
+  failure: { label: "Failed today", color: "var(--color-fail)" },
+  minor: { label: "Minor", color: "var(--color-minor)" },
+  invalid_test: { label: "Test is wrong", color: "var(--color-skip)" },
+  pass: { label: "Passed", color: "var(--color-pass)" },
+};
+
+function AttentionRow({ feed, issue, productId }: { feed: IssueFeed; issue: Issue; productId: string }) {
+  const a = ATTN[issue.type];
   return (
-    <div className="panel pad">
-      <label className="f" htmlFor="tpl-name" style={{ marginTop: 0 }}>Template name</label>
-      <input id="tpl-name" type="text" autoFocus value={name} onChange={(e) => setName(e.target.value)} dir="auto" placeholder="Monthly regression — fresh install" onKeyDown={(e) => { if (e.key === "Escape") onCancel(); }} />
-      <label className="f" htmlFor="tpl-desc">What setup does it target?</label>
-      <textarea id="tpl-desc" value={description} onChange={(e) => setDescription(e.target.value)} dir="auto" placeholder="Fresh install on a phone and a tablet, signed into the QA workspace. The setup is the whole reason several templates exist." style={{ minHeight: 56 }} />
-      <div className="flex gap-2 mt-3">
-        <button className="btn primary" disabled={!name.trim()} onClick={() => void onSave(name.trim(), description.trim())}>Create</button>
-        <button className="btn" onClick={onCancel}>Cancel</button>
+    <div className="attn">
+      <span className="sig" style={{ background: a.color }} aria-hidden />
+      <div className="body">
+        <b dir="auto">{issue.test.title}</b>
+        <span className="meta" dir="auto">
+          {a.label} · {feed.run.template}, {issue.context.flow} step {issue.context.stepNumber} · {issue.recordedBy}
+          {issue.type === "failure" && issue.blocking ? " · blocked the rest of the flow" : ""}
+        </span>
+        {issue.note ? <div className={`note${issue.type === "invalid_test" ? " skp" : ""}`} dir="auto">{issue.note}</div> : null}
       </div>
+      <Link className="btn sm" to="/products/$productId/tests" params={{ productId }} search={{ test: issue.test.id }}>{issue.type === "invalid_test" ? "Rewrite" : "Open test"}</Link>
     </div>
   );
 }
@@ -168,24 +219,34 @@ function NewTemplate({ onSave, onCancel }: { onSave: (name: string, description:
 /** An open day's card, with its progress live off the same collections the board uses. */
 function OpenRun({ productId, runId, templateName, startedBy, date }: { productId: string; runId: string; templateName: string; startedBy: string; date: string }) {
   const board = useRunBoard(runId);
+  const testers = board ? new Set(board.flows.flatMap((f) => f.holders)).size : 0;
+  const done = board ? board.total - board.notReached : 0;
   return (
-    <div className="panel pad">
+    <div className="panel pad daycard">
       <div className="row-split">
-        <div>
-          <h3 dir="auto">{templateName}</h3>
+        <div style={{ minWidth: 0 }}>
+          <h3 dir="auto" style={{ margin: 0 }}>{templateName}</h3>
           <span className="meta">
-            Started by {startedBy} · {new Date(date).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-            {board ? ` · ${board.flows.length} flows · ${new Set(board.flows.flatMap((f) => f.holders)).size} testers on it` : ""}
+            Started by {startedBy} at {new Date(date).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+            {board ? ` · ${board.flows.length} flows · ${testers === 1 ? "1 tester" : `${testers} testers`} on it` : ""}
           </span>
         </div>
         <Link className="btn primary" to="/products/$productId/runs/$runId" params={{ productId, runId }}>Open the board</Link>
       </div>
       {board ? (
         <div style={{ marginTop: 14 }}>
+          <div className="row-split" style={{ marginBottom: 6 }}>
+            <span className="meta">{done} of {board.total} tests reached</span>
+            <span className="meta">{board.total ? Math.round((done / board.total) * 100) : 0}%</span>
+          </div>
           <Bar counts={board.counts} total={board.total} />
-          <p className="meta" style={{ margin: "8px 0 0" }}>
-            {board.counts.pass} passed · {board.counts.fail} failed · {board.counts.minor} minor · {board.counts.skipped} skipped · {board.notReached} not reached yet
-          </p>
+          <div className="counts">
+            <span><span className="dot" style={{ color: "var(--color-pass)" }} /><b>{board.counts.pass}</b> passed</span>
+            <span><span className="dot" style={{ color: "var(--color-fail)" }} /><b>{board.counts.fail}</b> failed</span>
+            <span><span className="dot" style={{ color: "var(--color-minor)" }} /><b>{board.counts.minor}</b> minor</span>
+            <span><span className="dot" style={{ color: "var(--color-skip)" }} /><b>{board.counts.skipped}</b> skipped</span>
+            <span><b>{board.notReached}</b> not reached</span>
+          </div>
         </div>
       ) : null}
     </div>

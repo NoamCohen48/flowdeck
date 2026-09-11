@@ -81,7 +81,7 @@ export function TemplatePage() {
 
   return (
     <main className="shell">
-      <p className="crumb"><Link to="/products/$productId" params={{ productId }} className="lnk">Templates</Link> › <span dir="auto">{tpl.name}</span></p>
+      <p className="crumb"><Link to="/products/$productId/templates" params={{ productId }} className="lnk">Templates</Link> › <span dir="auto">{tpl.name}</span></p>
 
       <div className="row-split">
         <div style={{ flex: 1, minWidth: 240 }}>

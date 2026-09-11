@@ -3,7 +3,7 @@
  * Coverage chips are live — mark a test in the editor in another tab and the
  * red row here turns quiet without a reload (product.marks / product.tests).
  */
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,19 +32,32 @@ export function TestLibrary() {
 
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
+  const [tplFilter, setTplFilter] = useState<string>("");
   const [selected, setSelected] = useState<string | null>(search.test ?? null);
   const [dialog, setDialog] = useState<"new" | "edit" | null>(null);
   useTitle(product.data ? `Tests · ${product.data.name} — Flowdeck` : "Flowdeck");
-  useEffect(() => { if (search.test) setSelected(search.test); }, [search.test]);
+  useEffect(() => {
+    if (!search.test) return;
+    setSelected(search.test);
+    // Arriving from a step card: bring the opened row into view.
+    requestAnimationFrame(() => document.getElementById(`test-${search.test}`)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  }, [search.test]);
 
+  const templatesOf = (id: string) => covered.data?.tests.find((c) => c.testId === id)?.templateIds ?? [];
+  const allTags = useMemo(() => [...new Set(tests.filter((t) => !t.archived).flatMap(tagsOf))].sort(), [tests]);
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return tests
       .filter((t) => filter === "archived" ? t.archived : !t.archived)
       .filter((t) => filter !== "uncovered" || coverage.markCount(t.id) === 0)
+      .filter((t) => !tagFilter.size || [...tagFilter].every((g) => tagsOf(t).includes(g)))
+      .filter((t) => !tplFilter || templatesOf(t.id).includes(tplFilter))
       .filter((t) => !needle || t.current.title.toLowerCase().includes(needle) || t.current.expectedResult.toLowerCase().includes(needle) || tagsOf(t).some((g) => g.includes(needle)))
       .sort((a, b) => a.current.title.localeCompare(b.current.title));
-  }, [tests, q, filter, coverage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tests, q, filter, tagFilter, tplFilter, coverage, covered.data]);
+  const toggleTag = (g: string) => setTagFilter((prev) => { const n = new Set(prev); if (n.has(g)) n.delete(g); else n.add(g); return n; });
 
   const live = tests.filter((t) => !t.archived);
   const uncovered = live.filter((t) => coverage.markCount(t.id) === 0).length;
@@ -73,7 +86,7 @@ export function TestLibrary() {
 
   return (
     <main className="shell">
-      <div className="row-split">
+      <div className="pagehead">
         <div>
           <h1>Tests</h1>
           <p className="sub">Each test is one thing to verify. How you get there lives in a flow, not here.</p>
@@ -81,47 +94,69 @@ export function TestLibrary() {
         <button className="btn primary" onClick={() => setDialog("new")}>Add test</button>
       </div>
 
-      <div className="panel pad" style={{ marginBottom: 16 }}>
+      <div className="panel pad" style={{ marginBottom: 16, display: "grid", gap: 12 }}>
         <div className="row-split">
           <div style={{ flex: 1, minWidth: 220 }}>
             <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search titles, expected results or tags" dir="auto" aria-label="Search tests" />
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
             <button className={`btn sm${filter === "all" ? " on" : ""}`} onClick={() => setFilter("all")}>All ({live.length})</button>
-            <button className={`btn sm${filter === "uncovered" ? " on" : ""}`} style={uncovered ? { borderColor: "var(--pill-fail-line)", color: "var(--color-fail)" } : undefined} onClick={() => setFilter("uncovered")}>Uncovered only ({uncovered})</button>
+            <button className={`btn sm${filter === "uncovered" ? " on" : ""}`} style={uncovered && filter !== "uncovered" ? { borderColor: "var(--pill-fail-line)", color: "var(--color-fail)" } : undefined} onClick={() => setFilter("uncovered")}>Uncovered only ({uncovered})</button>
             <button className={`btn sm${filter === "archived" ? " on" : ""}`} onClick={() => setFilter("archived")}>Archived ({tests.length - live.length})</button>
+            <select className="compact" value={tplFilter} onChange={(e) => setTplFilter(e.target.value)} aria-label="Covered by template">
+              <option value="">Any template</option>
+              {(templates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}{t.status === "archived" ? " (archived)" : ""}</option>)}
+            </select>
           </div>
         </div>
+        {allTags.length ? (
+          <div className="chips" role="group" aria-label="Filter by tag">
+            <span className="meta" style={{ fontSize: 12.5, marginRight: 2 }}>Tags</span>
+            {allTags.map((g) => (
+              <button key={g} type="button" className={`chip${tagFilter.has(g) ? " on" : ""}`} aria-pressed={tagFilter.has(g)} onClick={() => toggleTag(g)}>{g}</button>
+            ))}
+            {tagFilter.size || tplFilter ? <button type="button" className="chip" style={{ borderStyle: "dashed" }} onClick={() => { setTagFilter(new Set()); setTplFilter(""); }}>Clear</button> : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="tbl" style={{ overflowX: "auto" }}>
         <table>
-          <thead><tr><th style={{ width: 60 }}>Ver.</th><th>Test</th><th style={{ width: 260 }}>Covered by</th><th style={{ width: 130 }}>Today</th></tr></thead>
+          <thead><tr><th>Test</th><th style={{ width: 260 }}>Covered by</th><th style={{ width: 130 }}>Today</th></tr></thead>
           <tbody>
             {rows.map((t) => {
               const n = coverage.markCount(t.id);
-              const tplIds = covered.data?.tests.find((c) => c.testId === t.id)?.templateIds ?? [];
+              const tplIds = templatesOf(t.id);
+              const isSel = t.id === selected;
               return (
-                <tr key={t.id} className={`pick${!t.archived && n === 0 ? " uncov" : ""}${t.id === selected ? " sel" : ""}`} onClick={() => setSelected(t.id)}>
-                  <td className="tid">v{t.current.version}</td>
-                  <td><b dir="auto">{t.current.title}</b><br /><span className="meta" dir="auto">{t.current.expectedResult}</span>
-                    {tagsOf(t).length ? <div className="mt-1 flex gap-1 flex-wrap">{tagsOf(t).map((g) => <span key={g} className="tag">{g}</span>)}</div> : null}
-                  </td>
-                  <td>
-                    {t.archived ? <span className="tag">archived</span>
-                      : n === 0 ? <span className="pill fail"><span className="dot" />Not in any template</span>
-                      : <div className="flex gap-1 flex-wrap">{tplIds.map((id) => <span key={id} className="tag" dir="auto">{templateName(id)}</span>)}{tplIds.length === 0 ? <span className="meta">{n} step{n === 1 ? "" : "s"}</span> : null}</div>}
-                  </td>
-                  <td><TodayPill verdict={todayVerdicts.get(t.id)} /></td>
-                </tr>
+                <Fragment key={t.id}>
+                  <tr id={`test-${t.id}`} style={{ scrollMarginTop: 72 }} className={`pick${!t.archived && n === 0 ? " uncov" : ""}${isSel ? " sel" : ""}`} onClick={() => setSelected(isSel ? null : t.id)} aria-expanded={isSel}>
+                    <td><b dir="auto">{t.current.title}</b><br /><span className="meta" dir="auto">{t.current.expectedResult}</span>
+                      {tagsOf(t).length ? <div className="mt-1 flex gap-1 flex-wrap">{tagsOf(t).map((g) => <span key={g} className="tag">{g}</span>)}</div> : null}
+                    </td>
+                    <td>
+                      {t.archived ? <span className="tag">archived</span>
+                        : n === 0 ? <span className="pill fail"><span className="dot" />Not in any template</span>
+                        : <div className="flex gap-1 flex-wrap">{tplIds.map((id) => <span key={id} className="tag" dir="auto">{templateName(id)}</span>)}{tplIds.length === 0 ? <span className="meta">{n} step{n === 1 ? "" : "s"}</span> : null}</div>}
+                    </td>
+                    <td><TodayPill verdict={todayVerdicts.get(t.id)} /></td>
+                  </tr>
+                  {isSel ? (
+                    <tr className="detail">
+                      <td colSpan={3}>
+                        <div className="tdetail-wrap" key={t.id}><div>
+                          <TestDetail test={t} productId={productId} onEdit={() => setDialog("edit")} onChanged={refresh} onClose={() => setSelected(null)} />
+                        </div></div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
               );
             })}
-            {!rows.length ? <tr><td colSpan={4} className="meta">Nothing matches.</td></tr> : null}
+            {!rows.length ? <tr><td colSpan={3} className="meta">Nothing matches.</td></tr> : null}
           </tbody>
         </table>
       </div>
-
-      {current ? <TestDetail test={current} productId={productId} onEdit={() => setDialog("edit")} onChanged={refresh} /> : null}
 
       <TestDialog
         open={dialog !== null}
@@ -139,7 +174,7 @@ function tagsOf(t: Test): string[] {
   return Array.isArray(tags) ? tags.filter((x): x is string => typeof x === "string") : [];
 }
 
-function TestDetail({ test, productId, onEdit, onChanged }: { test: Test; productId: string; onEdit: () => void; onChanged: () => Promise<unknown> }) {
+function TestDetail({ test, productId, onEdit, onChanged, onClose }: { test: Test; productId: string; onEdit: () => void; onChanged: () => Promise<unknown>; onClose: () => void }) {
   const usages = useQuery({ queryKey: ["usages", test.id], queryFn: () => unwrap(api.GET("/tests/{testId}/usages", { params: { path: { testId: test.id } } })) });
   const history = useQuery({ queryKey: ["history", test.id], queryFn: () => unwrap(api.GET("/tests/{testId}/history", { params: { path: { testId: test.id } } })) });
   const versions = useQuery({ queryKey: ["versions", test.id], queryFn: () => unwrap(api.GET("/tests/{testId}/versions", { params: { path: { testId: test.id } } })), enabled: false });
@@ -155,20 +190,22 @@ function TestDetail({ test, productId, onEdit, onChanged }: { test: Test; produc
 
   const u = usages.data;
   return (
-    <>
-      <h2>Test detail</h2>
-      <div className="panel pad">
+    <div className="tdetail" onClick={(e) => e.stopPropagation()}>
         <div className="row-split">
           <div>
-            <h3 style={{ fontSize: 17 }} dir="auto">{test.current.title} {test.archived ? <span className="tag">archived</span> : null}</h3>
-            <p className="meta" style={{ margin: "2px 0 0" }}>Version {test.current.version} · edited by {test.current.createdBy} on {new Date(test.current.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}</p>
+            <h3 dir="auto">{test.current.title} {test.archived ? <span className="tag">archived</span> : null}</h3>
+            <p className="meta" style={{ margin: "2px 0 0" }}>
+              Version {test.current.version} · edited by {test.current.createdBy} on {new Date(test.current.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}
+              {u ? ` · marked by ${u.steps} step${u.steps === 1 ? "" : "s"} in ${u.flows} flow${u.flows === 1 ? "" : "s"}` : ""}
+            </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button className="btn sm" onClick={() => { setShowHistory((h) => !h); if (!versions.data) void versions.refetch(); }}>Version history</button>
-            {!test.archived ? <button className="btn sm" onClick={onEdit}>Edit</button> : null}
+            {!test.archived ? <button className="btn sm primary" onClick={onEdit}>Edit</button> : null}
+            <button className="btn sm" onClick={() => { setShowHistory((h) => !h); if (!versions.data) void versions.refetch(); }}>{showHistory ? "Hide versions" : "Version history"}</button>
             {test.archived
               ? <button className="btn sm" onClick={() => void archive(true)}>Restore</button>
               : <button className="btn sm" onClick={() => setConfirming(true)}>Archive</button>}
+            <button className="btn sm" onClick={onClose} aria-label="Close detail">Close</button>
           </div>
         </div>
 
@@ -230,8 +267,7 @@ function TestDetail({ test, productId, onEdit, onChanged }: { test: Test; produc
             </tbody></table></div>
           </>
         ) : null}
-      </div>
-    </>
+    </div>
   );
 }
 

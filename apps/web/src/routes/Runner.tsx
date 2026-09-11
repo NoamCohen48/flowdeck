@@ -23,6 +23,7 @@ import { VerdictButtons, noteClass } from "../components/Verdicts.tsx";
 import { Bar, Legend } from "../components/Progress.tsx";
 import { VerdictDialog, type VerdictSubmission } from "../components/VerdictDialog.tsx";
 import { StepMap } from "../components/StepMap.tsx";
+import { KindBadge, TestsIcon } from "../components/Step.tsx";
 
 export function Runner() {
   const { productId, runId, flowRunId } = useParams({ strict: false }) as {
@@ -238,7 +239,7 @@ function RunnerBody({
 
       <DeviceBar devices={devicesInPlay} />
 
-      <div className="grid gap-6 grid-cols-1 md:grid-cols-[minmax(0,1fr)_240px]">
+      <div className="grid gap-6 grid-cols-1 md:grid-cols-[minmax(0,1fr)_272px]">
         <ol className="steps">
           {flow.steps.map((step, i) => {
             const intro = handoffs.introductions.get(step.id);
@@ -267,7 +268,8 @@ function RunnerBody({
             );
           })}
         </ol>
-        <aside className="hidden md:block">
+        {/* The "in your hands" bar is sticky above; the map sits below it. */}
+        <aside className="hidden md:block" style={{ "--map-top": "124px" } as React.CSSProperties}>
           <StepMap
             steps={flow.steps}
             handoffs={handoffs}
@@ -339,11 +341,10 @@ function StepCard({
       <div className="sline">
         <span className="snum">{index + 1}</span>
         <DeviceChip device={device} />
-        <span className="meta">{isCheck ? "Check this" : "Do this"}</span>
+        <KindBadge kind={step.kind} long />
         {blocked ? <span className="tag">Blocked</span> : null}
       </div>
       <div className="stop">
-        <span className={`kind ${isCheck ? "chk" : "act"}`} aria-hidden>{isCheck ? "◉" : "▸"}</span>
         <p className="stext" dir="auto">{step.text}</p>
       </div>
       {isCheck && step.expectedResult ? (
@@ -352,7 +353,7 @@ function StepCard({
 
       {step.marks.length ? (
         <div className="tests">
-          <div className="cap">This step verifies {step.marks.length === 1 ? "1 test" : `${step.marks.length} tests`}</div>
+          <div className="cap"><TestsIcon />This step verifies {step.marks.length === 1 ? "1 test" : `${step.marks.length} tests`}</div>
           {step.marks.map((testId) => {
             const r = results.get(`${step.id}|${testId}`);
             return (
