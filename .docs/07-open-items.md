@@ -8,7 +8,13 @@ closed permissions, run resumption, claiming, integration, import, notifications
 ## 1. Flow editor — structural editing
 
 The demo's authoring view renders a flow correctly but only demonstrates reading. These are agreed
-requirements, understood to be small changes, not yet built.
+requirements, understood to be small changes.
+
+**Status: built** (`apps/web/src/routes/FlowEditor.tsx`). Insert-anywhere via the between-steps
+affordance, drag-and-drop in the main column and in the step map, click-to-scroll, and a second
+author's edits arriving live. Hand-offs are recomputed from `computeHandoffs` on every change; the
+API test "moving the tablet step to the top moves its introduction with it" pins the derived-state
+case below.
 
 ### Insert anywhere
 
