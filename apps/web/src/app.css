@@ -616,6 +616,22 @@
   .resultrow .go { grid-area: go; font-size: 13px; font-weight: 500; color: var(--primary); white-space: nowrap; }
   @media (max-width: 640px) { .resultrow { grid-template-columns: auto 1fr; grid-template-areas: "av who" "tally tally" "bar bar" "go go"; } }
 
+  .runbanner {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; padding: 12px 16px; border-radius: 12px;
+    border: 1px solid var(--line); border-left-width: 4px; background: var(--surface); box-shadow: var(--shadow);
+  }
+  .runbanner.pass { border-left-color: var(--color-pass); }
+  .runbanner.fail { border-left-color: var(--color-fail); }
+  .runbanner.skip { border-left-color: var(--color-skip); }
+  .runbanner.open { border-left-color: var(--primary); }
+  .runbanner .avatar { width: 34px; height: 34px; font-size: 15px; }
+  .runbanner .body { flex: 1; min-width: 240px; display: grid; line-height: 1.35; }
+  .runbanner .body b { font-weight: 600; font-size: 15px; }
+  .runbanner .body .meta { font-size: 13px; }
+  .runbanner .tally { display: flex; gap: 5px; }
+  .runbanner .tally .pill { padding: 1px 8px; font-size: 12.5px; }
+  .runbanner .tally .pill.off { opacity: 0.45; }
+
   .finishbox { margin: 8px auto 0; max-width: 520px; text-align: center; display: grid; gap: 6px; justify-items: center; padding: 20px; border-radius: 12px; border: 1px solid var(--primary-line); background: color-mix(in srgb, var(--primary-soft) 55%, var(--surface)); }
   .finishbox .meta { font-size: 13px; max-width: 42ch; }
   .finishbox .btn { margin-top: 6px; }

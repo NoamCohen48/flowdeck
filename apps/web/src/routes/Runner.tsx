@@ -43,9 +43,9 @@ export function Runner() {
   const live = flowRuns.find((fr) => fr.id === flowRunId);
   const rest = run.data?.flowRuns.find((fr) => fr.id === flowRunId);
   const flowRun = live
-    ? { flowId: live.flow_id, claimedBy: live.claimed_by, state: live.state }
+    ? { flowId: live.flow_id, claimedBy: live.claimed_by, state: live.state, startedAt: live.started_at, finishedAt: live.finished_at }
     : rest
-      ? { flowId: rest.flowId, claimedBy: rest.claimedBy, state: rest.state }
+      ? { flowId: rest.flowId, claimedBy: rest.claimedBy, state: rest.state, startedAt: rest.startedAt, finishedAt: rest.finishedAt }
       : undefined;
   const flow = run.data?.snapshot.flows.find((f) => f.id === flowRun?.flowId);
 
@@ -62,6 +62,8 @@ export function Runner() {
       flowRunId={flowRunId}
       claimedBy={flowRun.claimedBy}
       state={flowRun.state}
+      startedAt={flowRun.startedAt}
+      finishedAt={flowRun.finishedAt}
       snapshot={run.data.snapshot}
       flow={flow}
       results={results}
@@ -75,6 +77,8 @@ function RunnerBody({
   flowRunId,
   claimedBy,
   state,
+  startedAt,
+  finishedAt,
   snapshot,
   flow,
   results,
@@ -84,6 +88,8 @@ function RunnerBody({
   flowRunId: string;
   claimedBy: string | null;
   state: string;
+  startedAt: string;
+  finishedAt: string | null;
   snapshot: TemplateSnapshot;
   flow: SnapshotFlow;
   results: TestResultRow[];
@@ -238,12 +244,16 @@ function RunnerBody({
         › <span dir="auto">{flow.name}</span>
       </p>
 
+      {!editable ? (
+        <RunBanner state={state} by={claimedBy} startedAt={startedAt} finishedAt={finishedAt} mine={isMine} counts={view.counts} total={view.total} />
+      ) : null}
+
       <div className="flowhead">
         <div className="row-split">
           <div>
             <h1 style={{ fontSize: 22 }} dir="auto">{flow.name}</h1>
             <p className="meta" style={{ margin: "2px 0 0" }}>
-              {readOnly ? `Run by ${claimedBy ?? "nobody"} · ${state}` : `Claimed by ${claimedBy}`} · {flow.steps.length} steps
+              {editable ? `Claimed by you` : readOnly ? `Run by ${claimedBy ?? "nobody"}` : `Claimed by ${claimedBy}`} · {flow.steps.length} steps
               {flow.estimatedMinutes ? ` · ~${flow.estimatedMinutes} min` : ""}
             </p>
           </div>
@@ -408,6 +418,50 @@ function StepCard({
             </div>
           ) : null}
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Someone else's flow, or one already over: say whose it is and when, before
+ * a single step is read — the verdict buttons below are disabled and that
+ * needs an explanation, not a discovery.
+ */
+function RunBanner({ state, by, startedAt, finishedAt, mine, counts, total }: {
+  state: string; by: string | null; startedAt: string; finishedAt: string | null; mine: boolean;
+  counts: Record<Verdict, number>; total: number;
+}) {
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })} at ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+  };
+  const who = mine ? "you" : by ?? "nobody";
+  const reached = counts.pass + counts.fail + counts.minor + counts.skipped;
+  const headline =
+    state === "finished" ? `Finished by ${who}${finishedAt ? ` on ${fmt(finishedAt)}` : ""}`
+    : state === "abandoned" ? `Abandoned by ${who}${finishedAt ? ` on ${fmt(finishedAt)}` : ""}`
+    : state === "claimed" ? `${by ?? "Someone"} is running this flow right now`
+    : "Nobody is running this flow";
+  const cls = state === "finished" ? (counts.fail ? "fail" : "pass") : state === "abandoned" ? "skip" : "open";
+  return (
+    <div className={`runbanner ${cls}`} role="status">
+      <span className="avatar" aria-hidden>{(by ?? "?").trim().charAt(0).toUpperCase()}</span>
+      <div className="body">
+        <b>{headline}</b>
+        <span className="meta">
+          Started {fmt(startedAt)}
+          {state === "finished" || state === "abandoned" ? ` · ${reached} of ${total} tests reached` : ""}
+          {" · "}read-only — {state === "claimed" ? "only the person who claimed a flow can record verdicts" : "results cannot be changed after a flow is over"}
+        </span>
+      </div>
+      {state === "finished" || state === "abandoned" ? (
+        <span className="tally">
+          <span className="pill pass"><span className="dot" />{counts.pass}</span>
+          <span className={`pill fail${counts.fail ? "" : " off"}`}><span className="dot" />{counts.fail}</span>
+          <span className={`pill minor${counts.minor ? "" : " off"}`}><span className="dot" />{counts.minor}</span>
+          <span className={`pill skip${counts.skipped ? "" : " off"}`}><span className="dot" />{counts.skipped}</span>
+        </span>
       ) : null}
     </div>
   );
