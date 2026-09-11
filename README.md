@@ -1,3 +1,5 @@
+<img src="apps/web/public/icon.svg" alt="" width="64" height="64" align="left" />
+
 # Flowdeck
 
 Manual testing as human flows. Tests are assertions; flows are what a person does; a
