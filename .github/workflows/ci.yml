@@ -9,34 +9,6 @@ jobs:
   check:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: flowdeck
-          POSTGRES_PASSWORD: flowdeck-dev
-          POSTGRES_DB: flowdeck
-        # wal_level=logical matches compose.yaml; the migration sets replica
-        # identities that only make sense with logical replication on.
-        options: >-
-          --health-cmd "pg_isready -U flowdeck -d flowdeck"
-          --health-interval 3s
-          --health-timeout 3s
-          --health-retries 20
-        ports:
-          - 54321:5432
-
-      # The shape proxy is tested against a real Electric, because the failure it
-      # once had — pointing a shape at a view, which Electric cannot sync — is
-      # invisible to anything short of the real service.
-      electric:
-        image: electricsql/electric:latest
-        env:
-          DATABASE_URL: postgresql://flowdeck:flowdeck-dev@postgres:5432/flowdeck?sslmode=disable
-          ELECTRIC_INSECURE: "true"
-        ports:
-          - 3010:3000
-
     env:
       DATABASE_URL: postgresql://flowdeck:flowdeck-dev@localhost:54321/flowdeck
       ELECTRIC_URL: http://localhost:3010
@@ -53,23 +25,26 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      # Migrate and seed before the tests, because the API and derived-state
-      # tests run against a real database on purpose — a CHECK that does not
-      # fire and a view that returns the wrong shape are exactly what a mocked
-      # database cannot catch.
+      # The same compose file that runs in development and production, rather
+      # than GitHub service containers: those start in parallel with no ordering
+      # and no way to pass wal_level=logical, so Electric would come up against a
+      # Postgres it cannot replicate from. --wait blocks on the healthchecks.
+      - name: Start Postgres and Electric
+        run: docker compose up -d --wait postgres electric
+
+      # Migrate and seed before the tests, because the API, shape-proxy and
+      # derived-state tests run against the real services on purpose — a CHECK
+      # that does not fire, a view Electric cannot sync, and a where clause that
+      # does not filter are exactly what a mock cannot catch.
       - name: Migrate
         run: bun run db:migrate
 
       - name: Seed
         run: bun run db:seed
 
-      - name: Wait for Electric
-        run: |
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:3010/v1/health && exit 0
-            sleep 2
-          done
-          echo "Electric never became healthy"; exit 1
-
       - name: Tests
         run: bun test
+
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose logs --tail 60
