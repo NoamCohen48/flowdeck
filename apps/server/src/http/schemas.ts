@@ -12,6 +12,14 @@ import { z } from "@hono/zod-openapi";
 export const Uuid = z.string().uuid();
 
 /**
+ * Every write on a live surface reports the Postgres transaction id it committed
+ * in. The browser holds its optimistic state until Electric's stream has delivered
+ * that transaction, so the swap from "what I did" to "what happened" is exact.
+ */
+export const Txid = z.number().int();
+
+
+/**
  * The metadata bag (D5). Deliberately open: priority, tags, category and a
  * reference screenshot all land here, and adding one is a configuration change
  * rather than a migration. Typing it narrowly would defeat the point.
@@ -254,6 +262,7 @@ export const TemplateSnapshotSchema = z
 export const FlowRunSchema = z
   .object({
     id: Uuid,
+    txid: Txid.optional(),
     runId: Uuid,
     flowId: Uuid,
     claimedBy: z.string().nullable(),
@@ -279,6 +288,7 @@ export const AttachmentSchema = z
 export const TestResultSchema = z
   .object({
     id: Uuid,
+    txid: Txid.optional(),
     flowRunId: Uuid,
     stepId: Uuid,
     testId: Uuid,
@@ -364,6 +374,7 @@ export const PassAllSchema = z
 export const ClaimResponseSchema = z
   .object({
     flowRun: FlowRunSchema,
+    txid: Txid,
     /** Other testers already on this flow — what the confirmation shows (D26). */
     alsoRunning: z.array(FlowRunSchema),
   })

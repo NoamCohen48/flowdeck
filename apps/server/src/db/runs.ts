@@ -105,6 +105,18 @@ export async function snapshotTemplate(
   };
 }
 
+/**
+ * The transaction id of the current transaction, as a number the browser can
+ * compare against Electric's stream. A write handler returns it so the client's
+ * optimistic state is dropped exactly when the real row arrives, not on a timer.
+ */
+async function currentTxid(tx: { execute: typeof db.execute }): Promise<number> {
+  const rows = (await tx.execute(
+    raw`select pg_current_xact_id()::xid::text::bigint as txid`,
+  )) as unknown as { txid: string | number }[];
+  return Number(rows[0]!.txid);
+}
+
 /* ── Runs ────────────────────────────────────────────────────────────── */
 
 export async function startRun(templateId: string, startedBy: string) {
@@ -206,27 +218,29 @@ export async function claimFlow(runId: string, flowId: string, actor: string) {
         .set({ claimedBy: actor, state: "claimed", startedAt: new Date() })
         .where(eq(flowRun.id, open.id))
         .returning();
-      return claimed!;
+      return { row: claimed!, txid: await currentTxid(tx) };
     }
 
     const [created] = await tx
       .insert(flowRun)
       .values({ runId, flowId, claimedBy: actor, state: "claimed" })
       .returning();
-    return created!;
+    return { row: created!, txid: await currentTxid(tx) };
   });
 }
 
 export async function setFlowRunState(flowRunId: string, state: FlowRunState) {
-  const [fr] = await db
-    .update(flowRun)
-    .set({
-      state,
-      finishedAt: state === "finished" || state === "abandoned" ? new Date() : null,
-    })
-    .where(eq(flowRun.id, flowRunId))
-    .returning();
-  return fr;
+  return db.transaction(async (tx) => {
+    const [fr] = await tx
+      .update(flowRun)
+      .set({
+        state,
+        finishedAt: state === "finished" || state === "abandoned" ? new Date() : null,
+      })
+      .where(eq(flowRun.id, flowRunId))
+      .returning();
+    return fr ? { row: fr, txid: await currentTxid(tx) } : undefined;
+  });
 }
 
 /* ── Results ─────────────────────────────────────────────────────────── */
@@ -271,7 +285,7 @@ export async function recordResult(input: RecordResultInput) {
         set: { verdict: input.verdict, note: input.note, blocking: input.blocking },
       })
       .returning();
-    return row!;
+    return { row: row!, txid: await currentTxid(tx) };
   });
 }
 

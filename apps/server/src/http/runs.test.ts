@@ -361,4 +361,27 @@ describe("identity and presence (D37, D38)", () => {
   });
 });
 
+
+describe("transaction ids for optimistic reconciliation", () => {
+  test("every live-surface write reports the txid it committed in", async () => {
+    const run = await freshRun();
+    const flow = run.snapshot.flows.find((f) => f.name.startsWith("Messaging across"))!;
+    const claim = await call<{ txid: number; flowRun: { id: string } }>(
+      `/api/runs/${run.id}/flows/${flow.id}/claim`,
+      { method: "POST", headers: { cookie: noa } },
+    );
+    expect(claim.body.txid).toBeGreaterThan(0);
+
+    const step = flow.steps.find((s) => s.marks.length === 1)!;
+    const result = await call<{ txid: number }>(
+      `/api/flow-runs/${claim.body.flowRun.id}/results`,
+      json({ stepId: step.id, testId: step.marks[0], verdict: "pass", idempotencyKey: `tx-${Date.now()}` }, noa),
+    );
+    expect(result.body.txid).toBeGreaterThan(claim.body.txid);
+
+    const done = await call<{ txid: number }>(`/api/flow-runs/${claim.body.flowRun.id}/finish`, { method: "POST", headers: { cookie: noa } });
+    expect(done.body.txid).toBeGreaterThan(result.body.txid);
+  });
+});
+
 process.on("beforeExit", () => void sql.end());

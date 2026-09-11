@@ -13,3 +13,8 @@ test-results/
 playwright-report/
 .turbo/
 compose.override.yaml
+.playwright-mcp/
+*.png
+*.yml
+!compose.yaml
+!.github/**/*.yml

@@ -15,8 +15,11 @@ import type { ActorEnv } from "./actor.ts";
 
 const ELECTRIC_URL = process.env.ELECTRIC_URL ?? "http://localhost:3010";
 
-/** Parameters Electric owns; the client passes them through untouched on resume. */
-const PASSTHROUGH = ["offset", "handle", "live", "cursor", "replica"] as const;
+/**
+ * Parameters Electric owns; the client passes them through untouched on resume.
+ * `subset__*` keys (on-demand sync mode) are forwarded by prefix below.
+ */
+const PASSTHROUGH = ["offset", "handle", "live", "cursor", "cache-buster", "replica", "log"] as const;
 
 type ShapeDefinition = {
   table: string;
@@ -120,6 +123,9 @@ shapes.get("/:name", async (c) => {
   for (const key of PASSTHROUGH) {
     const value = c.req.query(key);
     if (value !== undefined) upstream.searchParams.set(key, value);
+  }
+  for (const [key, value] of Object.entries(c.req.query())) {
+    if (key.startsWith("subset__")) upstream.searchParams.set(key, value);
   }
 
   const response = await fetch(upstream, {

@@ -265,7 +265,7 @@ runs.openapi(
       401: { content: { "application/json": { schema: ErrorSchema } }, description: "No identity" },
       404: { content: { "application/json": { schema: ErrorSchema } }, description: "No such run or flow" },
       409: {
-        content: { "application/json": { schema: ClaimResponseSchema.omit({ flowRun: true }) } },
+        content: { "application/json": { schema: ClaimResponseSchema.omit({ flowRun: true, txid: true }) } },
         description: "Already claimed by someone else; confirm to run alongside",
       },
     },
@@ -291,8 +291,11 @@ runs.openapi(
     const mine = r.flowRuns.find(
       (fr) => fr.flowId === flowId && fr.state === "claimed" && fr.claimedBy === who,
     );
-    const fr = mine ?? (await claimFlow(runId, flowId, who));
-    return c.json({ flowRun: flowRunDto(fr), alsoRunning: alsoRunning.map(flowRunDto) }, 200);
+    const claimed = mine ? { row: mine, txid: 0 } : await claimFlow(runId, flowId, who);
+    return c.json(
+      { flowRun: flowRunDto(claimed.row), txid: claimed.txid, alsoRunning: alsoRunning.map(flowRunDto) },
+      200,
+    );
   },
 );
 
@@ -316,7 +319,9 @@ for (const [action, state, summary] of [
     async (c) => {
       requireActor(c);
       const fr = await setFlowRunState(c.req.valid("param").flowRunId, state);
-      return fr ? c.json(flowRunDto(fr), 200) : c.json({ error: "no such flow run" }, 404);
+      return fr
+        ? c.json({ ...flowRunDto(fr.row), txid: fr.txid }, 200)
+        : c.json({ error: "no such flow run" }, 404);
     },
   );
 }
@@ -383,7 +388,7 @@ runs.openapi(
       return c.json({ error: "a note is required for this verdict" }, 400);
     }
 
-    const row = await recordResult({
+    const { row, txid } = await recordResult({
       flowRunId,
       stepId: body.stepId,
       testId: body.testId,
@@ -394,7 +399,7 @@ runs.openapi(
       recordedBy: who,
       idempotencyKey: body.idempotencyKey,
     });
-    return c.json(resultDto(row), 201);
+    return c.json({ ...resultDto(row), txid }, 201);
   },
 );
 
@@ -440,8 +445,7 @@ runs.openapi(
     for (const testId of found.step.marks) {
       const snapshotTest = r.snapshot.tests.find((t) => t.id === testId);
       if (!snapshotTest) continue;
-      rows.push(
-        await recordResult({
+      const recorded = await recordResult({
           flowRunId,
           stepId,
           testId,
@@ -451,10 +455,10 @@ runs.openapi(
           blocking: false,
           recordedBy: who,
           idempotencyKey: `${idempotencyKeyPrefix}:${testId}`,
-        }),
-      );
+        });
+      rows.push({ ...resultDto(recorded.row), txid: recorded.txid });
     }
-    return c.json(rows.map(resultDto), 201);
+    return c.json(rows, 201);
   },
 );
 

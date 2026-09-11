@@ -22,8 +22,17 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # The API client is generated from the server's OpenAPI document. If the
+      # committed copy is stale, the web app is typechecking against a contract
+      # the server no longer has.
+      - name: API client is up to date
+        run: bun run api:generate && git diff --exit-code packages/api-client
+
       - name: Typecheck
         run: bun run typecheck
+
+      - name: Build the web app
+        run: bun run --cwd apps/web build
 
       # The same compose file that runs in development and production, rather
       # than GitHub service containers: those start in parallel with no ordering
