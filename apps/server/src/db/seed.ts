@@ -10,7 +10,7 @@
  * survive: 300 tests and fifty-step flows. Verifying the editor sidebar and the
  * dashboards against eight demo flows proves nothing.
  *
- *   bun src/db/seed.ts [--volume] [--reset]
+ *   bun src/db/seed.ts [--volume] [--reset] [--if-empty]
  */
 import { sql as raw } from "drizzle-orm";
 import { db, sql } from "./client.ts";
@@ -34,6 +34,16 @@ import type { StepKind, TemplateStatus, Verdict } from "@flowdeck/domain";
 const args = new Set(process.argv.slice(2));
 const WITH_VOLUME = args.has("--volume");
 const RESET = args.has("--reset") || WITH_VOLUME;
+const IF_EMPTY = args.has("--if-empty");
+
+if (IF_EMPTY && !RESET) {
+  const [row] = (await db.execute(raw`select count(*)::int as n from product`)) as unknown as { n: number }[];
+  if (row && row.n > 0) {
+    console.log("products exist; not seeding");
+    await sql.end();
+    process.exit(0);
+  }
+}
 
 const TESTERS = ["Noa", "Yuval", "Ori", "Dana", "Amit", "Roni", "Tomer"];
 

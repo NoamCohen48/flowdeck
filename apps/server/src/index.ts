@@ -4,6 +4,7 @@
  */
 import { Hono } from "hono";
 import { logger } from "hono/logger";
+import { serveStatic } from "hono/bun";
 import { db, sql } from "./db/client.ts";
 import { sql as raw } from "drizzle-orm";
 import { withActor, type ActorEnv } from "./http/actor.ts";
@@ -37,6 +38,18 @@ app.route("/api/shapes", shapes);
 
 /** The public contract, and the only API the web app uses (D35). */
 app.route("/api", api);
+
+/**
+ * In production the built frontend is served from the same origin (D32: one
+ * binary, one origin). Anything that is not an API path falls back to the SPA
+ * shell so deep links into a run survive a reload.
+ */
+const webDist = process.env.WEB_DIST;
+if (webDist) {
+  app.use("/assets/*", serveStatic({ root: webDist }));
+  app.use("*", serveStatic({ root: webDist }));
+  app.get("*", serveStatic({ root: webDist, path: "index.html" }));
+}
 
 const port = Number(process.env.PORT ?? 8787);
 

@@ -47,6 +47,7 @@ export function ProductHome() {
     })),
   });
   const { byId } = useTestIndex(productId);
+  const disk = useQuery({ queryKey: ["attachments-usage"], queryFn: () => unwrap(api.GET("/attachments/usage")), staleTime: 60_000 });
 
   if (!product.data) return <main className="shell"><p className="meta">Loading…</p></main>;
   const uncovered = (coverage.data?.tests ?? []).filter((t) => t.needsAttention);
@@ -56,6 +57,12 @@ export function ProductHome() {
     <main className="shell">
       <h1 dir="auto">{product.data.name}</h1>
       <p className="sub" dir="auto">{product.data.description}</p>
+      {disk.data?.nearBudget ? (
+        <div className="note min" style={{ marginLeft: 0, marginBottom: 16 }}>
+          Screenshots are using {Math.round(disk.data.usedBytes / 1048576)} MB of the {Math.round(disk.data.budgetBytes / 1048576)} MB budget.
+          Uploads stop when it is full — raise ATTACHMENTS_BUDGET_MB or free the disk.
+        </div>
+      ) : null}
 
       {coverage.data ? (
         <div className="panel">

@@ -1,0 +1,14 @@
+# One origin in front of the app. With a real hostname Caddy fetches a public
+# certificate; with `localhost` it issues its own (trust it once with
+# `docker compose exec caddy caddy trust`, or accept the warning). Either way
+# the browser gets HTTP/2, which matters: the editor alone holds five shape
+# long-polls and HTTP/1.1 caps a browser at about six per origin.
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+	reverse_proxy app:8787 {
+		# Shape long-polls sit open for up to ~20s; do not cut them short.
+		transport http {
+			response_header_timeout 90s
+		}
+	}
+}
