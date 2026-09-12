@@ -9,6 +9,7 @@ back out, without touching the web app.
 | [`reference.md`](reference.md) | Every endpoint, one line each, grouped by resource |
 | [`openapi.json`](openapi.json) | The OpenAPI 3.1 definition — generated from the server's own request schemas, never hand-edited |
 | [`examples/`](examples/) | A sample import bundle and a curl script that loads it |
+| [`backup.md`](backup.md) | Off-host backups to your network's S3, and how to restore — on a fresh machine or over a running one |
 
 The live server serves the same definition at `GET /api/openapi.json`. Regenerate the copy
 here after changing any route:

@@ -18,6 +18,25 @@ open https://localhost         # Caddy's own certificate on localhost; trust it 
 first boot. Set `SITE_ADDRESS` to a real hostname on a server and Caddy fetches a public
 certificate. Attachments (and the generated cookie secret) live in the `data` volume; `ATTACHMENTS_BUDGET_MB` caps them.
 
+## Back up and restore
+
+Set `BACKUP_REPOSITORY` in `.env` to the S3 inside your network (plus a `BACKUP_PASSWORD`
+that encrypts everything before it leaves the host) and the `backup` service snapshots the
+database and every attachment on start and then every `BACKUP_INTERVAL`. Keep that password
+somewhere other than this host.
+
+If the host is gone, on a new machine with the same `.env`:
+
+```sh
+docker compose up -d --wait postgres                    # only Postgres, nothing that writes
+docker compose run --rm backup flowdeck-restore latest  # --list to pick an older snapshot
+docker compose up -d --wait
+```
+
+To undo a bad change on a running install: `docker compose stop app electric`, the same
+restore via `docker compose exec backup …`, then `docker compose up -d --force-recreate
+electric app`. The full story is in [`docs/backup.md`](docs/backup.md).
+
 ## Develop
 
 ```sh
@@ -44,4 +63,5 @@ guide, the endpoint reference and the OpenAPI definition. A script identifies it
 | `packages/api-client` | Typed client generated from the OpenAPI document |
 | `apps/web` | React app: board, runner, editor, library, dashboards |
 | `docs` | API guide, endpoint reference, generated OpenAPI definition, import examples |
-| `compose.yaml` | postgres + electric + app + caddy |
+| `backup` | The backup sidecar: `pg_dump` + the data volume to S3 with restic, and the restore script |
+| `compose.yaml` | postgres + electric + app + caddy + backup |

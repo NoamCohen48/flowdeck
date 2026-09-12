@@ -18,3 +18,7 @@ compose.override.yaml
 *.yml
 !compose.yaml
 !.github/**/*.yml
+
+# Internal CA certificates for the backup service (docs/backup.md)
+backup/ca/*
+!backup/ca/.gitkeep

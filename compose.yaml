@@ -4,6 +4,7 @@
 #   electric  syncs Postgres queries to the browser as "shapes" (the live read path)
 #   app       Hono API + the built React frontend; all writes go through here
 #   caddy     one origin, TLS in front of everything
+#   backup    pg_dump + the data volume, shipped to S3 with restic (docs/backup.md)
 #
 # The app proxies shape requests rather than exposing Electric directly, so there is
 # one place that decides what a client may subscribe to.
@@ -97,8 +98,37 @@ services:
       app:
         condition: service_healthy
 
+  # Off-host backups. Idle with a notice until BACKUP_REPOSITORY is set; then a
+  # snapshot on start and one every BACKUP_INTERVAL. Restore with
+  # `docker compose exec backup flowdeck-restore latest` — see docs/backup.md.
+  backup:
+    build: ./backup
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: flowdeck
+      PGPASSWORD: ${POSTGRES_PASSWORD:-flowdeck-dev}
+      PGDATABASE: flowdeck
+      BACKUP_INTERVAL: ${BACKUP_INTERVAL:-24h}
+      BACKUP_KEEP: ${BACKUP_KEEP:---keep-last 3 --keep-daily 7 --keep-weekly 4 --keep-monthly 12}
+      BACKUP_LOCAL_KEEP: ${BACKUP_LOCAL_KEEP:-3}
+      RESTIC_REPOSITORY: ${BACKUP_REPOSITORY:-}
+      RESTIC_PASSWORD: ${BACKUP_PASSWORD:-}
+      AWS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY:-}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_KEY:-}
+    volumes:
+      - data:/data
+      - backups:/backups
+      # Drop the internal CA's certificate here (any *.pem or *.crt) when the S3
+      # endpoint is https with a certificate your own authority signed.
+      - ./backup/ca:/etc/flowdeck-backup/ca:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   data:
+  backups:
   caddy-data:
   caddy-config:

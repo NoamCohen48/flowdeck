@@ -1,0 +1,103 @@
+#!/bin/sh
+# Restore the database and the data volume from a restic snapshot, or the
+# database alone from one of the dumps kept on the host.
+#
+#   flowdeck-restore latest              the most recent snapshot in the repository
+#   flowdeck-restore 3a7f2c1b            a specific one (`--list` shows them)
+#   flowdeck-restore --local latest      database only, from the newest local dump
+#   flowdeck-restore --local <file>      database only, from that dump in /backups/history
+#
+# Replaces everything: the database is dropped and recreated from the dump, and
+# (from a snapshot) /data is overwritten with the snapshot's copy. Run it with
+# the app and Electric stopped; on a fresh host it needs only the repository,
+# its password and Postgres. See docs/backup.md.
+set -eu
+
+log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
+
+confirm() {
+  [ "${YES:-}" = "--yes" ] && return 0
+  echo
+  echo "This drops database '$PGDATABASE'$1."
+  printf "Type 'restore' to continue: "
+  read -r answer
+  [ "$answer" = "restore" ] || { echo "aborted"; exit 1; }
+}
+
+# Drop and recreate the database, then load the dump into it.
+#
+# Electric's replication slot pins the database (DROP DATABASE refuses while
+# one exists) and the dump carries Electric's publication. Both describe the
+# history Electric was following, which the restored database does not share,
+# so both go: Electric recreates them from scratch when its container is
+# recreated afterwards.
+restore_db() {
+  # Shared with flowdeck-backup: wait for an in-flight backup, and keep the
+  # scheduled one out until the database is whole again.
+  exec 9>/backups/.lock
+  flock 9
+  until pg_isready -q; do sleep 2; done
+  log "dropping and recreating $PGDATABASE"
+  psql -v ON_ERROR_STOP=1 -q -d postgres <<SQL
+SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots WHERE database = '$PGDATABASE';
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$PGDATABASE' AND pid <> pg_backend_pid();
+DROP DATABASE IF EXISTS "$PGDATABASE";
+CREATE DATABASE "$PGDATABASE" OWNER "$PGUSER";
+SQL
+  log "loading $1"
+  pg_restore --no-owner --no-privileges --exit-on-error -d "$PGDATABASE" "$1"
+  psql -v ON_ERROR_STOP=1 -q -Atc "SELECT pubname FROM pg_publication" \
+    | while read -r pub; do psql -q -c "DROP PUBLICATION \"$pub\""; done
+}
+
+if [ "${1:-}" = "--local" ]; then
+  YES="${3:-}"
+  file="${2:?usage: flowdeck-restore --local <file|latest> [--yes]}"
+  if [ "$file" = "latest" ]; then
+    file="$(ls -1t /backups/history/flowdeck-*.dump 2>/dev/null | head -1)"
+    [ -n "$file" ] || { echo "no local dumps in /backups/history"; exit 1; }
+  else
+    case "$file" in /*) ;; *) file="/backups/history/$file" ;; esac
+  fi
+  [ -f "$file" ] || { echo "no such dump: $file"; exit 1; }
+  ls -l "$file"
+  confirm " and reloads it from this local dump (attachments are left as they are)"
+  restore_db "$file"
+  log "restored. Now: docker compose up -d --force-recreate electric app"
+  exit 0
+fi
+
+if [ -z "${RESTIC_CACERT:-}" ]; then
+  for pem in /etc/flowdeck-backup/ca/*.pem /etc/flowdeck-backup/ca/*.crt; do
+    [ -f "$pem" ] && export RESTIC_CACERT="$pem" && break
+  done
+fi
+: "${RESTIC_REPOSITORY:?BACKUP_REPOSITORY must be set}"
+: "${RESTIC_PASSWORD:?BACKUP_PASSWORD must be set}"
+
+if [ "${1:-}" = "--list" ]; then
+  exec restic snapshots --host flowdeck --compact
+fi
+
+snapshot="${1:?usage: flowdeck-restore <snapshot-id|latest> [--yes]  (or --list, or --local)}"
+YES="${2:-}"
+
+log "fetching snapshot $snapshot"
+rm -rf /restore && mkdir -p /restore
+restic restore "$snapshot" --host flowdeck --target /restore
+[ -f /restore/backups/flowdeck.dump ] || { echo "snapshot has no database dump"; exit 1; }
+restic snapshots "$snapshot" --host flowdeck --compact
+
+confirm " and replaces /data with the snapshot above"
+restore_db /restore/backups/flowdeck.dump
+
+log "restoring /data"
+# Content-addressed, so a file that exists already is byte-identical: copy over,
+# then remove anything the snapshot does not have.
+cp -a /restore/data/. /data/
+(cd /restore/data && find . -type f) | sort > /tmp/want
+(cd /data && find . -type f) | sort > /tmp/have
+comm -13 /tmp/want /tmp/have | (cd /data && xargs -r rm -f)
+rm -rf /restore
+
+log "restored. Now: docker compose up -d --force-recreate electric app"

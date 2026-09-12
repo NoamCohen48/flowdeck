@@ -255,6 +255,29 @@ later touches one module and changes no call sites.
 
 ---
 
+### D40 — Backups go to the network's own S3, as a dump plus the data volume
+
+**Chosen:** A `backup` sidecar in the compose stack runs `pg_dump` on an interval and ships
+the dump together with the `data` volume (attachments, cookie secret) to an S3 bucket inside
+the team's network, using restic: encrypted before leaving the host, deduplicated, with a
+retention policy. Restore is one script that works on a fresh machine or over a running one.
+
+**Rejected:** (a) snapshotting the Postgres volume directly — a copy taken under writes is
+torn and may not start; (b) public cloud object storage — the attachments are screenshots of
+the product under test, and constraint 3 above rules out data leaving the boundary; (c)
+continuous WAL archiving (pgBackRest, WAL-G) — point-in-time recovery, but real operational
+weight for a system where losing part of one testing day is the acceptable worst case.
+
+**Why both halves together:** attachment rows in the database reference files on disk by
+hash. A database-only backup restores failures whose screenshots are gone; a files-only
+backup restores screenshots nothing points at. One snapshot holds both, taken seconds apart.
+
+**Consequence to know about:** a restore drops Electric's replication slot, because the
+restored database has a different history than the one Electric was following. Electric is
+recreated afterwards so it forgets the shapes it cached. `docs/backup.md` has the steps.
+
+---
+
 ## Design: matching the demo
 
 `flowdeck-demo.html` is the visual specification. Its CSS is already a clean token system — four

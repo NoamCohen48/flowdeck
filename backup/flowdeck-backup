@@ -1,0 +1,97 @@
+#!/bin/sh
+# Back up the database and the data volume to the restic repository.
+#
+#   flowdeck-backup              one backup, now
+#   flowdeck-backup --every 24h  one backup now, then one every 24h, forever
+#
+# What goes into a snapshot:
+#   /backups/flowdeck.dump   pg_dump of the whole database, custom format
+#   /data                    attachments (content-addressed files) and the cookie secret
+#
+# The dump is written uncompressed (-Z0) on purpose: restic chunks and
+# compresses it itself, and an uncompressed dump deduplicates well against
+# yesterday's, so a daily snapshot of a slowly-changing database costs almost
+# nothing. Attachments never change once written, so they upload exactly once.
+set -eu
+
+# The mounted CA directory turns into RESTIC_CACERT when it holds a certificate,
+# for an in-house S3 endpoint signed by an internal authority.
+if [ -z "${RESTIC_CACERT:-}" ]; then
+  for pem in /etc/flowdeck-backup/ca/*.pem /etc/flowdeck-backup/ca/*.crt; do
+    [ -f "$pem" ] && export RESTIC_CACERT="$pem" && break
+  done
+fi
+
+if [ -z "${RESTIC_REPOSITORY:-}" ]; then
+  echo "BACKUP_REPOSITORY is not set; backups are off. See docs/backup.md."
+  # Stay up rather than crash-loop, so `docker compose ps` shows the service
+  # and setting the variable later is one `docker compose up -d` away.
+  [ "${1:-}" = "--every" ] && exec sleep infinity
+  exit 1
+fi
+: "${RESTIC_PASSWORD:?BACKUP_PASSWORD must be set: it encrypts every snapshot}"
+
+log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
+
+# Wait for Postgres; on a cold `docker compose up` the healthcheck has usually
+# passed already, but the loop is cheap.
+until pg_isready -q; do sleep 2; done
+
+# `restic init` is the probe as well as the setup: on an existing repository it
+# fails fast with "already initialized", where a read against a missing bucket
+# would sit retrying for fifteen minutes. Creates the bucket if the key may.
+if out="$(restic init 2>&1)"; then
+  log "initialised a new repository at $RESTIC_REPOSITORY"
+elif ! echo "$out" | grep -q "already"; then
+  echo "$out"; exit 1
+fi
+
+# Called as `backup_once || …` from the loop, which switches `set -e` off inside
+# the function, so every step checks its own result: a half-written dump must
+# never reach the repository as the newest snapshot.
+backup_once() {
+  local stamp; stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  # A database with no tables is a fresh volume, not a state worth keeping —
+  # typically a new host that has not been restored yet. Snapshotting it would
+  # make an empty database the "latest" snapshot, which is exactly wrong.
+  if [ "$(psql -Atq -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")" = "0" ]; then
+    log "the database has no tables yet; nothing to back up (restore first? see docs/backup.md)"
+    return 0
+  fi
+  mkdir -p /backups/history
+  log "dumping the database"
+  pg_dump -Fc -Z0 --no-owner --no-privileges -f /backups/flowdeck.dump.partial || return 1
+  # A dump that pg_restore cannot read is not a backup.
+  pg_restore -l /backups/flowdeck.dump.partial >/dev/null || return 1
+  mv /backups/flowdeck.dump.partial /backups/flowdeck.dump || return 1
+
+  # A few dumps stay on the host so a bad migration is undone in minutes without
+  # a round-trip to the repository. They are not the backup.
+  cp /backups/flowdeck.dump "/backups/history/flowdeck-$stamp.dump"
+  ls -1t /backups/history/flowdeck-*.dump | tail -n +"$((${BACKUP_LOCAL_KEEP:-3} + 1))" | xargs -r rm -f
+
+  log "uploading to $RESTIC_REPOSITORY"
+  restic backup --host flowdeck --tag flowdeck /backups/flowdeck.dump /data || return 1
+
+  # shellcheck disable=SC2086 — BACKUP_KEEP is a list of flags on purpose
+  restic forget --host flowdeck --group-by host ${BACKUP_KEEP:---keep-last 3 --keep-daily 7 --keep-weekly 4 --keep-monthly 12} --prune || return 1
+  log "done: $(du -h /backups/flowdeck.dump | cut -f1) dump, $(du -sh /data | cut -f1) data"
+}
+
+# One lock shared with flowdeck-restore, so a scheduled backup never runs
+# against a database that is halfway through being replaced, and a restore
+# waits for an in-flight backup rather than pulling the dump out from under it.
+mkdir -p /backups
+exec 9>/backups/.lock
+if [ "${1:-}" = "--every" ]; then
+  every="${2:?--every needs an interval, e.g. 24h}"
+  while true; do
+    flock 9
+    backup_once || log "backup failed; next attempt in $every"
+    flock -u 9
+    sleep "$every"
+  done
+else
+  flock 9
+  backup_once
+fi

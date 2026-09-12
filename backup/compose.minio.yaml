@@ -1,0 +1,31 @@
+# A throwaway S3 for trying the backup locally. Not for production: the real
+# target is the S3 inside your own network. Use with:
+#
+#   docker compose -f compose.yaml -f backup/compose.minio.yaml up -d --wait
+#
+# together with BACKUP_REPOSITORY=s3:http://minio:9000/flowdeck in .env.
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${BACKUP_S3_ACCESS_KEY:-flowdeck}
+      MINIO_ROOT_PASSWORD: ${BACKUP_S3_SECRET_KEY:-flowdeck-dev-secret}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backup:
+    depends_on:
+      minio:
+        condition: service_healthy
+
+volumes:
+  minio-data:
