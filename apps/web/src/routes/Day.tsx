@@ -3,10 +3,9 @@
  * state and who holds it — live. Claims are advisory (D26): a flow someone else
  * holds can still be taken, after a confirmation that says who and how far.
  */
-import { useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { computeHandoffs } from "@flowdeck/domain";
-import { api, ApiError, unwrap } from "../lib/api.ts";
+import { api, unwrap } from "../lib/api.ts";
 import { useLiveResults, useRunBoard, type FlowProgress } from "../lib/run-model.ts";
 import { worstResultByTest, type Verdict } from "@flowdeck/domain";
 import { useMe } from "../lib/identity.tsx";
@@ -15,6 +14,7 @@ import { useTitle } from "../lib/title.ts";
 import { DeviceChip } from "../components/Device.tsx";
 import { Bar, Kpis } from "../components/Progress.tsx";
 import { IssueCard, useIssues } from "../components/Issues.tsx";
+import { useClaim } from "../components/ClaimDialog.tsx";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function Day() {
@@ -90,36 +90,18 @@ function FlowCard({ productId, runId, progress }: { productId: string; runId: st
   const { flow, flowRuns, testCount, state, holders } = progress;
   const me = useMe();
   const navigate = useNavigate();
-  const [confirming, setConfirming] = useState<{ holders: string[] } | null>(null);
-  const [busy, setBusy] = useState(false);
   const devices = computeHandoffs(flow.steps).devices;
   const mine = flowRuns.find((fr) => fr.state === "claimed" && fr.claimed_by === me.name);
   const label = { done: "Finished", running: "In progress", open: "Unclaimed" }[state];
-
-  async function claim(confirm = false) {
-    setBusy(true);
-    try {
-      const res = await unwrap(
-        api.POST("/runs/{runId}/flows/{flowId}/claim", {
-          params: { path: { runId, flowId: flow.id }, query: { confirm: confirm ? "true" : "false" } },
-        }),
-      );
-      void navigate({ to: "/products/$productId/runs/$runId/flows/$flowRunId", params: { productId, runId, flowRunId: res.flowRun.id } });
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
-        const body = e.body as { alsoRunning: { claimedBy: string | null }[] };
-        setConfirming({ holders: body.alsoRunning.map((f) => f.claimedBy ?? "someone") });
-      } else throw e;
-    } finally {
-      setBusy(false);
-    }
-  }
+  const { claim, busy, dialog } = useClaim(runId);
+  const open = (flowRunId: string) =>
+    void navigate({ to: "/products/$productId/runs/$runId/flows/$flowRunId", params: { productId, runId, flowRunId } });
 
   const finished = flowRuns.filter((fr) => fr.state === "finished").sort((a, b) => (b.finished_at ?? "").localeCompare(a.finished_at ?? ""));
   const cta = mine ? (
     <Link className="btn primary" to="/products/$productId/runs/$runId/flows/$flowRunId" params={{ productId, runId, flowRunId: mine.id }}>Continue</Link>
   ) : (
-    <button className={`btn${state === "done" ? "" : " primary"}`} disabled={busy} onClick={() => void claim()}>
+    <button className={`btn${state === "done" ? "" : " primary"}`} disabled={busy} onClick={() => void claim(flow, open)}>
       {state === "open" ? "Claim flow" : state === "done" ? "Run it again" : "Run it too"}
     </button>
   );
@@ -148,15 +130,7 @@ function FlowCard({ productId, runId, progress }: { productId: string; runId: st
       ) : state === "running" ? (
         <p className="meta" style={{ margin: "10px 0 0", fontSize: 13 }}>Results appear here when the flow is finished.</p>
       ) : null}
-      {confirming ? (
-        <div className="note skp" style={{ marginLeft: 0 }}>
-          <b>{confirming.holders.join(" and ")} {confirming.holders.length > 1 ? "are" : "is"} already on this flow.</b> You can run it too — both sets of results are kept, and if either of you hits a bug the day reports it.
-          <div className="flex gap-2 mt-2">
-            <button className="btn sm primary" disabled={busy} onClick={() => void claim(true)}>Run it anyway</button>
-            <button className="btn sm" onClick={() => setConfirming(null)}>Never mind</button>
-          </div>
-        </div>
-      ) : null}
+      {dialog}
     </div>
   );
 }

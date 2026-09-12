@@ -202,8 +202,35 @@ export async function getFlowRun(flowRunId: string) {
  * this tester takes it; otherwise a new FlowRun is created alongside whoever is
  * already on it. Nobody is ever kicked off, and both result sets are kept.
  */
-export async function claimFlow(runId: string, flowId: string, actor: string) {
-  return db.transaction(async (tx) => {
+/**
+ * Claim a flow for `actor`. Advisory (D26): if someone else already holds it
+ * the claim goes through only with `confirm`, and otherwise reports who.
+ *
+ * The check and the write happen under one per-flow lock, so two people who
+ * press "Claim" in the same instant cannot both be told nobody else is on it:
+ * the second waits for the first to commit, then sees them.
+ */
+type FlowRunRow = typeof flowRun.$inferSelect;
+
+export type ClaimOutcome =
+  | { conflict: FlowRunRow[] }
+  | { row: FlowRunRow; txid: number; others: FlowRunRow[] };
+
+export async function claimFlow(runId: string, flowId: string, actor: string, confirm: boolean): Promise<ClaimOutcome> {
+  return db.transaction(async (tx): Promise<ClaimOutcome> => {
+    await tx.execute(raw`select pg_advisory_xact_lock(hashtext(${`${runId}:${flowId}`}))`);
+
+    const active = await tx
+      .select()
+      .from(flowRun)
+      .where(and(eq(flowRun.runId, runId), eq(flowRun.flowId, flowId), eq(flowRun.state, "claimed")));
+    const others = active.filter((fr) => fr.claimedBy !== actor);
+    if (others.length && !confirm) return { conflict: others };
+
+    // The same person re-claiming their own in-progress flow gets it back, not a second copy.
+    const mine = active.find((fr) => fr.claimedBy === actor);
+    if (mine) return { row: mine, txid: 0, others };
+
     const [open] = await tx
       .select()
       .from(flowRun)
@@ -218,14 +245,14 @@ export async function claimFlow(runId: string, flowId: string, actor: string) {
         .set({ claimedBy: actor, state: "claimed", startedAt: new Date() })
         .where(eq(flowRun.id, open.id))
         .returning();
-      return { row: claimed!, txid: await currentTxid(tx) };
+      return { row: claimed!, txid: await currentTxid(tx), others };
     }
 
     const [created] = await tx
       .insert(flowRun)
       .values({ runId, flowId, claimedBy: actor, state: "claimed" })
       .returning();
-    return { row: created!, txid: await currentTxid(tx) };
+    return { row: created!, txid: await currentTxid(tx), others };
   });
 }
 

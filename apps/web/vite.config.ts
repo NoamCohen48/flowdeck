@@ -8,7 +8,8 @@ export default defineConfig({
     port: 5173,
     // One origin in development too: the API, the shape proxy and attachments
     // all live behind /api, exactly as Caddy fronts them in production.
-    proxy: { "/api": { target: "http://localhost:8787", changeOrigin: false } },
+    // API_URL points it at an API on another port (a second checkout, a busy 8787).
+    proxy: { "/api": { target: process.env.API_URL ?? "http://localhost:8787", changeOrigin: false } },
   },
   build: { outDir: "dist", sourcemap: true },
 });

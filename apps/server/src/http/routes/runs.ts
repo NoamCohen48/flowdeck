@@ -280,20 +280,12 @@ runs.openapi(
       return c.json({ error: "no such run or flow" }, 404);
     }
 
-    const alsoRunning = r.flowRuns.filter(
-      (fr) => fr.flowId === flowId && fr.state === "claimed" && fr.claimedBy !== who,
-    );
-    if (alsoRunning.length && confirm !== "true") {
-      return c.json({ alsoRunning: alsoRunning.map(flowRunDto) }, 409);
+    const claimed = await claimFlow(runId, flowId, who, confirm === "true");
+    if ("conflict" in claimed) {
+      return c.json({ alsoRunning: claimed.conflict.map(flowRunDto) }, 409);
     }
-
-    // The same person re-claiming their own in-progress flow gets it back, not a second copy.
-    const mine = r.flowRuns.find(
-      (fr) => fr.flowId === flowId && fr.state === "claimed" && fr.claimedBy === who,
-    );
-    const claimed = mine ? { row: mine, txid: 0 } : await claimFlow(runId, flowId, who);
     return c.json(
-      { flowRun: flowRunDto(claimed.row), txid: claimed.txid, alsoRunning: alsoRunning.map(flowRunDto) },
+      { flowRun: flowRunDto(claimed.row), txid: claimed.txid, alsoRunning: claimed.others.map(flowRunDto) },
       200,
     );
   },

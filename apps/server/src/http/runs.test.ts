@@ -148,6 +148,22 @@ describe("claiming (D9, D26)", () => {
     expect(onThisFlow.map((f) => f.claimedBy).sort()).toEqual(["Dana", "Noa"]);
   });
 
+  test("two people claiming in the same instant: exactly one is warned (D26)", async () => {
+    // The check and the write share a per-flow lock, so the second claim waits
+    // for the first to commit and then sees it — never two silent 200s.
+    for (let round = 0; round < 5; round++) {
+      const run = await freshRun();
+      const flowId = run.snapshot.flows[0]!.id;
+      const [a, b] = await Promise.all([
+        call<{ alsoRunning: unknown[] }>(`/api/runs/${run.id}/flows/${flowId}/claim`, { method: "POST", headers: { cookie: noa } }),
+        call<{ alsoRunning: unknown[] }>(`/api/runs/${run.id}/flows/${flowId}/claim`, { method: "POST", headers: { cookie: dana } }),
+      ]);
+      expect([a.status, b.status].sort()).toEqual([200, 409]);
+      const state = (await call<Run>(`/api/runs/${run.id}`)).body;
+      expect(state.flowRuns.filter((f) => f.flowId === flowId && f.state === "claimed")).toHaveLength(1);
+    }
+  });
+
   test("re-claiming your own flow returns it rather than duplicating it", async () => {
     const run = await freshRun();
     const flowId = run.snapshot.flows[0]!.id;

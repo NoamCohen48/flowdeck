@@ -17,7 +17,7 @@ import {
 import { api, unwrap, type SnapshotFlow, type SnapshotStep, type TemplateSnapshot } from "../lib/api.ts";
 import type { TestResultRow } from "../lib/collections.ts";
 import { dataUrlToBlob, fileToDataUrl, useDraftResults } from "../lib/draft-results.ts";
-import { flowRunView, useLiveFlowRuns, useLiveResults, useRun } from "../lib/run-model.ts";
+import { flowRunView, progressOf, useLiveFlowRuns, useLiveResults, useRun } from "../lib/run-model.ts";
 import { useMe } from "../lib/identity.tsx";
 import { usePresence } from "../lib/presence.ts";
 import { useTitle } from "../lib/title.ts";
@@ -28,6 +28,7 @@ import { Bar, Legend } from "../components/Progress.tsx";
 import { VerdictDialog, type VerdictSubmission } from "../components/VerdictDialog.tsx";
 import { StepMap } from "../components/StepMap.tsx";
 import { KindBadge, TestsIcon } from "../components/Step.tsx";
+import { useClaim } from "../components/ClaimDialog.tsx";
 
 export function Runner() {
   const { productId, runId, flowRunId } = useParams({ strict: false }) as {
@@ -49,6 +50,16 @@ export function Runner() {
       : undefined;
   const flow = run.data?.snapshot.flows.find((f) => f.id === flowRun?.flowId);
 
+  // The next flow nobody has taken, in template order after this one, wrapping
+  // round — so "finish and take the next" walks the board top to bottom.
+  const nextFlow = useMemo(() => {
+    const flows = run.data?.snapshot.flows ?? [];
+    const at = flows.findIndex((f) => f.id === flow?.id);
+    if (at === -1) return null;
+    const rotated = [...flows.slice(at + 1), ...flows.slice(0, at)];
+    return rotated.find((f) => progressOf(f, flowRuns, results).state === "open") ?? null;
+  }, [run.data, flow?.id, flowRuns, results]);
+
   usePresence(`run:${runId}`);
   useTitle(flow ? `${flow.name} — Flowdeck` : "Flowdeck");
 
@@ -67,6 +78,7 @@ export function Runner() {
       snapshot={run.data.snapshot}
       flow={flow}
       results={results}
+      nextFlow={nextFlow}
     />
   );
 }
@@ -82,6 +94,7 @@ function RunnerBody({
   snapshot,
   flow,
   results,
+  nextFlow,
 }: {
   productId: string;
   runId: string;
@@ -93,6 +106,7 @@ function RunnerBody({
   snapshot: TemplateSnapshot;
   flow: SnapshotFlow;
   results: TestResultRow[];
+  nextFlow: SnapshotFlow | null;
 }) {
   const me = useMe();
   const navigate = useNavigate();
@@ -160,13 +174,41 @@ function RunnerBody({
     }
   }
 
-  /** Finish records every drafted verdict, in step order, then closes the flow run. */
-  async function finish() {
+  // Marked tests on unblocked steps that still have no verdict: what "pass the
+  // rest" would pass, and what plain Finish reports as not reached.
+  const pending = useMemo(
+    () => flow.steps
+      .filter((st) => !view.blocked.blockedStepIds.has(st.id))
+      .flatMap((st) => st.marks.filter((t) => !view.byStepTest.has(`${st.id}|${t}`)).map((testId) => ({ step: st, testId }))),
+    [flow.steps, view.blocked.blockedStepIds, view.byStepTest],
+  );
+
+  // Where Finish goes afterwards: the board, or straight into the next flow
+  // nobody has taken. Remembered per device; a tester picks once for the day.
+  const [takeNext, setTakeNext] = useState(() => { try { return localStorage.getItem("flowdeck.takeNext") === "1"; } catch { return false; } });
+  const goNext = takeNext && nextFlow !== null;
+  const chooseNext = (v: boolean) => { setTakeNext(v); try { localStorage.setItem("flowdeck.takeNext", v ? "1" : "0"); } catch { /* fine */ } };
+  const toBoard = () => void navigate({ to: "/products/$productId/runs/$runId", params: { productId, runId } });
+  const { claim, dialog: claimDialog } = useClaim(runId, { onDismiss: toBoard });
+  const toFlowRun = (id: string) => void navigate({ to: "/products/$productId/runs/$runId/flows/$flowRunId", params: { productId, runId, flowRunId: id } });
+
+  /**
+   * Finish records every drafted verdict, in step order, then closes the flow
+   * run. With `passRest`, every test still waiting on an unblocked step is
+   * recorded as passed first — the one-click ending for a flow that went fine.
+   */
+  async function finish(passRest = false) {
     // A blocking fail recorded after later steps were passed: those verdicts are void (D11).
     const entries = Object.values(draft.draft).filter((r) => !view.blocked.blockedStepIds.has(r.stepId));
+    if (passRest) {
+      for (const { step, testId } of pending) {
+        const test = snapshot.tests.find((t) => t.id === testId);
+        if (test) entries.push({ stepId: step.id, testId, testVersionId: test.versionId, verdict: "pass", note: null, blocking: false, recordedAt: new Date().toISOString(), attachments: [] });
+      }
+    }
     const order = new Map(flow.steps.map((st, i) => [st.id, i]));
     entries.sort((a, b) => (order.get(a.stepId) ?? 0) - (order.get(b.stepId) ?? 0));
-    const unverified = view.remaining;
+    const unverified = passRest ? view.remaining - pending.length : view.remaining;
     if (unverified && !confirm(`${unverified} test${unverified === 1 ? "" : "s"} still ${unverified === 1 ? "has" : "have"} no verdict and will report as not reached. Finish anyway?`)) return;
     try {
       for (const [i, r] of entries.entries()) {
@@ -193,7 +235,15 @@ function RunnerBody({
     leaving.current = true;
     draft.clear();
     await qc.invalidateQueries({ queryKey: ["run", runId] });
-    void navigate({ to: "/products/$productId/runs/$runId", params: { productId, runId } });
+    if (goNext && nextFlow) {
+      // Claimed only now, after this one is over — and only if nobody took it
+      // meanwhile; if someone did, the dialog asks, and "leave it" goes to the board.
+      setCommitting(`Taking ${nextFlow.name}…`);
+      await claim(nextFlow, toFlowRun).catch(() => toBoard());
+      setCommitting(null);
+    } else {
+      toBoard();
+    }
   }
 
   async function abandon() {
@@ -329,10 +379,28 @@ function RunnerBody({
       {editable ? (
         <div className="finishbox">
           <b>Finish to record your verdicts</b>
-          <span className="meta">{draft.count ? `${draft.count} verdict${draft.count === 1 ? "" : "s"} on this device, not yet on the board.` : "Nothing recorded yet."} Abandoning discards them.</span>
-          <button className="btn primary" disabled={!!committing} onClick={() => void finish()}>{committing ?? "Finish flow"}</button>
+          <span className="meta">
+            {draft.count ? `${draft.count} verdict${draft.count === 1 ? "" : "s"} on this device, not yet on the board.` : "Nothing recorded yet."}
+            {pending.length ? ` ${pending.length} test${pending.length === 1 ? " has" : "s have"} no verdict yet.` : ""}
+          </span>
+          <div className="finishrow">
+            <button className="btn primary" disabled={!!committing} onClick={() => void finish()}>{committing ?? "Finish flow"}</button>
+            {pending.length ? (
+              <button className="btn soft" disabled={!!committing} onClick={() => void finish(true)} title="Records a pass for every test that has no verdict yet, then finishes">
+                Pass the {pending.length === 1 ? "last test" : `${pending.length} remaining`} and finish
+              </button>
+            ) : null}
+          </div>
+          <div className="afterwards" role="radiogroup" aria-label="After finishing">
+            <span className="meta">Afterwards:</span>
+            <button type="button" role="radio" aria-checked={!goNext} className={`seg${goNext ? "" : " on"}`} onClick={() => chooseNext(false)}>Back to the board</button>
+            <button type="button" role="radio" aria-checked={goNext} className={`seg${goNext ? " on" : ""}`} onClick={() => chooseNext(true)} disabled={!nextFlow}>
+              {nextFlow ? <>Take the next flow: <span dir="auto">{nextFlow.name}</span></> : "No unclaimed flow left"}
+            </button>
+          </div>
         </div>
       ) : null}
+      {claimDialog}
 
       <div className="runfoot">
         <span className="meta">

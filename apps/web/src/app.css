@@ -633,8 +633,24 @@
   .runbanner .tally .pill.off { opacity: 0.45; }
 
   .finishbox { margin: 8px auto 0; max-width: 520px; text-align: center; display: grid; gap: 6px; justify-items: center; padding: 20px; border-radius: 12px; border: 1px solid var(--primary-line); background: color-mix(in srgb, var(--primary-soft) 55%, var(--surface)); }
-  .finishbox .meta { font-size: 13px; max-width: 42ch; }
-  .finishbox .btn { margin-top: 6px; }
+  .finishbox .meta { font-size: 13px; max-width: 48ch; }
+  .finishrow { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+  /* Where Finish goes next: a two-way choice that reads as one control. */
+  .afterwards { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--primary-line); width: 100%; }
+  .afterwards .seg { font-size: 13px; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); cursor: pointer; max-width: 100%; }
+  .afterwards .seg:hover { border-color: var(--muted); }
+  .afterwards .seg.on { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); color: var(--primary-ink); font-weight: 500; }
+  .afterwards .seg:disabled { opacity: 0.55; cursor: default; }
+  .afterwards .seg span { font-weight: 600; }
+
+  /* Someone is already on this flow: a question, not a warning. */
+  .claimdlg { max-width: 420px; }
+  .claimdlg .holders { display: flex; margin-bottom: 10px; }
+  .claimdlg .holders .avatar { width: 36px; height: 36px; font-size: 15px; border: 2px solid var(--surface); }
+  .claimdlg .holders .avatar + .avatar { margin-left: -8px; }
+  .claimdlg p { margin: 10px 0 0; font-size: 14px; line-height: 1.45; }
+  .claimdlg p.meta { margin: 0; font-size: 13px; }
+  .claimdlg .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
 
   /* ---- Runs page ---- */
   .runrow { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; align-items: center; text-decoration: none; }
