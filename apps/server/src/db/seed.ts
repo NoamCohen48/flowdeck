@@ -153,6 +153,7 @@ for (const p of seedData.products) {
             kind: s.kind as StepKind,
             text: s.text,
             expectedResult: s.expectedResult,
+            postState: (s as { postState?: string }).postState ?? null,
             deviceLabel: s.deviceLabel,
           })
           .returning();

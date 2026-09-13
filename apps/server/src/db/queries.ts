@@ -257,6 +257,7 @@ export async function createTemplatesIn(
             kind: s.kind,
             text: s.text,
             expectedResult: s.expectedResult,
+            postState: s.postState,
             deviceLabel: s.deviceLabel,
           })
           .returning();

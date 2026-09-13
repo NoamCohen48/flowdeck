@@ -24,10 +24,10 @@ import { usePeers, usePresence } from "../lib/presence.ts";
 import { useTitle } from "../lib/title.ts";
 import { DeviceChip, Pickup, deviceStyle } from "../components/Device.tsx";
 import { StepMap } from "../components/StepMap.tsx";
-import { KindBadge, TestsIcon } from "../components/Step.tsx";
+import { KindBadge, PostState, TestsIcon } from "../components/Step.tsx";
 import { TestPicker } from "../components/TestPicker.tsx";
 
-type Draft = { kind: StepKind; text: string; expectedResult: string; deviceLabel: string };
+type Draft = { kind: StepKind; text: string; expectedResult: string; postState: string; deviceLabel: string };
 
 export function FlowEditor() {
   const { productId, templateId, flowId } = useParams({ strict: false }) as { productId: string; templateId: string; flowId: string };
@@ -96,6 +96,7 @@ export function FlowEditor() {
         kind: d.kind,
         text: d.text,
         expected_result: d.kind === "assertion" ? d.expectedResult || null : null,
+        post_state: d.postState || null,
         device_label: d.deviceLabel || previous?.deviceLabel || "Device",
         updated_at: new Date().toISOString(),
       },
@@ -111,6 +112,8 @@ export function FlowEditor() {
       if (row.text !== d.text) row.text = d.text;
       const expected = d.kind === "assertion" ? d.expectedResult || null : null;
       if (row.expected_result !== expected) row.expected_result = expected;
+      const after = d.postState || null;
+      if (row.post_state !== after) row.post_state = after;
       if (row.device_label !== d.deviceLabel) row.device_label = d.deviceLabel;
     });
     setEditing(null);
@@ -339,6 +342,7 @@ function StepView({
         <p className="stext" dir="auto">{step.text}</p>
       </div>
       {isCheck && step.expectedResult ? <div className="expect" dir="auto"><b>Expected:</b> {step.expectedResult}</div> : null}
+      <PostState text={step.postState} />
       <div className={`tests${step.marks.length ? "" : " none"}`}>
         <div className="cap"><TestsIcon />{step.marks.length ? `Verifies ${step.marks.length === 1 ? "1 test" : `${step.marks.length} tests`}` : "Verifies nothing yet"}</div>
         {step.marks.map((testId) => {
@@ -376,7 +380,7 @@ function StepForm({
   useEffect(() => { textRef.current?.focus(); }, []);
   const isCheck = d.kind === "assertion";
   const canSave = d.text.trim().length > 0 && d.deviceLabel.trim().length > 0;
-  const submit = () => canSave && onSave({ ...d, text: d.text.trim(), deviceLabel: d.deviceLabel.trim(), expectedResult: d.expectedResult.trim() });
+  const submit = () => canSave && onSave({ ...d, text: d.text.trim(), deviceLabel: d.deviceLabel.trim(), expectedResult: d.expectedResult.trim(), postState: d.postState.trim() });
   return (
     <div className="step now editform" onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submit(); }}>
       <div className="row">
@@ -392,6 +396,10 @@ function StepForm({
       {isCheck ? (
         <textarea value={d.expectedResult} onChange={(e) => setD({ ...d, expectedResult: e.target.value })} dir="auto" placeholder="Expected: same emoji and count on both." aria-label="Expected result" />
       ) : null}
+      <div className="afterfield">
+        <label htmlFor={`after-${index}`}>Afterwards <span className="meta">optional — where the tester should be once this is done. It is what they improvise toward if the step goes stale.</span></label>
+        <textarea id={`after-${index}`} className="afterin" value={d.postState} onChange={(e) => setD({ ...d, postState: e.target.value })} dir="auto" placeholder="Back on the channel list, the new message at the bottom." />
+      </div>
       <div className="row">
         <button className="btn primary sm" disabled={!canSave} onClick={submit}>{submitLabel}</button>
         <button className="btn sm" onClick={onCancel}>Cancel</button>
@@ -410,14 +418,14 @@ function StepForm({
 }
 
 function DraftCard({ kind, index, initialDevice, labels, onSave, onCancel }: { kind: StepKind; index: number; initialDevice: string; labels: string[]; onSave: (d: Draft) => void; onCancel: () => void }) {
-  return <StepForm initial={{ kind, text: "", expectedResult: "", deviceLabel: initialDevice }} index={index} labels={labels} submitLabel="Add step" onSave={onSave} onCancel={onCancel} />;
+  return <StepForm initial={{ kind, text: "", expectedResult: "", postState: "", deviceLabel: initialDevice }} index={index} labels={labels} submitLabel="Add step" onSave={onSave} onCancel={onCancel} />;
 }
 
 function EditCard({ step, index, device, labels, onSave, onCancel, onDelete, onMove }: { step: SnapshotStep; index: number; device: DeviceAssignment; labels: string[]; onSave: (d: Draft) => void; onCancel: () => void; onDelete: () => void; onMove: { up: (() => void) | null; down: (() => void) | null } }) {
   return (
     <div style={deviceStyle(device.slot)}>
       <StepForm
-        initial={{ kind: step.kind, text: step.text, expectedResult: step.expectedResult ?? "", deviceLabel: step.deviceLabel }}
+        initial={{ kind: step.kind, text: step.text, expectedResult: step.expectedResult ?? "", postState: step.postState ?? "", deviceLabel: step.deviceLabel }}
         index={index} labels={labels} submitLabel="Save" onSave={onSave} onCancel={onCancel} onDelete={onDelete} onMove={onMove}
       />
     </div>

@@ -30,6 +30,7 @@ export function useEditorSteps(flowId: string) {
         kind: r.kind,
         text: r.text,
         expectedResult: r.expected_result,
+        postState: r.post_state,
         deviceLabel: r.device_label,
         marks: byStep.get(r.id) ?? [],
       }));

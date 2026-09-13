@@ -44,7 +44,8 @@ left join lateral (
 -- Electric follows Postgres logical replication. REPLICA IDENTITY FULL makes
 -- updates and deletes carry their old row, which Electric needs to keep a
 -- subscriber's copy correct rather than merely eventually correct.
-alter table test_result replica identity full;
+alter table test_result  replica identity full;
+alter table step_problem replica identity full;
 alter table flow_run    replica identity full;
 alter table presence    replica identity full;
 alter table step        replica identity full;

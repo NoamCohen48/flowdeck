@@ -15,9 +15,9 @@ import {
   type Verdict,
 } from "@flowdeck/domain";
 import { api, unwrap, type SnapshotFlow, type SnapshotStep, type TemplateSnapshot } from "../lib/api.ts";
-import type { TestResultRow } from "../lib/collections.ts";
+import type { StepProblemRow, TestResultRow } from "../lib/collections.ts";
 import { dataUrlToBlob, fileToDataUrl, useDraftResults } from "../lib/draft-results.ts";
-import { flowRunView, progressOf, useLiveFlowRuns, useLiveResults, useRun } from "../lib/run-model.ts";
+import { flowRunView, progressOf, useLiveFlowRuns, useLiveResults, useLiveStepProblems, useRun } from "../lib/run-model.ts";
 import { useMe } from "../lib/identity.tsx";
 import { usePresence } from "../lib/presence.ts";
 import { useTitle } from "../lib/title.ts";
@@ -27,7 +27,8 @@ import { VerdictButtons, noteClass } from "../components/Verdicts.tsx";
 import { Bar, Legend } from "../components/Progress.tsx";
 import { VerdictDialog, type VerdictSubmission } from "../components/VerdictDialog.tsx";
 import { StepMap } from "../components/StepMap.tsx";
-import { KindBadge, TestsIcon } from "../components/Step.tsx";
+import { FlagIcon, KindBadge, PostState, StepProblemNote, TestsIcon } from "../components/Step.tsx";
+import { StepProblemDialog, type StepProblemSubmission } from "../components/StepProblemDialog.tsx";
 import { useClaim } from "../components/ClaimDialog.tsx";
 
 export function Runner() {
@@ -39,6 +40,7 @@ export function Runner() {
   const run = useRun(runId);
   const { rows: flowRuns } = useLiveFlowRuns(runId);
   const { rows: results, ready } = useLiveResults(runId);
+  const { rows: stepProblems } = useLiveStepProblems(runId);
   // The live row wins; the REST copy only bridges the first render before the
   // stream is ready. Both are normalised to one shape here and nowhere else.
   const live = flowRuns.find((fr) => fr.id === flowRunId);
@@ -78,6 +80,7 @@ export function Runner() {
       snapshot={run.data.snapshot}
       flow={flow}
       results={results}
+      stepProblems={stepProblems}
       nextFlow={nextFlow}
     />
   );
@@ -94,6 +97,7 @@ function RunnerBody({
   snapshot,
   flow,
   results,
+  stepProblems,
   nextFlow,
 }: {
   productId: string;
@@ -106,6 +110,7 @@ function RunnerBody({
   snapshot: TemplateSnapshot;
   flow: SnapshotFlow;
   results: TestResultRow[];
+  stepProblems: StepProblemRow[];
   nextFlow: SnapshotFlow | null;
 }) {
   const me = useMe();
@@ -119,7 +124,8 @@ function RunnerBody({
   // My own claimed run reads from the draft; anyone else's (or a finished one) from what was recorded.
   const draft = useDraftResults(flowRunId, me.name);
   const rows = editable ? draft.rows : results;
-  const view = useMemo(() => flowRunView(flow, flowRunId, rows), [flow, flowRunId, rows]);
+  const problems = editable ? draft.problemRows : stepProblems;
+  const view = useMemo(() => flowRunView(flow, flowRunId, rows, problems), [flow, flowRunId, rows, problems]);
   const testTitle = useCallback(
     (id: string) => snapshot.tests.find((t) => t.id === id)?.title ?? "(archived test)",
     [snapshot.tests],
@@ -131,13 +137,14 @@ function RunnerBody({
   const stepRefs = useRef<(HTMLLIElement | null)[]>([]);
 
   const [dialog, setDialog] = useState<{ step: SnapshotStep; testId: string; verdict: Verdict } | null>(null);
+  const [flagging, setFlagging] = useState<SnapshotStep | null>(null);
   const [committing, setCommitting] = useState<string | null>(null);
 
   // Leaving with unrecorded verdicts — in-app navigation or closing the tab — asks first.
   const leaving = useRef(false);
   const dirty = editable && draft.count > 0 && !leaving.current;
   useBlocker({
-    shouldBlockFn: () => dirty && !confirm(`You have ${draft.count} unrecorded verdict${draft.count === 1 ? "" : "s"}. Leave without finishing? They stay on this device until you come back.`),
+    shouldBlockFn: () => dirty && !confirm(`You have ${draft.count} unrecorded ${draft.count === 1 ? "verdict or flagged step" : "verdicts and flagged steps"}. Leave without finishing? They stay on this device until you come back.`),
     enableBeforeUnload: () => dirty,
   });
 
@@ -165,6 +172,18 @@ function RunnerBody({
     }
     record(dialog.step, dialog.testId, s.verdict, s.note || null, s.blocking, attachments);
     setDialog(null);
+  }
+
+  // "This step is wrong" (D40): a draft like any verdict, recorded on Finish.
+  function flagStep(step: SnapshotStep) {
+    if (!editable || view.blocked.blockedStepIds.has(step.id) || view.problemByStep.has(step.id)) return;
+    setFlagging(step);
+  }
+
+  function submitFlag(s: StepProblemSubmission) {
+    if (!flagging) return;
+    draft.flag({ stepId: flagging.id, ...s });
+    setFlagging(null);
   }
 
   function passAll(step: SnapshotStep) {
@@ -208,6 +227,10 @@ function RunnerBody({
     }
     const order = new Map(flow.steps.map((st, i) => [st.id, i]));
     entries.sort((a, b) => (order.get(a.stepId) ?? 0) - (order.get(b.stepId) ?? 0));
+    // The flagged steps, in step order; a flag on a step out of reach is void too.
+    const flagged = Object.values(draft.problems)
+      .filter((p) => !view.blocked.blockedStepIds.has(p.stepId))
+      .sort((a, b) => (order.get(a.stepId) ?? 0) - (order.get(b.stepId) ?? 0));
     const unverified = passRest ? view.remaining - pending.length : view.remaining;
     if (unverified && !confirm(`${unverified} test${unverified === 1 ? "" : "s"} still ${unverified === 1 ? "has" : "have"} no verdict and will report as not reached. Finish anyway?`)) return;
     try {
@@ -224,6 +247,13 @@ function RunnerBody({
           form.set("height", String(a.height));
           await fetch(`/api/results/${recorded.id}/attachments`, { method: "POST", body: form });
         }
+      }
+      for (const [i, p] of flagged.entries()) {
+        setCommitting(`Flagging step ${i + 1} of ${flagged.length}…`);
+        await unwrap(api.POST("/flow-runs/{flowRunId}/step-problems", {
+          params: { path: { flowRunId } },
+          body: { stepId: p.stepId, note: p.note, workaround: p.workaround, blocking: p.blocking },
+        }));
       }
       setCommitting("Finishing…");
       await unwrap(api.POST("/flow-runs/{flowRunId}/finish", { params: { path: { flowRunId } } }));
@@ -248,7 +278,7 @@ function RunnerBody({
 
   async function abandon() {
     const n = draft.count;
-    if (!confirm(`Abandon this flow?${n ? ` Your ${n} verdict${n === 1 ? " is" : "s are"} discarded.` : ""} The next person starts it from step 1.`)) return;
+    if (!confirm(`Abandon this flow?${n ? ` Your ${n} ${n === 1 ? "entry is" : "entries are"} discarded.` : ""} The next person starts it from step 1.`)) return;
     leaving.current = true;
     draft.clear();
     await unwrap(api.POST("/flow-runs/{flowRunId}/abandon", { params: { path: { flowRunId } } }));
@@ -265,15 +295,17 @@ function RunnerBody({
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement;
-      if (dialog || t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable) return;
+      if (dialog || flagging || t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable) return;
       const step = flow.steps[current];
       switch (e.key) {
         case "j": case "ArrowDown": e.preventDefault(); scrollTo(Math.min(current + 1, flow.steps.length - 1)); break;
         case "k": case "ArrowUp": e.preventDefault(); scrollTo(Math.max(current - 1, 0)); break;
         case "p": if (step) { step.marks.length ? passAll(step) : scrollTo(Math.min(current + 1, flow.steps.length - 1)); } break;
-        case "f": if (step?.marks[0]) pick(step, step.marks[0], "fail"); break;
-        case "m": if (step?.marks[0]) pick(step, step.marks[0], "minor"); break;
-        case "s": if (step?.marks[0]) pick(step, step.marks[0], "skipped"); break;
+        // These open a dialog that focuses a textarea at once; the key must not land in it.
+        case "f": e.preventDefault(); if (step?.marks[0]) pick(step, step.marks[0], "fail"); break;
+        case "m": e.preventDefault(); if (step?.marks[0]) pick(step, step.marks[0], "minor"); break;
+        case "s": e.preventDefault(); if (step?.marks[0]) pick(step, step.marks[0], "skipped"); break;
+        case "w": e.preventDefault(); if (step) flagStep(step); break;
         case "g": scrollTo(Math.min(view.currentIndex, flow.steps.length - 1)); setFocusIndex(null); break;
         case "?": setHelp((h) => !h); break;
       }
@@ -295,7 +327,7 @@ function RunnerBody({
       </p>
 
       {!editable ? (
-        <RunBanner state={state} by={claimedBy} startedAt={startedAt} finishedAt={finishedAt} mine={isMine} counts={view.counts} total={view.total} />
+        <RunBanner state={state} by={claimedBy} startedAt={startedAt} finishedAt={finishedAt} mine={isMine} counts={view.counts} total={view.total} flagged={view.problemByStep.size} />
       ) : null}
 
       <div className="flowhead">
@@ -335,6 +367,7 @@ function RunnerBody({
             const device = handoffs.byLabel.get(step.deviceLabel)!;
             const blocked = view.blocked.blockedStepIds.has(step.id);
             const done = step.marks.length > 0 && step.marks.every((t) => view.byStepTest.has(`${step.id}|${t}`));
+            const problem = view.problemByStep.get(step.id);
             return (
               <li key={step.id} ref={(el) => { stepRefs.current[i] = el; }} style={deviceStyle(device.slot)}>
                 {intro && i > 0 ? <Pickup device={intro} /> : null}
@@ -348,9 +381,12 @@ function RunnerBody({
                   blocked={blocked}
                   readOnly={readOnly || !isMine}
                   results={view.byStepTest}
+                  problem={problem}
                   testTitle={testTitle}
                   onPick={(testId, v) => pick(step, testId, v)}
                   onPassAll={() => passAll(step)}
+                  onFlag={() => flagStep(step)}
+                  onUnflag={editable && problem ? () => draft.unflag(step.id) : undefined}
                   onFocus={() => setFocusIndex(i)}
                 />
               </li>
@@ -371,7 +407,9 @@ function RunnerBody({
 
       {view.blocked.blockedFromIndex !== undefined ? (
         <p className="note" style={{ marginLeft: 0 }}>
-          Blocked from step {view.blocked.blockedFromIndex + 1}. {view.blocked.unverifiedTestIds.size} tests will report as not reached.
+          Blocked from step {view.blocked.blockedFromIndex + 1}
+          {view.problemByStep.get(flow.steps[view.blocked.blockedFromIndex - 1]?.id ?? "")?.blocking ? " — the step before it is wrong and there was no way past" : ""}.{" "}
+          {view.blocked.unverifiedTestIds.size} tests will report as not reached.
         </p>
       ) : null}
 
@@ -380,7 +418,13 @@ function RunnerBody({
         <div className="finishbox">
           <b>Finish to record your verdicts</b>
           <span className="meta">
-            {draft.count ? `${draft.count} verdict${draft.count === 1 ? "" : "s"} on this device, not yet on the board.` : "Nothing recorded yet."}
+            {(() => {
+              const v = Object.keys(draft.draft).length;
+              const f = Object.keys(draft.problems).length;
+              if (!v && !f) return "Nothing recorded yet.";
+              const parts = [v ? `${v} verdict${v === 1 ? "" : "s"}` : null, f ? `${f} flagged step${f === 1 ? "" : "s"}` : null].filter(Boolean);
+              return `${parts.join(" and ")} on this device, not yet on the board.`;
+            })()}
             {pending.length ? ` ${pending.length} test${pending.length === 1 ? " has" : "s have"} no verdict yet.` : ""}
           </span>
           <div className="finishrow">
@@ -419,12 +463,18 @@ function RunnerBody({
         onSubmit={submitDialog}
         onCancel={() => setDialog(null)}
       />
+      <StepProblemDialog
+        step={flagging}
+        index={flagging ? flow.steps.findIndex((s) => s.id === flagging.id) : 0}
+        onSubmit={submitFlag}
+        onCancel={() => setFlagging(null)}
+      />
     </main>
   );
 }
 
 function StepCard({
-  step, index, device, isCurrent, done, blocked, readOnly, results, testTitle, onPick, onPassAll, onFocus,
+  step, index, device, isCurrent, done, blocked, readOnly, results, problem, testTitle, onPick, onPassAll, onFlag, onUnflag, onFocus,
 }: {
   step: SnapshotStep;
   index: number;
@@ -434,15 +484,18 @@ function StepCard({
   blocked: boolean;
   readOnly: boolean;
   results: Map<string, TestResultRow>;
+  problem: StepProblemRow | undefined;
   testTitle: (id: string) => string;
   onPick: (testId: string, v: Verdict) => void;
   onPassAll: () => void;
+  onFlag: () => void;
+  onUnflag: (() => void) | undefined;
   onFocus: () => void;
 }) {
   const isCheck = step.kind === "assertion";
   return (
     <div
-      className={`step${isCurrent ? " now" : ""}${done ? " done" : ""}${blocked ? " blocked" : ""}`}
+      className={`step${isCurrent ? " now" : ""}${done ? " done" : ""}${blocked ? " blocked" : ""}${problem ? " stale" : ""}`}
       id={`step-${step.id}`}
       onClick={onFocus}
       aria-current={isCurrent ? "step" : undefined}
@@ -452,12 +505,22 @@ function StepCard({
         <DeviceChip device={device} />
         <KindBadge kind={step.kind} long />
         {blocked ? <span className="tag">Blocked</span> : null}
+        {problem ? <span className="tag flagged"><FlagIcon />Step is wrong</span> : null}
+        {!readOnly && !blocked && !problem ? (
+          <button type="button" className="btn sm flagbtn" onClick={(e) => { e.stopPropagation(); onFlag(); }} title="The step, not the product, is wrong">
+            <FlagIcon />Step is wrong <span className="kbd">w</span>
+          </button>
+        ) : null}
       </div>
       <div className="stop">
         <p className="stext" dir="auto">{step.text}</p>
       </div>
       {isCheck && step.expectedResult ? (
         <div className="expect" dir="auto"><b>Expected:</b> {step.expectedResult}</div>
+      ) : null}
+      <PostState text={step.postState} />
+      {problem ? (
+        <StepProblemNote note={problem.note} workaround={problem.workaround} blocking={problem.blocking} by={readOnly ? problem.recorded_by : undefined} onUndo={onUnflag} />
       ) : null}
 
       {step.marks.length ? (
@@ -496,9 +559,9 @@ function StepCard({
  * a single step is read — the verdict buttons below are disabled and that
  * needs an explanation, not a discovery.
  */
-function RunBanner({ state, by, startedAt, finishedAt, mine, counts, total }: {
+function RunBanner({ state, by, startedAt, finishedAt, mine, counts, total, flagged }: {
   state: string; by: string | null; startedAt: string; finishedAt: string | null; mine: boolean;
-  counts: Record<Verdict, number>; total: number;
+  counts: Record<Verdict, number>; total: number; flagged: number;
 }) {
   const fmt = (iso: string) => {
     const d = new Date(iso);
@@ -520,6 +583,7 @@ function RunBanner({ state, by, startedAt, finishedAt, mine, counts, total }: {
         <span className="meta">
           Started {fmt(startedAt)}
           {state === "finished" || state === "abandoned" ? ` · ${reached} of ${total} tests reached` : ""}
+          {flagged ? ` · ${flagged} step${flagged === 1 ? "" : "s"} flagged as wrong` : ""}
           {" · "}read-only — {state === "claimed" ? "only the person who claimed a flow can record verdicts" : "results cannot be changed after a flow is over"}
         </span>
       </div>
@@ -542,6 +606,7 @@ function ShortcutHelp() {
     ["f", "fail the first test on this step"],
     ["m", "minor issue on the first test"],
     ["s", "skip — the test is wrong"],
+    ["w", "flag — the step is wrong"],
     ["g", "jump to where you are"],
     ["?", "toggle this help"],
   ];

@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Verdict } from "@flowdeck/domain";
-import type { TestResultRow } from "./collections.ts";
+import type { StepProblemRow, TestResultRow } from "./collections.ts";
 
 export interface DraftAttachment { name: string; dataUrl: string; width: number; height: number }
 
@@ -25,29 +25,52 @@ export interface DraftResult {
 
 export type Draft = Record<string, DraftResult>;
 
-const key = (flowRunId: string) => `flowdeck.draft.${flowRunId}`;
-export const draftKey = (stepId: string, testId: string) => `${stepId}|${testId}`;
-
-function load(flowRunId: string): Draft {
-  try { return JSON.parse(localStorage.getItem(key(flowRunId)) ?? "{}") as Draft; } catch { return {}; }
+/** "This step is wrong" (D40), keyed by step. Travels with the verdicts: recorded on Finish, discarded on Abandon. */
+export interface DraftProblem {
+  stepId: string;
+  note: string;
+  workaround: string | null;
+  blocking: boolean;
+  recordedAt: string;
 }
 
-function store(flowRunId: string, d: Draft) {
+export type ProblemDraft = Record<string, DraftProblem>;
+
+const key = (flowRunId: string) => `flowdeck.draft.${flowRunId}`;
+const problemsKey = (flowRunId: string) => `flowdeck.draft.${flowRunId}.steps`;
+export const draftKey = (stepId: string, testId: string) => `${stepId}|${testId}`;
+
+function load<T extends object>(k: string): T {
+  try { return JSON.parse(localStorage.getItem(k) ?? "{}") as T; } catch { return {} as T; }
+}
+
+function store(k: string, d: object) {
   try {
-    if (Object.keys(d).length) localStorage.setItem(key(flowRunId), JSON.stringify(d));
-    else localStorage.removeItem(key(flowRunId));
+    if (Object.keys(d).length) localStorage.setItem(k, JSON.stringify(d));
+    else localStorage.removeItem(k);
   } catch { /* quota or private mode: the in-memory copy still works for this session */ }
 }
 
 export function useDraftResults(flowRunId: string, recordedBy: string | null) {
-  const [draft, setDraft] = useState<Draft>(() => load(flowRunId));
-  useEffect(() => { setDraft(load(flowRunId)); }, [flowRunId]);
-  useEffect(() => { store(flowRunId, draft); }, [flowRunId, draft]);
+  const [draft, setDraft] = useState<Draft>(() => load(key(flowRunId)));
+  const [problems, setProblems] = useState<ProblemDraft>(() => load(problemsKey(flowRunId)));
+  useEffect(() => { setDraft(load(key(flowRunId))); setProblems(load(problemsKey(flowRunId))); }, [flowRunId]);
+  useEffect(() => { store(key(flowRunId), draft); }, [flowRunId, draft]);
+  useEffect(() => { store(problemsKey(flowRunId), problems); }, [flowRunId, problems]);
 
   const set = useCallback((r: Omit<DraftResult, "recordedAt">) => {
     setDraft((d) => ({ ...d, [draftKey(r.stepId, r.testId)]: { ...r, recordedAt: new Date().toISOString() } }));
   }, []);
-  const clear = useCallback(() => { setDraft({}); store(flowRunId, {}); }, [flowRunId]);
+  const flag = useCallback((p: Omit<DraftProblem, "recordedAt">) => {
+    setProblems((d) => ({ ...d, [p.stepId]: { ...p, recordedAt: new Date().toISOString() } }));
+  }, []);
+  const unflag = useCallback((stepId: string) => {
+    setProblems((d) => { const { [stepId]: _, ...rest } = d; return rest; });
+  }, []);
+  const clear = useCallback(() => {
+    setDraft({}); setProblems({});
+    store(key(flowRunId), {}); store(problemsKey(flowRunId), {});
+  }, [flowRunId]);
 
   /** The draft in the shape the rest of the runner already understands. */
   const rows = useMemo<TestResultRow[]>(() => Object.values(draft).map((r) => ({
@@ -64,7 +87,18 @@ export function useDraftResults(flowRunId: string, recordedBy: string | null) {
     idempotency_key: `${flowRunId}:${r.stepId}:${r.testId}:${r.verdict}`,
   })), [draft, flowRunId, recordedBy]);
 
-  return { draft, rows, set, clear, count: Object.keys(draft).length };
+  const problemRows = useMemo<StepProblemRow[]>(() => Object.values(problems).map((p) => ({
+    id: `draft:${p.stepId}`,
+    flow_run_id: flowRunId,
+    step_id: p.stepId,
+    note: p.note,
+    workaround: p.workaround,
+    blocking: p.blocking,
+    recorded_by: recordedBy ?? "",
+    recorded_at: p.recordedAt,
+  })), [problems, flowRunId, recordedBy]);
+
+  return { draft, rows, set, problems, problemRows, flag, unflag, clear, count: Object.keys(draft).length + Object.keys(problems).length };
 }
 
 export function fileToDataUrl(blob: Blob): Promise<string> {

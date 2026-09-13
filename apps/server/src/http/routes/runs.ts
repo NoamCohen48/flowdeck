@@ -4,7 +4,7 @@
  * the product is the one that reads from these.
  */
 import { createRoute, z } from "@hono/zod-openapi";
-import { computeBlocked, verdictRequiresNote } from "@flowdeck/domain";
+import { blockingStepIndex, computeBlocked, verdictRequiresNote } from "@flowdeck/domain";
 import { db } from "../../db/client.ts";
 import { actor as actorTable, presence } from "../../db/schema.ts";
 import {
@@ -14,6 +14,7 @@ import {
   listRuns,
   openRunFor,
   recordResult,
+  recordStepProblem,
   setFlowRunState,
   startRun,
   type TemplateSnapshot,
@@ -27,12 +28,14 @@ import {
   PassAllSchema,
   PresenceSchema,
   RecordResultSchema,
+  RecordStepProblemSchema,
   RunSchema,
+  StepProblemSchema,
   RunSummarySchema,
   TestResultSchema,
   Uuid,
 } from "../schemas.ts";
-import { flowRunDto, iso, resultDto, runDto } from "../serialize.ts";
+import { flowRunDto, iso, resultDto, runDto, stepProblemDto } from "../serialize.ts";
 import { requireActor, setActor } from "../actor.ts";
 import { createRouter } from "../router.ts";
 import { sql as raw } from "drizzle-orm";
@@ -326,6 +329,18 @@ function findStep(snapshot: TemplateSnapshot, flowId: string, stepId: string) {
   return flow && step ? { flow, step } : undefined;
 }
 
+/**
+ * What one tester's flow run has already put out of reach: everything after a
+ * blocking failure (D11) or a flagged step they could not get past (D40).
+ */
+function blockedIn(r: NonNullable<Awaited<ReturnType<typeof getRun>>>, flowRunId: string, flow: TemplateSnapshot["flows"][number]) {
+  const blockers = [
+    ...r.results.filter((x) => x.flowRunId === flowRunId && x.verdict === "fail").map((x) => ({ stepId: x.stepId, blocking: x.blocking })),
+    ...r.stepProblems.filter((x) => x.flowRunId === flowRunId).map((x) => ({ stepId: x.stepId, blocking: x.blocking })),
+  ];
+  return computeBlocked(flow.steps, blockingStepIndex(flow.steps, blockers));
+}
+
 runs.openapi(
   createRoute({
     method: "post",
@@ -364,15 +379,7 @@ runs.openapi(
 
     // Refuse to record anything on a step a blocking failure has already put out
     // of reach. Recording a pass for a wedged step would be a lie (D11).
-    const mine = r.results.filter((x) => x.flowRunId === flowRunId);
-    const blockingIndex = found.flow.steps.findIndex((s) =>
-      mine.some((x) => x.stepId === s.id && x.verdict === "fail" && x.blocking),
-    );
-    const blocked = computeBlocked(
-      found.flow.steps.map((s) => ({ ...s, marks: s.marks })),
-      blockingIndex === -1 ? undefined : blockingIndex,
-    );
-    if (blocked.blockedStepIds.has(body.stepId)) {
+    if (blockedIn(r, flowRunId, found.flow).blockedStepIds.has(body.stepId)) {
       return c.json({ error: "this step is blocked by an earlier failure" }, 409);
     }
 
@@ -424,12 +431,7 @@ runs.openapi(
     const found = findStep(r.snapshot, fr.flowId, stepId);
     if (!found) return c.json({ error: "no such step in this flow" }, 404);
 
-    const mine = r.results.filter((x) => x.flowRunId === flowRunId);
-    const blockingIndex = found.flow.steps.findIndex((s) =>
-      mine.some((x) => x.stepId === s.id && x.verdict === "fail" && x.blocking),
-    );
-    const blocked = computeBlocked(found.flow.steps, blockingIndex === -1 ? undefined : blockingIndex);
-    if (blocked.blockedStepIds.has(stepId)) {
+    if (blockedIn(r, flowRunId, found.flow).blockedStepIds.has(stepId)) {
       return c.json({ error: "this step is blocked by an earlier failure" }, 409);
     }
 
@@ -454,3 +456,52 @@ runs.openapi(
   },
 );
 
+
+/* ── Step problems (D40) ─────────────────────────────────────────────── */
+
+runs.openapi(
+  createRoute({
+    method: "post",
+    path: "/flow-runs/{flowRunId}/step-problems",
+    tags: ["Runs"],
+    summary: "Flag a step as wrong",
+    description:
+      "\"The step, not the product\": the button moved, the wording is stale, the screen is gone (D40). Not a verdict — the tests the step marks can still be recorded. Either the tester got past it and `workaround` says how, or `blocking=true` closes the rest of the flow exactly as a blocking failure does (D11). One report per step per flow run; flagging again replaces it.",
+    request: {
+      params: z.object({ flowRunId: Uuid }),
+      body: { content: { "application/json": { schema: RecordStepProblemSchema } } },
+    },
+    responses: {
+      201: { content: { "application/json": { schema: StepProblemSchema } }, description: "Recorded" },
+      400: { content: { "application/json": { schema: ErrorSchema } }, description: "Invalid" },
+      401: { content: { "application/json": { schema: ErrorSchema } }, description: "No identity" },
+      404: { content: { "application/json": { schema: ErrorSchema } }, description: "No such flow run or step" },
+      409: { content: { "application/json": { schema: ErrorSchema } }, description: "This step is blocked" },
+    },
+  }),
+  async (c) => {
+    const who = requireActor(c);
+    const { flowRunId } = c.req.valid("param");
+    const body = c.req.valid("json");
+
+    const fr = await getFlowRun(flowRunId);
+    if (!fr) return c.json({ error: "no such flow run" }, 404);
+    const r = (await getRun(fr.runId))!;
+    const found = findStep(r.snapshot, fr.flowId, body.stepId);
+    if (!found) return c.json({ error: "no such step in this flow" }, 404);
+    // A step nobody reached cannot be reported as wrong — nobody looked at it.
+    if (blockedIn(r, flowRunId, found.flow).blockedStepIds.has(body.stepId)) {
+      return c.json({ error: "this step is blocked by an earlier failure" }, 409);
+    }
+
+    const { row, txid } = await recordStepProblem({
+      flowRunId,
+      stepId: body.stepId,
+      note: body.note,
+      workaround: body.blocking ? null : body.workaround,
+      blocking: body.blocking,
+      recordedBy: who,
+    });
+    return c.json({ ...stepProblemDto(row), txid }, 201);
+  },
+);

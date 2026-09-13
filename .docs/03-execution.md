@@ -67,6 +67,8 @@ Each step shows:
 - **Action or check**, as a distinct marker.
 - **The instruction.**
 - **The expected result**, for checks.
+- **Afterwards** — where the step should leave you — when the author wrote one. Quieter than the
+  expected result: it is orientation, not a judgment.
 - **The tests this step verifies**, each with its own verdict controls.
 
 A running device bar sits at the top showing every device currently in play, growing as the flow
@@ -111,6 +113,30 @@ problems with the suite, since runs are otherwise read-only.
 - **Pass all** on a step marks every attached test as passed in one click. The common case stays as
   fast as the old per-step checkbox.
 - Steps marking no tests get a plain **Done**.
+
+### When the step itself is wrong
+
+A flow is many tests' worth of steps, and a step can rot on its own: the button moved, the screen
+was redesigned, the wording no longer matches. Skipping a test does not cover this — the step may
+verify nothing, and the tester's problem is not "I cannot judge" but "I cannot do this as written".
+
+**Step is wrong** on any step opens a short report:
+
+1. **What is wrong** — free text, required. The maintainer's brief.
+2. **Could you get past it?** — the same two-way choice as a failure:
+   - *Yes, another way* — say **how**, required. The rest of the flow carries on. Where the author
+     wrote an *Afterwards*, it is shown here: that is the state to reach, however you reach it.
+   - *No, I'm stuck* — remaining steps become blocked, exactly as after a blocking failure.
+
+It is not a verdict. The tests the step marks can still be passed or failed — the tester got there,
+by whatever route — so improvising past a stale step no longer costs the tests behind it. A
+flagged step is grey like a skipped test, for the same reason: it says something about the flow,
+not the product.
+
+Flags travel with the verdicts: drafted on the tester's device, recorded on Finish, discarded on
+Abandon. The board shows how many steps each finished flow run flagged, and the day's report lists
+them under **Steps to update** with a link straight into the editor. A flow whose every run is
+half-improvised should not look quietly green.
 
 ### Reporting a failure
 

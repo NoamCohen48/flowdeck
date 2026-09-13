@@ -371,6 +371,10 @@
             "type": "string",
             "nullable": true
           },
+          "postState": {
+            "type": "string",
+            "nullable": true
+          },
           "deviceLabel": {
             "type": "string"
           },
@@ -388,6 +392,7 @@
           "kind",
           "text",
           "expectedResult",
+          "postState",
           "deviceLabel",
           "marks"
         ]
@@ -491,6 +496,11 @@
             "minLength": 1
           },
           "expectedResult": {
+            "type": "string",
+            "nullable": true,
+            "default": null
+          },
+          "postState": {
             "type": "string",
             "nullable": true,
             "default": null
@@ -854,6 +864,52 @@
           "recordedAt"
         ]
       },
+      "StepProblem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "txid": {
+            "type": "integer"
+          },
+          "flowRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stepId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "note": {
+            "type": "string"
+          },
+          "workaround": {
+            "type": "string",
+            "nullable": true
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "recordedBy": {
+            "type": "string"
+          },
+          "recordedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "flowRunId",
+          "stepId",
+          "note",
+          "workaround",
+          "blocking",
+          "recordedBy",
+          "recordedAt"
+        ]
+      },
       "Run": {
         "type": "object",
         "properties": {
@@ -889,6 +945,12 @@
             "items": {
               "$ref": "#/components/schemas/TestResult"
             }
+          },
+          "stepProblems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepProblem"
+            }
           }
         },
         "required": [
@@ -899,7 +961,8 @@
           "closedAt",
           "snapshot",
           "flowRuns",
-          "results"
+          "results",
+          "stepProblems"
         ]
       },
       "ClaimResponse": {
@@ -982,6 +1045,32 @@
         "required": [
           "stepId",
           "idempotencyKeyPrefix"
+        ]
+      },
+      "RecordStepProblem": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1
+          },
+          "workaround": {
+            "type": "string",
+            "nullable": true,
+            "default": null
+          },
+          "blocking": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "stepId",
+          "note"
         ]
       },
       "Attachment": {
@@ -1141,6 +1230,10 @@
             "minLength": 1
           },
           "expectedResult": {
+            "type": "string",
+            "nullable": true
+          },
+          "postState": {
             "type": "string",
             "nullable": true
           },
@@ -1315,6 +1408,71 @@
           "recordedAt"
         ]
       },
+      "StepProblemIssue": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": "object",
+            "properties": {
+              "flowId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "flow": {
+                "type": "string"
+              },
+              "stepId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "stepNumber": {
+                "type": "integer",
+                "minimum": 0,
+                "exclusiveMinimum": true
+              },
+              "stepText": {
+                "type": "string"
+              },
+              "device": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "flowId",
+              "flow",
+              "stepId",
+              "stepNumber",
+              "stepText",
+              "device"
+            ]
+          },
+          "note": {
+            "type": "string"
+          },
+          "workaround": {
+            "type": "string",
+            "nullable": true
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "recordedBy": {
+            "type": "string"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "context",
+          "note",
+          "workaround",
+          "blocking",
+          "recordedBy",
+          "recordedAt"
+        ]
+      },
       "IssueFeed": {
         "type": "object",
         "properties": {
@@ -1364,11 +1522,18 @@
             "items": {
               "$ref": "#/components/schemas/Issue"
             }
+          },
+          "stepProblems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepProblemIssue"
+            }
           }
         },
         "required": [
           "run",
-          "issues"
+          "issues",
+          "stepProblems"
         ]
       },
       "TestHistoryEntry": {
@@ -3013,6 +3178,87 @@
                   "items": {
                     "$ref": "#/components/schemas/TestResult"
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such flow run or step",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This step is blocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flow-runs/{flowRunId}/step-problems": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Flag a step as wrong",
+        "description": "\"The step, not the product\": the button moved, the wording is stale, the screen is gone (D40). Not a verdict — the tests the step marks can still be recorded. Either the tester got past it and `workaround` says how, or `blocking=true` closes the rest of the flow exactly as a blocking failure does (D11). One report per step per flow run; flagging again replaces it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowRunId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordStepProblem"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepProblem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

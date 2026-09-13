@@ -20,6 +20,7 @@ export interface StepInput {
   kind: StepKind;
   text: string;
   expectedResult: string | null;
+  postState: string | null;
   deviceLabel: string;
   marks: string[];
 }
@@ -117,6 +118,7 @@ export async function insertStep(flowId: string, position: number, input: StepIn
         kind: input.kind,
         text: input.text,
         expectedResult: input.kind === "assertion" ? input.expectedResult : null,
+        postState: input.postState,
         deviceLabel: input.deviceLabel,
       })
       .returning();

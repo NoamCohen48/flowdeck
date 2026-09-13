@@ -133,7 +133,7 @@ describe("reorder and derived hand-offs", () => {
     expect((await steps()).map((s) => s.id)).toEqual(reordered);
     const after = await devices();
     expect(after.find((d) => d.label === "Galaxy Tab")!.introducedAtIndex).toBe(0);
-    // Slots follow order of appearance (D39): the tablet is now device A.
+    // Slots follow order of appearance (D40): the tablet is now device A.
     expect(after.find((d) => d.label === "Galaxy Tab")!.letter).toBe("A");
   });
 

@@ -61,9 +61,9 @@ All paths are under `/api`. Writes need an identity (`X-Flowdeck-Actor` header o
 | `PATCH` | `/flows/{flowId}` | `{ name?, precondition?, estimatedMinutes? }` |
 | `DELETE` | `/flows/{flowId}` | Delete a flow and its steps |
 | `GET` | `/flows/{flowId}/devices` | Devices the flow uses, and the step that introduces each |
-| `POST` | `/flows/{flowId}/steps` | Insert `{ position, kind, text, expectedResult?, deviceLabel, marks? }` |
+| `POST` | `/flows/{flowId}/steps` | Insert `{ position, kind, text, expectedResult?, postState?, deviceLabel, marks? }` |
 | `PUT` | `/flows/{flowId}/steps/order` | `{ ids }` — reorder steps |
-| `PATCH` | `/steps/{stepId}` | `{ kind?, text?, expectedResult?, deviceLabel?, marks? }` — `marks` replaces the set |
+| `PATCH` | `/steps/{stepId}` | `{ kind?, text?, expectedResult?, postState?, deviceLabel?, marks? }` — `marks` replaces the set |
 | `DELETE` | `/steps/{stepId}` | Delete a step |
 | `PUT` | `/steps/{stepId}/marks/{testId}` | Mark a test on a step |
 | `DELETE` | `/steps/{stepId}/marks/{testId}` | Unmark |
@@ -80,6 +80,7 @@ All paths are under `/api`. Writes need an identity (`X-Flowdeck-Actor` header o
 | `POST` | `/runs/{runId}/flows/{flowId}/claim` | Claim a flow. `409` lists who else holds it; `?confirm=true` runs alongside |
 | `POST` | `/flow-runs/{flowRunId}/results` | `{ stepId, testId, verdict, note?, blocking?, idempotencyKey }` |
 | `POST` | `/flow-runs/{flowRunId}/pass-all` | `{ stepId, idempotencyKeyPrefix }` — pass every test the step marks |
+| `POST` | `/flow-runs/{flowRunId}/step-problems` | `{ stepId, note, workaround?, blocking? }` — flag a step as wrong; one per step per flow run, replaces |
 | `POST` | `/flow-runs/{flowRunId}/finish` | Finish |
 | `POST` | `/flow-runs/{flowRunId}/abandon` | Abandon — the next person starts from step 1 |
 

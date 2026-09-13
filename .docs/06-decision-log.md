@@ -358,3 +358,31 @@ replacing it with observed data.
 **Why:** Durations are noisy — interruptions, twenty minutes spent writing up a bug — and a median of
 four noisy samples is not clearly better than a careful guess. Deriving it would also require
 deciding how to treat abandoned and blocked runs. Not worth the machinery; it is one field.
+
+---
+
+### D40 — A step can be flagged as wrong, and a step can say where it leaves you
+
+**Chosen:** Two additions to the runner. A step carries an optional free-text *post state* —
+"afterwards, you should be on the channel list". A tester can flag a step as wrong (*Step is wrong*),
+saying what is wrong and whether they got past it: with a workaround, which is required and recorded,
+or not at all, which blocks the rest of the flow like a blocking failure (D11). It is not a verdict;
+the tests the step marks can still be recorded.
+
+**Rejected:** Leaving *skipped* to cover it. Skipped is per test, and says the *assertion* is stale.
+A stale *step* is a different thing: an action nobody can perform as written, possibly marking no
+test at all, that stops the tester in the middle of forty steps and thirty other tests.
+
+**Rejected:** A step-level verdict (pass/fail per step). It would reintroduce the per-step result the
+model deliberately does not have (D12), and a flagged step whose tests all pass is the common case.
+
+**Why:** In the old per-test model a tester who found a wrong step improvised — they knew the test's
+intent and got there some other way. Splitting steps from tests removed the information they
+improvised *from*: a step had an action and no destination. The post state gives the destination
+back; the flag gives the maintainer the report, in the tester's words, at the moment they had the
+most context. Same primitive as the failure dialog's "can you keep going?" — one click, no new
+vocabulary.
+
+**Accepted tradeoff:** Once improvisation is legal, a flow can rot while every run passes. Flag counts
+are therefore shown per finished flow run and the report lists every flagged step under *Steps to
+update*, so a half-improvised green day is visible as such.

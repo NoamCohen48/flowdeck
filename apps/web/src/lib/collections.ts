@@ -38,6 +38,18 @@ export type TestResultRow = {
   idempotency_key: string;
 };
 
+/** "This step is wrong" (D40): one per step per flow run, not a verdict. */
+export type StepProblemRow = {
+  id: string;
+  flow_run_id: string;
+  step_id: string;
+  note: string;
+  workaround: string | null;
+  blocking: boolean;
+  recorded_by: string;
+  recorded_at: string;
+};
+
 export type PresenceRow = {
   actor: string;
   scope: string;
@@ -121,6 +133,18 @@ export function resultsOf(runId: string) {
   );
 }
 
+export function stepProblemsOf(runId: string) {
+  return memo(`step_problems:${runId}`, () =>
+    createCollection(
+      electricCollectionOptions<StepProblemRow>({
+        id: `step_problems:${runId}`,
+        shapeOptions: { url: shapeUrl("run.step_problems"), params: { runId } },
+        getKey: (r) => r.id,
+      }),
+    ),
+  );
+}
+
 export function presenceOf(scope: string) {
   return memo(`presence:${scope}`, () =>
     createCollection(
@@ -169,6 +193,7 @@ export type StepRow = {
   kind: "action" | "assertion";
   text: string;
   expected_result: string | null;
+  post_state: string | null;
   device_label: string;
   updated_at: string;
 };
@@ -196,6 +221,7 @@ export function stepsOf(flowId: string) {
                     kind: r.kind,
                     text: r.text,
                     expectedResult: r.expected_result,
+                    postState: r.post_state,
                     deviceLabel: r.device_label,
                     marks: (m.metadata as { marks?: string[] } | undefined)?.marks ?? [],
                   },
@@ -228,6 +254,7 @@ export function stepsOf(flowId: string) {
                     ...(c.kind !== undefined ? { kind: c.kind } : {}),
                     ...(c.text !== undefined ? { text: c.text } : {}),
                     ...(c.expected_result !== undefined ? { expectedResult: c.expected_result } : {}),
+                    ...(c.post_state !== undefined ? { postState: c.post_state } : {}),
                     ...(c.device_label !== undefined ? { deviceLabel: c.device_label } : {}),
                   },
                 }),

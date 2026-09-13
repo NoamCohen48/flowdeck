@@ -42,3 +42,19 @@ export function computeBlocked(
     unverifiedTestIds,
   };
 }
+
+/**
+ * Where a flow stops. Two things can wedge it: a failure the tester said blocks
+ * (D11), and a step the tester flagged as wrong and could not get past (D40).
+ * Both feed `computeBlocked` the same way — the earliest one wins, and nothing
+ * after it is verifiable.
+ */
+export function blockingStepIndex(
+  steps: readonly { readonly id: string }[],
+  blockers: readonly { readonly stepId: string; readonly blocking: boolean }[],
+): number | undefined {
+  const blockingIds = new Set(blockers.filter((b) => b.blocking).map((b) => b.stepId));
+  if (!blockingIds.size) return undefined;
+  const index = steps.findIndex((s) => blockingIds.has(s.id));
+  return index === -1 ? undefined : index;
+}

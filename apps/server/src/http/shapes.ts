@@ -48,6 +48,13 @@ const SHAPES: Record<string, ShapeDefinition> = {
     where: (p) =>
       `flow_run_id in (select id from flow_run where run_id = '${p.runId}')`,
   },
+  /** Steps flagged as wrong (D40), beside the verdicts they sit among. */
+  "run.step_problems": {
+    table: "step_problem",
+    required: ["runId"],
+    where: (p) =>
+      `flow_run_id in (select id from flow_run where run_id = '${p.runId}')`,
+  },
   /** "Dana is editing this flow", "Ori is on this run" (D37). */
   presence: {
     table: "presence",

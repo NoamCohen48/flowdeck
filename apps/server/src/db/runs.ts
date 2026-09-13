@@ -6,7 +6,7 @@
  */
 import { and, asc, desc, eq, sql as raw } from "drizzle-orm";
 import { db, query } from "./client.ts";
-import { attachment, flowRun, run, testResult } from "./schema.ts";
+import { attachment, flowRun, run, stepProblem, testResult } from "./schema.ts";
 import type { FlowRunState, StepKind, Verdict } from "@flowdeck/domain";
 
 /* ── The snapshot ────────────────────────────────────────────────────── */
@@ -17,6 +17,7 @@ export interface SnapshotStep {
   kind: StepKind;
   text: string;
   expectedResult: string | null;
+  postState: string | null;
   deviceLabel: string;
   marks: string[];
 }
@@ -70,7 +71,8 @@ export async function snapshotTemplate(
           'steps', (
             select coalesce(jsonb_agg(jsonb_build_object(
               'id', s.id, 'position', s.position, 'kind', s.kind, 'text', s.text,
-              'expectedResult', s.expected_result, 'deviceLabel', s.device_label,
+              'expectedResult', s.expected_result, 'postState', s.post_state,
+              'deviceLabel', s.device_label,
               'marks', (select coalesce(jsonb_agg(sm.test_id), '[]'::jsonb)
                         from step_mark sm where sm.step_id = s.id)
             ) order by s.position), '[]'::jsonb)
@@ -154,11 +156,18 @@ export async function getRun(runId: string) {
     .innerJoin(flowRun, eq(flowRun.id, testResult.flowRunId))
     .where(eq(flowRun.runId, runId))
     .orderBy(asc(testResult.recordedAt));
+  const stepProblems = await db
+    .select()
+    .from(stepProblem)
+    .innerJoin(flowRun, eq(flowRun.id, stepProblem.flowRunId))
+    .where(eq(flowRun.runId, runId))
+    .orderBy(asc(stepProblem.recordedAt));
   return {
     ...r,
     snapshot: r.templateSnapshot as TemplateSnapshot,
     flowRuns,
     results: results.map((row) => row.test_result),
+    stepProblems: stepProblems.map((row) => row.step_problem),
   };
 }
 
@@ -310,6 +319,35 @@ export async function recordResult(input: RecordResultInput) {
       .onConflictDoUpdate({
         target: testResult.idempotencyKey,
         set: { verdict: input.verdict, note: input.note, blocking: input.blocking },
+      })
+      .returning();
+    return { row: row!, txid: await currentTxid(tx) };
+  });
+}
+
+/* ── Step problems (D40) ─────────────────────────────────────────────── */
+
+export interface RecordStepProblemInput {
+  flowRunId: string;
+  stepId: string;
+  note: string;
+  workaround: string | null;
+  blocking: boolean;
+  recordedBy: string;
+}
+
+/**
+ * One report per step per flow run. Flagging the same step again replaces the
+ * earlier report — the tester rewrote it, and the latest wording stands.
+ */
+export async function recordStepProblem(input: RecordStepProblemInput) {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(stepProblem)
+      .values(input)
+      .onConflictDoUpdate({
+        target: [stepProblem.flowRunId, stepProblem.stepId],
+        set: { note: input.note, workaround: input.workaround, blocking: input.blocking, recordedBy: input.recordedBy, recordedAt: new Date() },
       })
       .returning();
     return { row: row!, txid: await currentTxid(tx) };

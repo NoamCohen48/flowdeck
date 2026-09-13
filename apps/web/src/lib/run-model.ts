@@ -7,9 +7,9 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLiveQuery } from "@tanstack/react-db";
-import { computeBlocked, worstResultByTest, type Verdict } from "@flowdeck/domain";
+import { blockingStepIndex, computeBlocked, worstResultByTest, type Verdict } from "@flowdeck/domain";
 import { api, unwrap, type Run, type SnapshotFlow } from "./api.ts";
-import { flowRunsOf, resultsOf, type FlowRunRow, type TestResultRow } from "./collections.ts";
+import { flowRunsOf, resultsOf, stepProblemsOf, type FlowRunRow, type StepProblemRow, type TestResultRow } from "./collections.ts";
 
 export function useRun(runId: string) {
   return useQuery({
@@ -31,6 +31,12 @@ export function useLiveResults(runId: string) {
   const coll = resultsOf(runId);
   const q = useLiveQuery(() => coll, [coll]);
   return { rows: (q.data ?? []) as TestResultRow[], ready: q.isReady };
+}
+
+export function useLiveStepProblems(runId: string) {
+  const coll = stepProblemsOf(runId);
+  const q = useLiveQuery(() => coll, [coll]);
+  return { rows: (q.data ?? []) as StepProblemRow[], ready: q.isReady };
 }
 
 export interface FlowProgress {
@@ -100,16 +106,21 @@ export function useRunBoard(runId: string) {
   }, [run.data, flowRuns, results]);
 }
 
-/** One tester's view of one flow: their results, and what a blocking failure closed. */
-export function flowRunView(flow: SnapshotFlow, flowRunId: string, results: TestResultRow[]) {
+/**
+ * One tester's view of one flow: their results, the steps they flagged as wrong
+ * (D40), and what a blocking failure or a step they could not get past closed.
+ */
+export function flowRunView(flow: SnapshotFlow, flowRunId: string, results: TestResultRow[], problems: StepProblemRow[] = []) {
   const mine = results.filter((r) => r.flow_run_id === flowRunId);
   const byStepTest = new Map<string, TestResultRow>();
   for (const r of mine) byStepTest.set(`${r.step_id}|${r.test_id}`, r);
+  const problemByStep = new Map<string, StepProblemRow>();
+  for (const p of problems) if (p.flow_run_id === flowRunId) problemByStep.set(p.step_id, p);
 
-  const blockingIndex = flow.steps.findIndex((s) =>
-    mine.some((r) => r.step_id === s.id && r.verdict === "fail" && r.blocking),
-  );
-  const blocked = computeBlocked(flow.steps, blockingIndex === -1 ? undefined : blockingIndex);
+  const blocked = computeBlocked(flow.steps, blockingStepIndex(flow.steps, [
+    ...mine.filter((r) => r.verdict === "fail").map((r) => ({ stepId: r.step_id, blocking: r.blocking })),
+    ...[...problemByStep.values()].map((p) => ({ stepId: p.step_id, blocking: p.blocking })),
+  ]));
 
   // The step the tester is "on": the first with a marked test lacking a verdict.
   const currentIndex = (() => {
@@ -124,5 +135,5 @@ export function flowRunView(flow: SnapshotFlow, flowRunId: string, results: Test
   for (const r of mine) counts[r.verdict] += 1;
   const total = new Set(flow.steps.flatMap((s) => s.marks)).size;
 
-  return { mine, byStepTest, blocked, currentIndex, counts, total, remaining: total - mine.length };
+  return { mine, byStepTest, problemByStep, blocked, currentIndex, counts, total, remaining: total - mine.length };
 }

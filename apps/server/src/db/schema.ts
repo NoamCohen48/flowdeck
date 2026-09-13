@@ -153,6 +153,10 @@ export const step = pgTable(
     /** Shown for assertions only. The asymmetry is informative: an expected
         result appearing means "stop and look". */
     expectedResult: text("expected_result"),
+    /** Where the tester should be once the step is done, in their words (D40).
+        Optional, on either kind. It is what lets a tester improvise past a stale
+        step — "however you get there, you should now see the contact list". */
+    postState: text("post_state"),
     /** Free text (D16). The step that first uses a label introduces that device;
         that fact is computed, never stored — see `computeHandoffs`. */
     deviceLabel: text("device_label").notNull(),
@@ -282,6 +286,39 @@ export const testResult = pgTable(
     check(
       "test_result_blocking_only_on_fail",
       sql`${t.blocking} = false or ${t.verdict} = 'fail'`,
+    ),
+  ],
+);
+
+/* ── StepProblem ─────────────────────────────────────────────────────────
+   "This step is wrong" (D40). A statement about the flow, not the product —
+   the button moved, the wording is stale, the screen is gone. One per step per
+   FlowRun. The tester says whether they got past it: with a workaround, which
+   is what the maintainer needs to fix the step, or not at all, which blocks the
+   rest of the flow exactly as a blocking failure does (D11). */
+
+export const stepProblem = pgTable(
+  "step_problem",
+  {
+    id: id(),
+    flowRunId: uuid("flow_run_id")
+      .notNull()
+      .references(() => flowRun.id, { onDelete: "cascade" }),
+    stepId: uuid("step_id").notNull(),
+    /** What is wrong with the step. Required — it is the maintainer's brief. */
+    note: text("note").notNull(),
+    /** How the tester got to where the step should have left them. Required unless blocking. */
+    workaround: text("workaround"),
+    blocking: boolean("blocking").notNull().default(false),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("step_problem_once_per_step").on(t.flowRunId, t.stepId),
+    check("step_problem_note_required", sql`length(btrim(${t.note})) > 0`),
+    check(
+      "step_problem_workaround_or_blocked",
+      sql`${t.blocking} or (${t.workaround} is not null and length(btrim(${t.workaround})) > 0)`,
     ),
   ],
 );

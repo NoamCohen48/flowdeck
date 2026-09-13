@@ -401,3 +401,68 @@ describe("transaction ids for optimistic reconciliation", () => {
 });
 
 process.on("beforeExit", () => void sql.end());
+
+describe("flagging a step as wrong (D40)", () => {
+  async function claimed() {
+    const run = await freshRun();
+    const flow = run.snapshot.flows.find((f) => f.name.startsWith("Messaging across"))!;
+    const { body } = await call<{ flowRun: { id: string } }>(
+      `/api/runs/${run.id}/flows/${flow.id}/claim`,
+      { method: "POST", headers: { cookie: noa } },
+    );
+    return { run, flow, flowRunId: body.flowRun.id };
+  }
+  type Problem = { id: string; stepId: string; note: string; workaround: string | null; blocking: boolean; recordedBy: string };
+  type RunWithProblems = Run & { stepProblems: Problem[] };
+
+  test("a workaround is required unless the step blocks the rest of the flow", async () => {
+    const { flow, flowRunId } = await claimed();
+    const step = flow.steps[2]!;
+    const bare = await call(`/api/flow-runs/${flowRunId}/step-problems`, json({ stepId: step.id, note: "The button is gone" }, noa));
+    expect(bare.status).toBe(400);
+    const ok = await call<Problem>(
+      `/api/flow-runs/${flowRunId}/step-problems`,
+      json({ stepId: step.id, note: "The button is gone", workaround: "Used the menu instead" }, noa),
+    );
+    expect(ok.status).toBe(201);
+    expect(ok.body.recordedBy).toBe("Noa");
+    expect(ok.body.blocking).toBe(false);
+  });
+
+  test("flagging the same step again replaces the report; the tests on it still record", async () => {
+    const { flow, flowRunId, run } = await claimed();
+    const step = flow.steps.find((s) => s.marks.length === 1)!;
+    await call(`/api/flow-runs/${flowRunId}/step-problems`, json({ stepId: step.id, note: "first wording", workaround: "a" }, noa));
+    await call(`/api/flow-runs/${flowRunId}/step-problems`, json({ stepId: step.id, note: "second wording", workaround: "b" }, noa));
+    const verdict = await call(`/api/flow-runs/${flowRunId}/results`, json({ stepId: step.id, testId: step.marks[0], verdict: "pass", idempotencyKey: `t-${Date.now()}-stale-pass` }, noa));
+    expect(verdict.status).toBe(201);
+    const state = (await call<RunWithProblems>(`/api/runs/${run.id}`)).body;
+    const mine = state.stepProblems.filter((p) => p.stepId === step.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]!.note).toBe("second wording");
+  });
+
+  test("a step the tester could not get past blocks what follows, like a blocking failure (D11)", async () => {
+    const { flow, flowRunId, run } = await claimed();
+    const at = flow.steps.findIndex((s) => s.marks.length > 0);
+    const stuck = flow.steps[at]!;
+    const later = flow.steps.slice(at + 1).find((s) => s.marks.length > 0)!;
+    const flagged = await call<Problem>(`/api/flow-runs/${flowRunId}/step-problems`, json({ stepId: stuck.id, note: "The screen no longer exists", blocking: true, workaround: "ignored" }, noa));
+    expect(flagged.status).toBe(201);
+    expect(flagged.body.workaround).toBeNull();
+
+    const refused = await call(`/api/flow-runs/${flowRunId}/results`, json({ stepId: later.id, testId: later.marks[0], verdict: "pass", idempotencyKey: `t-${Date.now()}-after-stuck` }, noa));
+    expect(refused.status).toBe(409);
+    const alsoRefused = await call(`/api/flow-runs/${flowRunId}/step-problems`, json({ stepId: later.id, note: "never reached", workaround: "x" }, noa));
+    expect(alsoRefused.status).toBe(409);
+
+    // The flagged step itself was reached: its own tests can still be recorded.
+    const own = await call(`/api/flow-runs/${flowRunId}/results`, json({ stepId: stuck.id, testId: stuck.marks[0], verdict: "skipped", note: "cannot judge", idempotencyKey: `t-${Date.now()}-own` }, noa));
+    expect(own.status).toBe(201);
+
+    const feed = (await call<{ issues: unknown[]; stepProblems: { context: { stepNumber: number }; blocking: boolean }[] }>(`/api/runs/${run.id}/issues`)).body;
+    expect(feed.stepProblems).toHaveLength(1);
+    expect(feed.stepProblems[0]!.context.stepNumber).toBe(at + 1);
+    expect(feed.stepProblems[0]!.blocking).toBe(true);
+  });
+});

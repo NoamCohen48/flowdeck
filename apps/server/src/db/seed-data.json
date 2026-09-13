@@ -326,7 +326,8 @@
                   "text": "Install the release build on the Pixel and open it.",
                   "expectedResult": null,
                   "deviceLabel": "Pixel 8",
-                  "marks": []
+                  "marks": [],
+                  "postState": "The app is open on its first screen."
                 },
                 {
                   "kind": "assertion",
@@ -342,7 +343,8 @@
                   "text": "Enter the QA email and a deliberately wrong password, then tap Sign in.",
                   "expectedResult": null,
                   "deviceLabel": "Pixel 8",
-                  "marks": []
+                  "marks": [],
+                  "postState": "Still on the sign-in screen, with the error showing."
                 },
                 {
                   "kind": "assertion",

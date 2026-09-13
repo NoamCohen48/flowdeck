@@ -6,14 +6,14 @@
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { computeHandoffs } from "@flowdeck/domain";
 import { api, unwrap } from "../lib/api.ts";
-import { useLiveResults, useRunBoard, type FlowProgress } from "../lib/run-model.ts";
+import { useLiveResults, useLiveStepProblems, useRunBoard, type FlowProgress } from "../lib/run-model.ts";
 import { worstResultByTest, type Verdict } from "@flowdeck/domain";
 import { useMe } from "../lib/identity.tsx";
 import { usePeers, usePresence } from "../lib/presence.ts";
 import { useTitle } from "../lib/title.ts";
 import { DeviceChip } from "../components/Device.tsx";
 import { Bar, Kpis } from "../components/Progress.tsx";
-import { IssueCard, useIssues } from "../components/Issues.tsx";
+import { IssueCard, StepProblemCard, useIssues } from "../components/Issues.tsx";
 import { useClaim } from "../components/ClaimDialog.tsx";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -24,7 +24,8 @@ export function Day() {
   const here = usePeers(`run:${runId}`);
   const qc = useQueryClient();
   useTitle(board ? `Testing day · ${board.run.snapshot.name} — Flowdeck` : "Flowdeck");
-  const resultCount = board ? board.flows.reduce((n, f) => n + Object.values(f.counts).reduce((a, b) => a + b, 0), 0) : 0;
+  const { rows: stepProblems } = useLiveStepProblems(runId);
+  const resultCount = (board ? board.flows.reduce((n, f) => n + Object.values(f.counts).reduce((a, b) => a + b, 0), 0) : 0) + stepProblems.length;
   const issues = useIssues(runId, resultCount);
 
   async function close(reopen: boolean) {
@@ -77,6 +78,18 @@ export function Day() {
         <p className="meta">{issues.data ? "Nothing has gone wrong so far." : "…"}</p>
       )}
       {notReached ? <p className="meta" style={{ marginTop: 12 }}>{notReached} test{notReached === 1 ? "" : "s"} not reached yet — in scope, with no result at all.</p> : null}
+
+      {issues.data?.stepProblems.length ? (
+        <>
+          <h2>Steps to update</h2>
+          <p className="meta" style={{ margin: "-6px 0 12px" }}>
+            Flagged by testers as wrong — the flow, not the product. Fix them in the template before the next day.
+          </p>
+          <div className="stack">
+            {issues.data.stepProblems.map((p, n) => <StepProblemCard key={n} feed={issues.data!} problem={p} productId={productId} templateId={run.templateId} />)}
+          </div>
+        </>
+      ) : null}
 
       <p className="meta" style={{ marginTop: 24 }}>
         This day runs against a snapshot of the template taken at{" "}
@@ -138,6 +151,8 @@ function FlowCard({ productId, runId, progress }: { productId: string; runId: st
 /** One finished run of a flow: who, when, and the verdicts they recorded. */
 function ResultRow({ productId, runId, flowRunId, by, at, testCount }: { productId: string; runId: string; flowRunId: string; by: string; at: string | null; testCount: number }) {
   const { rows } = useLiveResults(runId);
+  const { rows: problems } = useLiveStepProblems(runId);
+  const flagged = problems.filter((p) => p.flow_run_id === flowRunId).length;
   const mine = rows.filter((r) => r.flow_run_id === flowRunId);
   const worst = worstResultByTest(mine.map((r) => ({ testId: r.test_id, verdict: r.verdict })));
   const counts: Record<Verdict, number> = { pass: 0, fail: 0, minor: 0, skipped: 0 };
@@ -150,6 +165,7 @@ function ResultRow({ productId, runId, flowRunId, by, at, testCount }: { product
         <b dir="auto">{by}</b>
         <span className="meta">
           {when ? `Finished ${when.toLocaleDateString(undefined, { day: "numeric", month: "short" })} at ${when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}` : "Finished"} · {worst.size} of {testCount} tests reached
+          {flagged ? ` · ${flagged} step${flagged === 1 ? "" : "s"} flagged as wrong` : ""}
         </span>
       </span>
       <span className="tally">

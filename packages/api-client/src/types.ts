@@ -1431,6 +1431,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/flow-runs/{flowRunId}/step-problems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Flag a step as wrong
+         * @description "The step, not the product": the button moved, the wording is stale, the screen is gone (D40). Not a verdict — the tests the step marks can still be recorded. Either the tester got past it and `workaround` says how, or `blocking=true` closes the rest of the flow exactly as a blocking failure does (D11). One report per step per flow run; flagging again replaces it.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    flowRunId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RecordStepProblem"];
+                };
+            };
+            responses: {
+                /** @description Recorded */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StepProblem"];
+                    };
+                };
+                /** @description Invalid */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No identity */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description No such flow run or step */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description This step is blocked */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/results/{resultId}/attachments": {
         parameters: {
             query?: never;
@@ -2516,6 +2597,7 @@ export interface components {
             kind: "action" | "assertion";
             text: string;
             expectedResult: string | null;
+            postState: string | null;
             deviceLabel: string;
             marks: string[];
         };
@@ -2547,6 +2629,8 @@ export interface components {
             text: string;
             /** @default null */
             expectedResult: string | null;
+            /** @default null */
+            postState: string | null;
             deviceLabel: string;
             /** @default [] */
             marks: string[];
@@ -2648,6 +2732,20 @@ export interface components {
             recordedBy: string;
             recordedAt: string;
         };
+        StepProblem: {
+            /** Format: uuid */
+            id: string;
+            txid?: number;
+            /** Format: uuid */
+            flowRunId: string;
+            /** Format: uuid */
+            stepId: string;
+            note: string;
+            workaround: string | null;
+            blocking: boolean;
+            recordedBy: string;
+            recordedAt: string;
+        };
         Run: {
             /** Format: uuid */
             id: string;
@@ -2659,6 +2757,7 @@ export interface components {
             snapshot: components["schemas"]["TemplateSnapshot"];
             flowRuns: components["schemas"]["FlowRun"][];
             results: components["schemas"]["TestResult"][];
+            stepProblems: components["schemas"]["StepProblem"][];
         };
         ClaimResponse: {
             flowRun: components["schemas"]["FlowRun"];
@@ -2682,6 +2781,15 @@ export interface components {
             /** Format: uuid */
             stepId: string;
             idempotencyKeyPrefix: string;
+        };
+        RecordStepProblem: {
+            /** Format: uuid */
+            stepId: string;
+            note: string;
+            /** @default null */
+            workaround: string | null;
+            /** @default false */
+            blocking: boolean;
         };
         Attachment: {
             /** Format: uuid */
@@ -2724,6 +2832,7 @@ export interface components {
             kind?: "action" | "assertion";
             text?: string;
             expectedResult?: string | null;
+            postState?: string | null;
             deviceLabel?: string;
             marks?: string[];
         };
@@ -2771,6 +2880,24 @@ export interface components {
             /** Format: date-time */
             recordedAt: string;
         };
+        StepProblemIssue: {
+            context: {
+                /** Format: uuid */
+                flowId: string;
+                flow: string;
+                /** Format: uuid */
+                stepId: string;
+                stepNumber: number;
+                stepText: string;
+                device: string;
+            };
+            note: string;
+            workaround: string | null;
+            blocking: boolean;
+            recordedBy: string;
+            /** Format: date-time */
+            recordedAt: string;
+        };
         IssueFeed: {
             run: {
                 /** Format: uuid */
@@ -2787,6 +2914,7 @@ export interface components {
                 templateId: string;
             };
             issues: components["schemas"]["Issue"][];
+            stepProblems: components["schemas"]["StepProblemIssue"][];
         };
         TestHistoryEntry: {
             /** Format: uuid */

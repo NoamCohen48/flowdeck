@@ -131,6 +131,9 @@ Rules:
 - `deviceLabel` is free text. The first step to use a label is where the tester is told to pick
   that device up; there is no device registry to create first.
 - `expectedResult` is shown for `assertion` steps and may be `null` for `action` steps.
+- `postState` is optional on either kind: where the tester should be once the step is done
+  ("back on the channel list, the new message at the bottom"). It is what a tester improvises
+  toward when the step itself has gone stale.
 
 A complete example lives in [`examples/import-bundle.json`](examples/import-bundle.json), with
 [`examples/import.sh`](examples/import.sh) to send it.
@@ -215,6 +218,7 @@ GET  /api/runs/{runId}                            snapshot, flow runs, every res
 POST /api/runs/{runId}/flows/{flowId}/claim       claim a flow (409 lists who else is on it; ?confirm=true)
 POST /api/flow-runs/{flowRunId}/results           one verdict for one test on one step
 POST /api/flow-runs/{flowRunId}/pass-all          pass every test a step marks
+POST /api/flow-runs/{flowRunId}/step-problems     flag a step as wrong (the flow, not the product)
 POST /api/flow-runs/{flowRunId}/finish | abandon
 POST /api/runs/{runId}/close                      bookkeeping; ?reopen=true undoes it
 ```
@@ -223,6 +227,12 @@ A verdict is `pass`, `fail`, `minor` or `skipped`. `fail` and `skipped` require 
 only `fail` may be `blocking`. Every result carries a client-chosen `idempotencyKey` (8–200
 characters) so a retried request records once. Screenshots go to
 `POST /api/results/{resultId}/attachments` as `multipart/form-data` with a `file` field.
+
+A step problem is not a verdict: `{ stepId, note, workaround?, blocking? }` says the step is
+stale — the button moved, the screen is gone — and whether the tester got past it. Either
+`workaround` says how, or `blocking: true` closes the rest of the flow exactly as a blocking
+failure does. One per step per flow run; sending it again replaces the earlier report. The tests
+the step marks can still be recorded.
 
 ## Getting results out
 
@@ -258,6 +268,10 @@ attachments, who and when — so it can become a ticket without a second lookup.
 
 Flowdeck labels; the adapter decides. It does not filter, and it does not talk to any tracker
 itself.
+
+The feed also carries `stepProblems`: every step a tester flagged as wrong, with the same
+`context` block, the `note`, the `workaround` (or `blocking: true`), who and when. They are the
+to-do list for whoever maintains the flows, not bugs, and sit beside `issues` rather than in it.
 
 `GET /api/tests/{testId}/history` is the same data pivoted the other way: one test across every
 run it appeared in. `GET /api/products/{productId}/runs` lists a product's runs, newest first.

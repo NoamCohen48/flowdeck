@@ -10,6 +10,7 @@ import { api, unwrap, type Schemas } from "../lib/api.ts";
 
 export type Issue = Schemas["Issue"];
 export type IssueFeed = Schemas["IssueFeed"];
+export type StepProblemIssue = Schemas["StepProblemIssue"];
 
 /** `version` changes whenever live results do, so the REST feed refetches behind the stream. */
 export function useIssues(runId: string, version: number) {
@@ -73,6 +74,52 @@ export function IssueCard({ feed, issue, productId, runId }: { feed: IssueFeed; 
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * A step a tester flagged as wrong (D40). Not a bug: the to-do for whoever
+ * maintains the flow, so the card leads to the editor rather than the library.
+ */
+export function StepProblemCard({ feed, problem, productId, templateId }: { feed: IssueFeed; problem: StepProblemIssue; productId: string; templateId: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    const lines = [
+      `Step is wrong: ${feed.run.template} → ${problem.context.flow}, step ${problem.context.stepNumber} on ${problem.context.device}`,
+      `Step: ${problem.context.stepText}`,
+      ``,
+      `What is wrong: ${problem.note}`,
+      problem.blocking ? `Could not get past it — the rest of the flow was blocked.` : `Got past it: ${problem.workaround}`,
+      ``,
+      `Reported by ${problem.recordedBy} on ${new Date(problem.recordedAt).toLocaleString()} (${feed.run.product})`,
+    ];
+    await navigator.clipboard.writeText(lines.join("\n"));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+  return (
+    <div className="panel pad">
+      <div className="row-split">
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <span className="pill skip"><span className="dot" />Step is wrong</span>
+          <h3 style={{ margin: "8px 0 2px" }} dir="auto">{problem.context.flow}, step {problem.context.stepNumber}</h3>
+          <p className="meta" style={{ margin: 0 }} dir="auto">
+            {problem.context.stepText} · on {problem.context.device} · {problem.recordedBy}
+            {problem.blocking ? " · blocked the rest of the flow" : ""}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button className="btn sm" onClick={() => void copy()}>{copied ? "Copied" : "Copy as ticket"}</button>
+          <Link className="btn sm" to="/products/$productId/templates/$templateId/flows/$flowId" params={{ productId, templateId, flowId: problem.context.flowId }} hash={`step-${problem.context.stepId}`}>
+            Fix the step
+          </Link>
+        </div>
+      </div>
+      <div className="note skp" style={{ marginLeft: 0 }} dir="auto">
+        {problem.note}
+        {problem.workaround ? <><br /><b>Got past it:</b> {problem.workaround}</> : null}
+      </div>
     </div>
   );
 }

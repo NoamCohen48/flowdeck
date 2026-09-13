@@ -145,6 +145,8 @@ export const StepSchema = z
     kind: StepKindSchema,
     text: z.string(),
     expectedResult: z.string().nullable(),
+    /** Where the tester should be once the step is done (D40). Optional, either kind. */
+    postState: z.string().nullable(),
     deviceLabel: z.string(),
     marks: z.array(Uuid),
   })
@@ -155,6 +157,7 @@ export const CreateStepSchema = z
     kind: StepKindSchema,
     text: z.string().min(1),
     expectedResult: z.string().nullable().default(null),
+    postState: z.string().nullable().default(null),
     /** Free text (D16). The first step to use a label introduces that device. */
     deviceLabel: z.string().min(1),
     marks: z.array(Uuid).default([]),
@@ -247,6 +250,25 @@ export const IssueSchema = z
   })
   .openapi("Issue");
 
+/** A flagged step in the feed: the suite-maintenance side of the day (D40). */
+export const StepProblemIssueSchema = z
+  .object({
+    context: z.object({
+      flowId: Uuid,
+      flow: z.string(),
+      stepId: Uuid,
+      stepNumber: z.number().int().positive(),
+      stepText: z.string(),
+      device: z.string(),
+    }),
+    note: z.string(),
+    workaround: z.string().nullable(),
+    blocking: z.boolean(),
+    recordedBy: z.string(),
+    recordedAt: z.string().datetime(),
+  })
+  .openapi("StepProblemIssue");
+
 export const IssueFeedSchema = z
   .object({
     run: z.object({
@@ -259,6 +281,8 @@ export const IssueFeedSchema = z
       templateId: Uuid,
     }),
     issues: z.array(IssueSchema),
+    /** Steps testers flagged as wrong. Not verdicts on the product; the to-do list for whoever maintains the flows. */
+    stepProblems: z.array(StepProblemIssueSchema),
   })
   .openapi("IssueFeed");
 
@@ -305,6 +329,7 @@ export const UpdateStepSchema = z
     kind: StepKindSchema.optional(),
     text: z.string().min(1).optional(),
     expectedResult: z.string().nullable().optional(),
+    postState: z.string().nullable().optional(),
     deviceLabel: z.string().min(1).optional(),
     /** Replaces the step's marks when present. */
     marks: z.array(Uuid).optional(),
@@ -471,6 +496,46 @@ export const TestResultSchema = z
   })
   .openapi("TestResult");
 
+/**
+ * "This step is wrong" (D40). A statement about the flow, not the product; one
+ * per step per flow run. Either the tester got past it — `workaround` says how,
+ * and is required — or they did not, and `blocking` closes the rest of the flow.
+ */
+export const StepProblemSchema = z
+  .object({
+    id: Uuid,
+    txid: Txid.optional(),
+    flowRunId: Uuid,
+    stepId: Uuid,
+    note: z.string(),
+    workaround: z.string().nullable(),
+    blocking: z.boolean(),
+    recordedBy: z.string(),
+    recordedAt: z.string(),
+  })
+  .openapi("StepProblem");
+
+export const RecordStepProblemSchema = z
+  .object({
+    stepId: Uuid,
+    /** What is wrong with the step — the maintainer's brief. */
+    note: z.string().trim().min(1),
+    /** How the tester reached where the step should have left them. Required unless blocking. */
+    workaround: z.string().trim().nullable().default(null),
+    /** Could not get past it: the rest of the flow is blocked, as with a blocking failure (D11). */
+    blocking: z.boolean().default(false),
+  })
+  .superRefine((v, ctx) => {
+    if (!v.blocking && !v.workaround) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["workaround"],
+        message: "Say how you got past the step, or mark it as blocking the rest of the flow.",
+      });
+    }
+  })
+  .openapi("RecordStepProblem");
+
 export const RunSummarySchema = z
   .object({
     id: Uuid,
@@ -492,6 +557,7 @@ export const RunSchema = z
     snapshot: TemplateSnapshotSchema,
     flowRuns: z.array(FlowRunSchema),
     results: z.array(TestResultSchema),
+    stepProblems: z.array(StepProblemSchema),
   })
   .openapi("Run");
 

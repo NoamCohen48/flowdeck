@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { computeBlocked } from "./blocking.ts";
+import { blockingStepIndex, computeBlocked } from "./blocking.ts";
 import type { StepLike } from "./types.ts";
 
 const step = (id: string, marks: string[] = []): StepLike => ({
@@ -63,5 +63,25 @@ describe("computeBlocked (D11)", () => {
         },
       ),
     );
+  });
+});
+
+describe("blockingStepIndex (D11, D40)", () => {
+  test("nothing blocks when no blocker is marked blocking", () => {
+    expect(blockingStepIndex(steps, [{ stepId: "2", blocking: false }])).toBeUndefined();
+    expect(blockingStepIndex(steps, [])).toBeUndefined();
+  });
+
+  test("the earliest blocker in step order wins, whatever order it was recorded in", () => {
+    const blockers = [
+      { stepId: "4", blocking: true },
+      { stepId: "2", blocking: true },
+      { stepId: "1", blocking: false },
+    ];
+    expect(blockingStepIndex(steps, blockers)).toBe(1);
+  });
+
+  test("a blocker on a step not in the flow is ignored", () => {
+    expect(blockingStepIndex(steps, [{ stepId: "nope", blocking: true }])).toBeUndefined();
   });
 });

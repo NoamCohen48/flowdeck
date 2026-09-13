@@ -57,6 +57,7 @@ export interface StepRow {
   kind: "action" | "assertion";
   text: string;
   expectedResult: string | null;
+  postState: string | null;
   deviceLabel: string;
   marks: string[];
 }
@@ -68,6 +69,7 @@ export function stepDto(row: StepRow) {
     kind: row.kind,
     text: row.text,
     expectedResult: row.expectedResult,
+    postState: row.postState,
     deviceLabel: row.deviceLabel,
     marks: row.marks,
   };
@@ -161,6 +163,28 @@ export function resultDto(row: {
   };
 }
 
+export function stepProblemDto(row: {
+  id: string;
+  flowRunId: string;
+  stepId: string;
+  note: string;
+  workaround: string | null;
+  blocking: boolean;
+  recordedBy: string;
+  recordedAt: Date | string;
+}) {
+  return {
+    id: row.id,
+    flowRunId: row.flowRunId,
+    stepId: row.stepId,
+    note: row.note,
+    workaround: row.workaround,
+    blocking: row.blocking,
+    recordedBy: row.recordedBy,
+    recordedAt: iso(row.recordedAt),
+  };
+}
+
 export function runDto(row: {
   id: string;
   templateId: string;
@@ -170,6 +194,7 @@ export function runDto(row: {
   snapshot: unknown;
   flowRuns: Parameters<typeof flowRunDto>[0][];
   results: Parameters<typeof resultDto>[0][];
+  stepProblems: Parameters<typeof stepProblemDto>[0][];
 }) {
   return {
     id: row.id,
@@ -180,5 +205,6 @@ export function runDto(row: {
     snapshot: row.snapshot as import("../db/runs.ts").TemplateSnapshot,
     flowRuns: row.flowRuns.map(flowRunDto),
     results: row.results.map(resultDto),
+    stepProblems: row.stepProblems.map(stepProblemDto),
   };
 }

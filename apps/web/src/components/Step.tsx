@@ -24,3 +24,59 @@ export function TestsIcon() {
     </svg>
   );
 }
+
+/**
+ * Where the tester should be once the step is done (D40). Quieter than the
+ * expected-result block on purpose: "Expected" means stop and look; this is
+ * orientation, the thing a tester improvises toward when the step itself is stale.
+ */
+export function PostState({ text }: { text: string | null | undefined }) {
+  if (!text) return null;
+  return (
+    <p className="after" dir="auto">
+      <span className="lbl">Afterwards</span>
+      {text}
+    </p>
+  );
+}
+
+export function FlagIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3.5 14V2.5" />
+      <path d="M3.5 3h8.2l-1.6 3 1.6 3H3.5" />
+    </svg>
+  );
+}
+
+/**
+ * A step the tester flagged as wrong (D40): what is wrong, and whether they got
+ * past it. Grey like a skipped test, and for the same reason — it is a statement
+ * about the flow, not about the product.
+ */
+export function StepProblemNote({
+  note, workaround, blocking, by, onUndo,
+}: {
+  note: string; workaround: string | null; blocking: boolean; by?: string; onUndo?: () => void;
+}) {
+  return (
+    <div className="stale" role="note">
+      <div className="head">
+        <FlagIcon />
+        <b>Step is wrong</b>
+        {by ? <span className="meta">· {by}</span> : null}
+        {onUndo ? (
+          <button type="button" className="btn sm" style={{ marginLeft: "auto" }} onClick={(e) => { e.stopPropagation(); onUndo(); }}>
+            Undo
+          </button>
+        ) : null}
+      </div>
+      <p dir="auto">{note}</p>
+      {blocking ? (
+        <p className="how"><b>Could not get past it.</b> The rest of the flow is blocked.</p>
+      ) : (
+        <p className="how" dir="auto"><b>Got past it:</b> {workaround}</p>
+      )}
+    </div>
+  );
+}

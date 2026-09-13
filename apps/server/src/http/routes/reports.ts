@@ -78,6 +78,21 @@ reports.openapi(
         }];
       });
 
+    const stepProblems = run.stepProblems.flatMap((p) => {
+      const flow = run.snapshot.flows.find((f) => f.id === flowOfRun.get(p.flowRunId));
+      const stepIndex = flow?.steps.findIndex((s) => s.id === p.stepId) ?? -1;
+      const step = flow?.steps[stepIndex];
+      if (!flow || !step) return [];
+      return [{
+        context: { flowId: flow.id, flow: flow.name, stepId: step.id, stepNumber: stepIndex + 1, stepText: step.text, device: step.deviceLabel },
+        note: p.note,
+        workaround: p.workaround,
+        blocking: p.blocking,
+        recordedBy: p.recordedBy,
+        recordedAt: iso(p.recordedAt),
+      }];
+    });
+
     return c.json(
       {
         run: {
@@ -90,6 +105,7 @@ reports.openapi(
           templateId: run.templateId,
         },
         issues,
+        stepProblems,
       },
       200,
     );
