@@ -12,6 +12,8 @@ import { Bar } from "../components/Progress.tsx";
 import { type IssueFeed, type Issue } from "../components/Issues.tsx";
 import { api, ApiError, unwrap } from "../lib/api.ts";
 import { useTitle } from "../lib/title.ts";
+import { SuiteDialog, when } from "../components/SuiteDialog.tsx";
+import { useState } from "react";
 
 export function ProductHome() {
   const { productId } = useParams({ strict: false }) as { productId: string };
@@ -167,6 +169,8 @@ export function ProductHome() {
             )}
           </section>
 
+          <SuitePanel productId={productId} productName={product.data.name} />
+
           <section className="section">
             <div className="head">
               <h2>Past testing days</h2>
@@ -250,5 +254,76 @@ function OpenRun({ productId, runId, templateName, startedBy, date }: { productI
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The suite as a thing you can carry: download it, keep a snapshot in the backup
+ * bucket, bring one in. Small on purpose — this is a door, not a workspace.
+ */
+function SuitePanel({ productId, productName }: { productId: string; productName: string }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const status = useQuery({ queryKey: ["suites", "status"], queryFn: () => unwrap(api.GET("/suites/status")), staleTime: 60_000 });
+  const snaps = useQuery({ queryKey: ["suites", productId], queryFn: () => unwrap(api.GET("/suites", { params: { query: { productId } } })), enabled: status.data?.available === true });
+  const [importing, setImporting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true); setError(null);
+    try {
+      const e = await unwrap(api.POST("/products/{productId}/suites", { params: { path: { productId } } }));
+      setSaved(e.savedAt);
+      await qc.invalidateQueries({ queryKey: ["suites"] });
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setSaving(false); }
+  }
+
+  async function restore(suiteId: string) {
+    const r = await unwrap(api.POST("/suites/{suiteId}/import", { params: { path: { suiteId } }, body: { into: "new", name: `${productName} (restored)` } }));
+    await qc.invalidateQueries({ queryKey: ["products"] });
+    void navigate({ to: "/products/$productId", params: { productId: r.product.id } });
+  }
+
+  const bucket = status.data?.available === true;
+  return (
+    <section className="section">
+      <div className="head">
+        <h2>Suite</h2>
+        <span className="meta">Everything but the runs, as one file</span>
+      </div>
+      <div className="panel">
+        <div className="suiteacts">
+          {bucket ? <button className="btn sm soft" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save to backup"}</button> : null}
+          <a className="btn sm" href={`/api/products/${productId}/export?download=true`} download>Download as a file</a>
+          <button className="btn sm" onClick={() => setImporting(true)}>Import into this product</button>
+          {saved ? <span className="meta" role="status" style={{ alignSelf: "center" }}>Saved {when(saved)}</span> : null}
+        </div>
+        {error ? <p className="note" style={{ margin: "10px 14px" }}>{error}</p> : null}
+        {!bucket ? (
+          <p className="meta" style={{ margin: 0, padding: "10px 14px" }}>Set <span className="kbd">BACKUP_REPOSITORY</span> in <span className="kbd">.env</span> and snapshots of this suite can be kept in the backup bucket too.</p>
+        ) : snaps.data?.length ? (
+          snaps.data.slice(0, 5).map((s) => (
+            <div key={s.id} className="suiterow">
+              <div className="body">
+                <b>{when(s.savedAt)}</b>
+                <span className="meta">by {s.savedBy} · {s.tests} tests, {s.templates} templates</span>
+              </div>
+              <button className="btn sm" onClick={() => void restore(s.id)}>Restore as new product</button>
+            </div>
+          ))
+        ) : snaps.data ? (
+          <p className="meta" style={{ margin: 0, padding: "10px 14px" }}>No snapshots in the backup yet.</p>
+        ) : null}
+      </div>
+      <SuiteDialog
+        open={importing}
+        into={{ kind: "product", id: productId, name: productName }}
+        onClose={() => setImporting(false)}
+        onDone={async () => { setImporting(false); await qc.invalidateQueries(); }}
+      />
+    </section>
   );
 }

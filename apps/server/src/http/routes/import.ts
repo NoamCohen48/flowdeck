@@ -11,8 +11,10 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { db } from "../../db/client.ts";
 import {
+  createProduct,
   createTemplatesIn,
   createTestsIn,
+  deleteProduct,
   existingTestIds,
   getProduct,
   getTemplateWithFlows,
@@ -21,6 +23,8 @@ import {
 import {
   ErrorSchema,
   ImportBundleSchema,
+  ImportProductResultSchema,
+  ImportProductSchema,
   ImportResultSchema,
   Uuid,
   type ImportBundleInput,
@@ -77,6 +81,49 @@ async function resolveMarks(productId: string, input: ImportBundleInput) {
   return { issues, keys };
 }
 
+/**
+ * Load a bundle into a product. Returns the issues (nothing created) or the
+ * result. Shared by the direct import, the new-product import and the suite
+ * restore from the backup bucket.
+ */
+export async function importBundle(productId: string, input: ImportBundleInput, actor: string) {
+  const { issues } = await resolveMarks(productId, input);
+  if (issues.length > 0) return { issues };
+
+  const { keys, testIds, templateIds } = await db.transaction(async (tx) => {
+    const created = await createTestsIn(tx, productId, input.tests, actor);
+    const keys: Record<string, string> = {};
+    input.tests.forEach((t, i) => {
+      keys[t.key] = created[i]!.id;
+    });
+    const templateIds = await createTemplatesIn(
+      tx,
+      productId,
+      input.templates.map((t) => ({
+        ...t,
+        flows: t.flows.map((f) => ({
+          ...f,
+          steps: f.steps.map((s) => ({
+            ...s,
+            marks: s.marks.map((m) => keys[m] ?? m),
+          })),
+        })),
+      })),
+    );
+    return { keys, testIds: created.map((t) => t.id), templateIds };
+  });
+
+  const tests = await Promise.all(testIds.map((id) => getTest(id)));
+  const templates = await Promise.all(templateIds.map((id) => getTemplateWithFlows(id)));
+  return {
+    result: {
+      keys,
+      tests: tests.filter((r) => r !== undefined).map(testDto),
+      templates: templates.filter((r) => r !== undefined).map(templateDto),
+    },
+  };
+}
+
 bundle.openapi(
   createRoute({
     method: "post",
@@ -115,45 +162,43 @@ bundle.openapi(
     if (!(await getProduct(productId))) {
       return c.json({ error: "no such product" }, 404);
     }
+    const out = await importBundle(productId, c.req.valid("json"), actor);
+    if ("issues" in out) return c.json({ error: "the bundle does not resolve", details: out.issues }, 400);
+    return c.json(out.result, 201);
+  },
+);
 
-    const input = c.req.valid("json");
-    const { issues } = await resolveMarks(productId, input);
-    if (issues.length > 0) {
-      return c.json({ error: "the bundle does not resolve", details: issues }, 400);
+/**
+ * A bundle that carries its own product — what `GET /products/{id}/export`
+ * produces — lands in a brand-new product. The way to restore a suite without
+ * mixing it into an existing one.
+ */
+bundle.openapi(
+  createRoute({
+    method: "post",
+    path: "/products/import",
+    tags: ["Import", "Products"],
+    summary: "Create a product from an export bundle",
+    description:
+      "Takes the shape `GET /products/{productId}/export` returns: `product` plus `tests` and `templates`. Creates the product, then imports the rest into it in one transaction. `product.name` may be overridden in the body to keep the original apart from the copy.",
+    request: {
+      body: { content: { "application/json": { schema: ImportProductSchema } } },
+    },
+    responses: {
+      201: { content: { "application/json": { schema: ImportProductResultSchema } }, description: "The new product and what went into it" },
+      400: { content: { "application/json": { schema: ErrorSchema } }, description: "The bundle does not resolve" },
+      401: { content: { "application/json": { schema: ErrorSchema } }, description: "No identity on the request" },
+    },
+  }),
+  async (c) => {
+    const actor = requireActor(c);
+    const { product: p, ...rest } = c.req.valid("json");
+    const created = await createProduct({ name: p.name, description: p.description });
+    const out = await importBundle(created.id, rest, actor);
+    if ("issues" in out) {
+      await deleteProduct(created.id);
+      return c.json({ error: "the bundle does not resolve", details: out.issues }, 400);
     }
-
-    const { keys, testIds, templateIds } = await db.transaction(async (tx) => {
-      const created = await createTestsIn(tx, productId, input.tests, actor);
-      const keys: Record<string, string> = {};
-      input.tests.forEach((t, i) => {
-        keys[t.key] = created[i]!.id;
-      });
-      const templateIds = await createTemplatesIn(
-        tx,
-        productId,
-        input.templates.map((t) => ({
-          ...t,
-          flows: t.flows.map((f) => ({
-            ...f,
-            steps: f.steps.map((s) => ({
-              ...s,
-              marks: s.marks.map((m) => keys[m] ?? m),
-            })),
-          })),
-        })),
-      );
-      return { keys, testIds: created.map((t) => t.id), templateIds };
-    });
-
-    const tests = await Promise.all(testIds.map((id) => getTest(id)));
-    const templates = await Promise.all(templateIds.map((id) => getTemplateWithFlows(id)));
-    return c.json(
-      {
-        keys,
-        tests: tests.filter((r) => r !== undefined).map(testDto),
-        templates: templates.filter((r) => r !== undefined).map(templateDto),
-      },
-      201,
-    );
+    return c.json({ product: created, ...out.result }, 201);
   },
 );

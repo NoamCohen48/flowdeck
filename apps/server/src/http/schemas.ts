@@ -54,6 +54,13 @@ export const CreateProductSchema = z
   })
   .openapi("CreateProduct");
 
+export const UpdateProductSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    description: z.string().optional(),
+  })
+  .openapi("UpdateProduct");
+
 /* ── Test ────────────────────────────────────────────────────────────────
    A test is an assertion, not a procedure (D4). Only title and expectedResult
    are structural; everything else lives in the metadata bag (D5) so adding
@@ -86,6 +93,8 @@ export const CreateTestSchema = z
     title: z.string().min(1),
     expectedResult: z.string().min(1),
     metadata: MetadataSchema.default({}),
+    /** Lets an export round-trip: an archived test comes back archived. */
+    archived: z.boolean().default(false),
   })
   .openapi("CreateTest");
 
@@ -406,6 +415,24 @@ export const ImportBundleSchema = z
   })
   .openapi("ImportBundle");
 
+/** `POST /products/import`: an export bundle landing in a new product. */
+export const ImportProductSchema = z
+  .object({
+    product: z.object({ name: z.string().min(1), description: z.string().default("") }),
+    tests: z.array(BundleTestSchema).max(1000).default([]),
+    templates: z.array(BundleTemplateSchema).max(200).default([]),
+  })
+  .openapi("ImportProduct");
+
+/** `GET /products/{id}/export`: the same shape the import takes, plus the product itself. */
+export const ExportBundleSchema = z
+  .object({
+    product: z.object({ id: Uuid, name: z.string(), description: z.string() }),
+    tests: z.array(BundleTestSchema),
+    templates: z.array(BundleTemplateSchema),
+  })
+  .openapi("ExportBundle");
+
 export const ImportResultSchema = z
   .object({
     /** Bundle key → the created test's id, for the script's own records. */
@@ -414,6 +441,8 @@ export const ImportResultSchema = z
     templates: z.array(TemplateSchema),
   })
   .openapi("ImportResult");
+
+export const ImportProductResultSchema = ImportResultSchema.extend({ product: ProductSchema }).openapi("ImportProductResult");
 
 export type ImportBundleInput = z.infer<typeof ImportBundleSchema>;
 

@@ -11,6 +11,7 @@ import {
   addMark,
   createFlow,
   deleteFlow,
+  deleteTemplate,
   deleteStep,
   insertStep,
   removeMark,
@@ -21,7 +22,7 @@ import {
   updateTemplate,
   usagesOf,
 } from "../../db/authoring.ts";
-import { getTemplateWithFlows, getTest, markCountFor } from "../../db/queries.ts";
+import { getFlowWithSteps, getTemplateWithFlows, getTest, markCountFor } from "../../db/queries.ts";
 import {
   CreateFlowSchema,
   ErrorSchema,
@@ -130,6 +131,50 @@ authoring.openapi(
     const created = [];
     for (const [i, s] of steps.entries()) created.push((await insertStep(row.id, i, s)).row);
     return c.json(flowDto({ ...row, steps: created }), 201);
+  },
+);
+
+authoring.openapi(
+  createRoute({
+    method: "delete",
+    path: "/templates/{templateId}",
+    tags: ["Templates"],
+    summary: "Hard-delete a template and its flows",
+    description:
+      "Only while no testing day has ever been started from it; after that, results point at its snapshot and the answer is `PATCH { status: \"archived\" }`. Deleting drops the flows' marks, which can uncover tests.",
+    request: { params: z.object({ templateId: Uuid }) },
+    responses: {
+      204: { description: "Deleted" },
+      401: unauthorized,
+      404: err("No such template"),
+      409: err("A run exists for this template — archive it instead"),
+    },
+  }),
+  async (c) => {
+    requireActor(c);
+    const r = await deleteTemplate(c.req.valid("param").templateId);
+    if (r.ok) return c.body(null, 204);
+    return r.reason === "runs"
+      ? c.json({ error: "testing days were started from this template; archive it instead" }, 409)
+      : c.json({ error: "no such template" }, 404);
+  },
+);
+
+authoring.openapi(
+  createRoute({
+    method: "get",
+    path: "/flows/{flowId}",
+    tags: ["Templates"],
+    summary: "A flow with its steps",
+    request: { params: z.object({ flowId: Uuid }) },
+    responses: {
+      200: { content: { "application/json": { schema: FlowSchema } }, description: "The flow" },
+      404: err("No such flow"),
+    },
+  }),
+  async (c) => {
+    const row = await getFlowWithSteps(c.req.valid("param").flowId);
+    return row ? c.json(flowDto(row), 200) : c.json({ error: "no such flow" }, 404);
   },
 );
 

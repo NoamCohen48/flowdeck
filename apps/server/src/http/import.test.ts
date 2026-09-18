@@ -180,3 +180,73 @@ describe("bundle import", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("the product as a whole (scripts and agents)", () => {
+  test("GET /api is a readable front door", async () => {
+    const res = await call<{ openapi: string; identity: { how: string } }>("/api");
+    expect(res.status).toBe(200);
+    expect(res.body.openapi).toBe("/api/openapi.json");
+    expect(res.body.identity.how).toContain("X-Flowdeck-Actor");
+  });
+
+  test("export is a valid import: a suite round-trips into a new product", async () => {
+    const seeded = await call<ImportResult>(`/api/products/${productId}/import`, json("POST", {
+      tests: [
+        { key: "a", title: "Round trip A", expectedResult: "A holds", metadata: { tags: ["rt"] } },
+        { key: "b", title: "Round trip B", expectedResult: "B holds", archived: true },
+      ],
+      templates: [{
+        name: "Round trip", status: "active",
+        flows: [{ name: "Only flow", precondition: "Fresh", estimatedMinutes: 5, archived: false, steps: [
+          { kind: "action", text: "Do it", deviceLabel: "Phone", marks: ["a"] },
+          { kind: "assertion", text: "Check it", expectedResult: "Fine", postState: "Home", deviceLabel: "Phone", marks: ["a", "b"] },
+        ] }],
+      }],
+    }));
+    expect(seeded.status).toBe(201);
+
+    const exported = await call<{ product: { id: string }; tests: { key: string; title: string; archived: boolean }[]; templates: { flows: { steps: { marks: string[] }[] }[] }[] }>(`/api/products/${productId}/export`);
+    expect(exported.status).toBe(200);
+    expect(exported.body.product.id).toBe(productId);
+    const b = exported.body.tests.find((t) => t.title === "Round trip B")!;
+    expect(b.archived).toBe(true);
+    expect(b.key).toBe(seeded.body.keys.b!);
+
+    const other = await call<{ id: string }>("/api/products", json("POST", { name: `export-target-${Date.now()}` }));
+    try {
+      const re = await call<ImportResult>(`/api/products/${other.body.id}/import`, json("POST", { tests: exported.body.tests, templates: exported.body.templates }));
+      expect(re.status).toBe(201);
+      const again = await call<typeof exported.body>(`/api/products/${other.body.id}/export`);
+      const strip = (x: typeof exported.body) => ({
+        tests: x.tests.map(({ key: _, ...t }) => t).sort((p, q) => p.title.localeCompare(q.title)),
+        templates: x.templates.map((t) => ({ ...t, flows: t.flows.map((f) => ({ ...f, steps: f.steps.map((s) => ({ ...s, marks: s.marks.length })) })) })),
+      });
+      expect(strip(again.body)).toEqual(strip(exported.body));
+    } finally {
+      const gone = await call(`/api/products/${other.body.id}?confirm=true`, { method: "DELETE", headers: { "x-flowdeck-actor": "importer" } });
+      expect(gone.status).toBe(204);
+    }
+  });
+
+  test("a product can be renamed, and deleting one asks for confirmation", async () => {
+    const renamed = await call<{ name: string }>(`/api/products/${productId}`, json("PATCH", { name: "renamed-scratch" }));
+    expect(renamed.body.name).toBe("renamed-scratch");
+    const refused = await call<{ error: string }>(`/api/products/${productId}`, { method: "DELETE", headers: { "x-flowdeck-actor": "importer" } });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toContain("confirm=true");
+  });
+
+  test("a template with no runs can be deleted; one with runs cannot", async () => {
+    const [tpl] = (await call<Template[]>(`/api/products/${productId}/templates`, json("POST", { templates: [{ name: "Deletable", flows: [] }] }))).body;
+    const flow = await call<{ id: string; steps: unknown[] }>(`/api/templates/${tpl!.id}/flows`, json("POST", { name: "F", steps: [{ kind: "action", text: "x", deviceLabel: "d" }] }));
+    expect((await call<{ id: string }>(`/api/flows/${flow.body.id}`)).body.id).toBe(flow.body.id);
+
+    const run = await call<{ id: string }>(`/api/templates/${tpl!.id}/runs`, json("POST", {}));
+    expect(run.status).toBe(201);
+    const blocked = await call(`/api/templates/${tpl!.id}`, { method: "DELETE", headers: { "x-flowdeck-actor": "importer" } });
+    expect(blocked.status).toBe(409);
+    await sql`delete from run where id = ${run.body.id}`;
+    const gone = await call(`/api/templates/${tpl!.id}`, { method: "DELETE", headers: { "x-flowdeck-actor": "importer" } });
+    expect(gone.status).toBe(204);
+  });
+});

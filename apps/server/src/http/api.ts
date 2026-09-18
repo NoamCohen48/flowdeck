@@ -18,6 +18,7 @@ import { attachments } from "./routes/attachments.ts";
 import { authoring } from "./routes/authoring.ts";
 import { reports } from "./routes/reports.ts";
 import { bundle } from "./routes/import.ts";
+import { suites } from "./routes/suites.ts";
 
 /** Validation failures name the field; see `router.ts` for why that is shared. */
 export const api = createRouter();
@@ -30,6 +31,7 @@ api.route("/", attachments);
 api.route("/", authoring);
 api.route("/", reports);
 api.route("/", bundle);
+api.route("/", suites);
 
 api.onError((error, c) => {
   if (error instanceof ActorRequiredError) {
@@ -80,6 +82,7 @@ export const openApiConfig = {
     { name: "Tests", description: "Assertions, versioned and never hard-deleted" },
     { name: "Templates", description: "Reusable testing days, one per setup" },
     { name: "Import", description: "A whole suite in one request: tests keyed by the caller, templates marking by key" },
+    { name: "Suites", description: "Suite snapshots saved as plain JSON in the backup bucket, and brought back" },
     { name: "Coverage", description: "Is every test reachable by some flow?" },
     { name: "Runs", description: "Testing days: claiming, verdicts, blocking" },
     { name: "Identity", description: "The name picker, and presence" },
@@ -87,3 +90,34 @@ export const openApiConfig = {
 };
 
 api.doc("/openapi.json", openApiConfig);
+
+/**
+ * The front door for a script or an agent that only has the origin: what this
+ * is, how to identify, where the contract lives, and the handful of routes that
+ * cover most jobs. Everything here is also in the OpenAPI document; this is the
+ * short version a caller can read in one request.
+ */
+api.get("/", (c) =>
+  c.json({
+    name: "Flowdeck",
+    version: openApiConfig.info.version,
+    description: "Manual testing as human flows. Tests are assertions; flows are what a person does; a run is a testing day.",
+    openapi: "/api/openapi.json",
+    identity: {
+      how: "Send `X-Flowdeck-Actor: <your name>` on every write. Reads need nothing. There are no tokens or passwords.",
+      check: "GET /api/me",
+    },
+    start: {
+      products: "GET /api/products",
+      createProduct: "POST /api/products { name, description? }",
+      export: "GET /api/products/{productId}/export — the whole suite, in the shape the import takes (?download=true for a file)",
+      importAsNewProduct: "POST /api/products/import — an export bundle (with its `product`) lands in a new product",
+      backupBucket: "GET /api/suites — snapshots saved to the S3 backup bucket; POST /api/products/{productId}/suites saves one; POST /api/suites/{id}/import brings one back",
+      import: "POST /api/products/{productId}/import { tests: [{ key, title, expectedResult, metadata? }], templates: [{ name, flows: [{ name, steps: [{ kind, text, deviceLabel, expectedResult?, marks: [key] }] }] }] }",
+      coverage: "GET /api/products/{productId}/coverage",
+      startRun: "POST /api/templates/{templateId}/runs",
+      issues: "GET /api/runs/{runId}/issues — every failure, self-contained",
+    },
+    errors: "Every error is { error: string, details?: [...] }. 400 names the field; 401 means no identity; 409 asks for a confirmation query (?confirm=true, ?force=true).",
+  }),
+);

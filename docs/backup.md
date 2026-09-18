@@ -103,6 +103,28 @@ docker compose up -d --force-recreate electric app
 A scheduled backup and a restore never overlap: they share a lock, so whichever starts
 second waits for the first to finish.
 
+## Suite snapshots
+
+The restic repository is the disaster-recovery copy: the whole database, encrypted, readable
+only by restic with the password. A *suite snapshot* is a smaller, plainer thing — one
+product's tests, templates, flows and steps as a single JSON file, the same document
+`GET /api/products/{id}/export` returns. The app keeps those in the same bucket, as ordinary
+objects under `suites/` beside the repository, using the same `BACKUP_REPOSITORY` and S3 key
+(the `app` service in `compose.yaml` receives them; `BACKUP_PASSWORD` is not involved).
+
+That gives a second kind of restore that needs neither restic nor downtime: a suite saved
+last month can be brought back as a new product on this instance, or on any other Flowdeck
+pointed at the same bucket, while everything else keeps running.
+
+- In the web app: a product's overview has a **Suite** panel — *Save to backup*, *Download
+  as a file*, *Import into this product* — and lists this product's snapshots with *Restore
+  as new product*. The products page has *Import a suite* for a file or a snapshot.
+- From a script: `POST /api/products/{id}/suites` saves one; `GET /api/suites` lists them;
+  `POST /api/suites/{suiteId}/import { "into": "new" }` restores. See `docs/api.md`.
+
+Snapshots are plain objects, so the bucket's own versioning and lifecycle rules apply to them
+directly; Flowdeck never prunes them. `DELETE /api/suites/{suiteId}` removes one on request.
+
 ## Trying it locally
 
 `backup/compose.minio.yaml` adds a throwaway MinIO to stand in for the network's S3:

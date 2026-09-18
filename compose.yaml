@@ -68,6 +68,11 @@ services:
       ATTACHMENTS_BUDGET_MB: ${ATTACHMENTS_BUDGET_MB:-2048}
       # Set to "true" for a first boot with the fictional Relay data (idempotent: skips when present).
       SEED_DEMO: ${SEED_DEMO:-false}
+      # The same bucket the backup service uses; the app keeps suite snapshots
+      # there as plain JSON (docs/backup.md § Suite snapshots). Optional.
+      BACKUP_REPOSITORY: ${BACKUP_REPOSITORY:-}
+      BACKUP_S3_ACCESS_KEY: ${BACKUP_S3_ACCESS_KEY:-}
+      BACKUP_S3_SECRET_KEY: ${BACKUP_S3_SECRET_KEY:-}
     volumes:
       - data:/data
     depends_on:

@@ -65,6 +65,14 @@ export async function updateFlow(
   return row;
 }
 
+/** Hard-deletes a template. Fails (undefined, "runs") when a run references it — archive instead. */
+export async function deleteTemplate(templateId: string): Promise<{ ok: true } | { ok: false; reason: "missing" | "runs" }> {
+  const [hasRun] = (await db.execute(raw`select 1 from run where template_id = ${templateId} limit 1`)) as unknown as unknown[];
+  if (hasRun) return { ok: false, reason: "runs" };
+  const [gone] = await db.delete(template).where(eq(template.id, templateId)).returning();
+  return gone ? { ok: true } : { ok: false, reason: "missing" };
+}
+
 /** Deletes the flow and closes the gap in its template's flow order. */
 export async function deleteFlow(flowId: string) {
   return db.transaction(async (tx) => {

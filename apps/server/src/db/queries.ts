@@ -88,7 +88,7 @@ export async function createTestsIn(
 ) {
   const created: { id: string; versionId: string }[] = [];
   for (const input of inputs) {
-    const [t] = await tx.insert(test).values({ productId }).returning();
+    const [t] = await tx.insert(test).values({ productId, archived: input.archived ?? false }).returning();
     const [v] = await tx
       .insert(testVersion)
       .values({
@@ -212,6 +212,27 @@ export async function getTemplateWithFlows(templateId: string) {
   };
 }
 
+/** Every template of a product, each with its flows and steps — the export. */
+export async function listTemplatesWithFlows(productId: string) {
+  const rows = await db.select({ id: template.id }).from(template).where(eq(template.productId, productId)).orderBy(asc(template.createdAt));
+  const out = [];
+  for (const r of rows) {
+    const t = await getTemplateWithFlows(r.id);
+    if (t) out.push(t);
+  }
+  return out;
+}
+
+/** One flow with its steps and marks, or undefined. */
+export async function getFlowWithSteps(flowId: string) {
+  const [f] = await db.select().from(flow).where(eq(flow.id, flowId));
+  if (!f) return undefined;
+  const steps = await db.select().from(step).where(eq(step.flowId, flowId)).orderBy(asc(step.position));
+  const stepIds = steps.map((s) => s.id);
+  const marks = stepIds.length ? await db.select().from(stepMark).where(inArray(stepMark.stepId, stepIds)) : [];
+  return { ...f, steps: steps.map((s) => ({ ...s, marks: marks.filter((m) => m.stepId === s.id).map((m) => m.testId) })) };
+}
+
 export async function createTemplates(
   productId: string,
   inputs: CreateTemplateInput[],
@@ -317,6 +338,16 @@ export async function listTemplateSummaries(productId: string) {
 }
 
 /* ── Products ────────────────────────────────────────────────────────── */
+
+export async function createProduct(input: { name: string; description: string }) {
+  const [row] = await db.insert(product).values(input).returning();
+  return row!;
+}
+
+export async function deleteProduct(productId: string) {
+  const [row] = await db.delete(product).where(eq(product.id, productId)).returning();
+  return row;
+}
 
 export async function listProducts() {
   return db.select().from(product).orderBy(asc(product.name));

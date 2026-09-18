@@ -9,6 +9,22 @@ adapter, or `curl`. There is no second, private surface — anything the UI can 
 - The full machine-readable contract is [`openapi.json`](openapi.json); the one-line-per-endpoint
   version is [`reference.md`](reference.md).
 
+## If you are a script or an agent: the short path
+
+1. `GET /api` — a one-request orientation: identity, the contract, the routes below.
+2. Put `X-Flowdeck-Actor: <your name>` on every request. That is the whole of authentication.
+3. `GET /api/products` → pick or `POST` one.
+4. `GET /api/products/{id}/export` — the entire suite as one JSON document: tests, templates,
+   flows, steps, marks. Edit it. `POST /api/products/import` the same shape back as a new
+   product (import creates rather than merges), or `POST /api/products/{id}/import` its
+   `tests` and `templates` into an existing one.
+5. `GET /api/products/{id}/coverage` — is every test reachable?
+6. `POST /api/templates/{id}/runs` → claim, record, `GET /api/runs/{id}/issues`.
+
+Everything else is a per-row edit of the same objects, listed in [`reference.md`](reference.md).
+Every list is small enough to return whole — there is no pagination — and every error is
+`{ error, details? }` with `details` naming the field by path.
+
 ## The model in one minute
 
 ```
@@ -155,7 +171,7 @@ The first call returns tests in the same order they were sent, which is what let
 map its source rows to Flowdeck ids before building the second request. A step in the second
 call that marks an id which does not exist fails the whole request.
 
-### Creating the product
+### Creating, renaming and wiping the product
 
 If the product does not exist yet:
 
@@ -165,7 +181,41 @@ curl -s -X POST $FLOWDECK/api/products \
   -d '{"name":"Relay","description":"The messaging app"}'
 ```
 
-`GET /api/products` lists what is there.
+`GET /api/products` lists what is there; `PATCH /api/products/{id}` renames or describes one.
+While an import script is still being debugged, `DELETE /api/products/{id}?confirm=true` wipes
+the product and everything in it so the next attempt starts clean. Without `confirm=true` it
+answers `409` and does nothing.
+
+### Getting a suite back out
+
+`GET /api/products/{productId}/export` returns the same shape the bundle import takes — every
+test (archived ones flagged `archived: true`), every template with its flows, steps and marks —
+plus the product's own name and description. Test ids serve as the `key`s. It is the way to read
+a whole suite in one call, diff two products, move a suite between instances, or edit a suite
+as a document and import it into a fresh product. Runs are not part of a suite; read them from
+`GET /api/runs/{runId}`.
+
+`POST /api/products/import` takes that same document — `product`, `tests`, `templates` — and
+creates a new product from it. Override `product.name` in the body to keep the copy apart from
+the original.
+
+### Snapshots in the backup bucket
+
+When `BACKUP_REPOSITORY` is set (the same bucket the backup service uses — see
+[`backup.md`](backup.md)), a product's export can be kept there as a plain JSON object and
+brought back later, here or on another instance:
+
+```
+POST /api/products/{productId}/suites          save a snapshot → { id, savedAt, savedBy, tests, templates, … }
+GET  /api/suites?productId=…                   list, newest first
+GET  /api/suites/{suiteId}                     the bundle as saved
+POST /api/suites/{suiteId}/import              { "into": "new", "name"? }  or  { "into": "<productId>" }
+DELETE /api/suites/{suiteId}
+```
+
+`GET /api/suites/status` says whether a bucket is configured; without one the other routes
+answer `503`. Nothing here needs restic or the backup password — snapshots sit beside the
+encrypted repository as ordinary objects.
 
 ### Checking the result
 
@@ -193,10 +243,13 @@ reverses it).
 
 | To | Call |
 |---|---|
+| Read one flow with its steps | `GET /api/flows/{id}` |
 | Rename, describe or archive a template | `PATCH /api/templates/{id}` |
+| Hard-delete a template (only if it never ran) | `DELETE /api/templates/{id}` |
 | Add a flow (with its steps) | `POST /api/templates/{id}/flows` |
 | Edit a flow's name, precondition or estimate | `PATCH /api/flows/{id}` |
-| Delete a flow and its steps | `DELETE /api/flows/{id}` |
+| Archive or restore a flow | `PATCH /api/flows/{id}` `{ "archived": true }` |
+| Hard-delete a flow and its steps | `DELETE /api/flows/{id}` |
 | Reorder flows | `PUT /api/templates/{id}/flows/order` `{ "ids": [ … ] }` |
 | Insert a step at a position | `POST /api/flows/{id}/steps` `{ position, kind, text, … }` |
 | Edit a step | `PATCH /api/steps/{id}` |
@@ -221,6 +274,8 @@ POST /api/flow-runs/{flowRunId}/pass-all          pass every test a step marks
 POST /api/flow-runs/{flowRunId}/step-problems     flag a step as wrong (the flow, not the product)
 POST /api/flow-runs/{flowRunId}/finish | abandon
 POST /api/runs/{runId}/close                      bookkeeping; ?reopen=true undoes it
+DELETE /api/results/{resultId}                    retract a verdict that should not have been recorded
+DELETE /api/flow-runs/{flowRunId}/step-problems/{stepId}   withdraw a step report
 ```
 
 A verdict is `pass`, `fail`, `minor` or `skipped`. `fail` and `skipped` require a `note`;
@@ -283,7 +338,7 @@ run it appeared in. `GET /api/products/{productId}/runs` lists a product's runs,
 | `400` | The request did not validate. `details` is a list of `{ path, message }` naming each field, so a script fixes its parser rather than guessing. |
 | `401` | No identity on a write. Send `X-Flowdeck-Actor`. |
 | `404` | No such product / test / template / run. |
-| `409` | A confirmation is needed, or the action is not allowed right now: a run is already open for this template (`?force=true`), someone else holds this flow (`?confirm=true`), or the step is blocked by an earlier blocking failure. |
+| `409` | A confirmation is needed, or the action is not allowed right now: a run is already open for this template (`?force=true`), someone else holds this flow (`?confirm=true`), deleting a product (`?confirm=true`), deleting a template that has run (archive it instead), or the step is blocked by an earlier blocking failure. |
 | `507` | The attachment disk budget is exhausted. |
 | `500` | A bug. The body is `{"error":"internal error"}`; the server log has the rest. |
 

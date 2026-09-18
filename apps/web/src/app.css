@@ -464,11 +464,31 @@
   }
   .dialog h3 { font-size: 17px; margin-bottom: 3px; }
   label.f { display: block; font-size: 13.5px; color: var(--ink-2); margin: 12px 0 5px; }
-  .drop { border: 1px dashed var(--line); border-radius: var(--radius-r); padding: 14px; text-align: center; color: var(--muted); font-size: 13.5px; background: var(--surface-3); }
+  .drop { border: 1px dashed var(--line); border-radius: var(--radius-r); padding: 14px; text-align: center; color: var(--muted); font-size: 13.5px; background: var(--surface-3); display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 12px; transition: border-color 120ms, background-color 120ms; }
+  .drop.over { border-color: var(--primary); background: var(--primary-soft); }
+  .drop.has { border-style: solid; color: var(--ink); }
+  .drop b { font-weight: 500; }
   .radio { display: flex; gap: 8px; margin-top: 6px; }
   .radio button { flex: 1; text-align: left; padding: 9px 11px; border: 1px solid var(--line); border-radius: var(--radius-r); background: var(--surface); color: var(--ink); }
   .radio button.on { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); background: var(--primary-soft); }
   .radio b { display: block; font-size: 14px; }
+  .radio .meta { font-size: 12.5px; }
+
+  /* ---- Suite import / export ---- */
+  .suitedlg { max-width: 520px; }
+  .suitedlg .preview { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-r); background: var(--primary-soft); border: 1px solid var(--primary-line); color: var(--primary-ink); }
+  .suitedlg .preview b { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .snaplist { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 4px; max-height: 280px; overflow: auto; }
+  .snaplist button { width: 100%; text-align: left; display: grid; gap: 1px; padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--radius-r); background: var(--surface); color: var(--ink); }
+  .snaplist button:hover { border-color: var(--muted); }
+  .snaplist button.on { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); background: var(--primary-soft); }
+  .snaplist .meta { font-size: 12.5px; }
+  .suiterow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); }
+  .suiterow:last-child { border-bottom: 0; }
+  .suiterow .body { min-width: 0; display: grid; gap: 1px; }
+  .suiterow .body b { font-weight: 500; }
+  .suiterow .body .meta { font-size: 12.5px; }
+  .suiteacts { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 14px; border-bottom: 1px solid var(--line-soft); }
   .radio span { font-size: 12.5px; color: var(--muted); }
 
   .lnk { cursor: pointer; border-bottom: 1px solid var(--line); text-decoration: none; }
