@@ -8,6 +8,8 @@ import { blockingStepIndex, computeBlocked, verdictRequiresNote } from "@flowdec
 import { db } from "../../db/client.ts";
 import { actor as actorTable, presence } from "../../db/schema.ts";
 import {
+  deleteResult,
+  deleteStepProblem,
   claimFlow,
   getFlowRun,
   getRun,
@@ -34,6 +36,7 @@ import {
   RunSummarySchema,
   TestResultSchema,
   Uuid,
+  TxidSchema,
 } from "../schemas.ts";
 import { flowRunDto, iso, resultDto, runDto, stepProblemDto } from "../serialize.ts";
 import { requireActor, setActor } from "../actor.ts";
@@ -399,6 +402,50 @@ runs.openapi(
       idempotencyKey: body.idempotencyKey,
     });
     return c.json({ ...resultDto(row), txid }, 201);
+  },
+);
+
+runs.openapi(
+  createRoute({
+    method: "delete",
+    path: "/results/{resultId}",
+    tags: ["Runs"],
+    summary: "Retract a verdict",
+    description:
+      "Removes one result and its attachments; the test reads as not verified on that step again. To change a verdict, record it again instead — the newer one replaces the older. This is for a result that should never have been recorded.",
+    request: { params: z.object({ resultId: Uuid }) },
+    responses: {
+      200: { content: { "application/json": { schema: TxidSchema } }, description: "Retracted" },
+      401: { content: { "application/json": { schema: ErrorSchema } }, description: "No identity" },
+      404: { content: { "application/json": { schema: ErrorSchema } }, description: "No such result" },
+    },
+  }),
+  async (c) => {
+    requireActor(c);
+    const gone = await deleteResult(c.req.valid("param").resultId);
+    return gone ? c.json({ txid: gone.txid }, 200) : c.json({ error: "no such result" }, 404);
+  },
+);
+
+runs.openapi(
+  createRoute({
+    method: "delete",
+    path: "/flow-runs/{flowRunId}/step-problems/{stepId}",
+    tags: ["Runs"],
+    summary: "Withdraw a step report",
+    description: "The step was fine after all, or its blocking report should stop blocking the rest of the flow.",
+    request: { params: z.object({ flowRunId: Uuid, stepId: Uuid }) },
+    responses: {
+      200: { content: { "application/json": { schema: TxidSchema } }, description: "Withdrawn" },
+      401: { content: { "application/json": { schema: ErrorSchema } }, description: "No identity" },
+      404: { content: { "application/json": { schema: ErrorSchema } }, description: "No such report" },
+    },
+  }),
+  async (c) => {
+    requireActor(c);
+    const { flowRunId, stepId } = c.req.valid("param");
+    const gone = await deleteStepProblem(flowRunId, stepId);
+    return gone ? c.json({ txid: gone.txid }, 200) : c.json({ error: "no such step report" }, 404);
   },
 );
 

@@ -354,6 +354,25 @@ export async function recordStepProblem(input: RecordStepProblemInput) {
   });
 }
 
+/** Retract a verdict. Attachments cascade; the test reads as not verified again. */
+export async function deleteResult(resultId: string) {
+  return db.transaction(async (tx) => {
+    const [gone] = await tx.delete(testResult).where(eq(testResult.id, resultId)).returning();
+    return gone ? { row: gone, txid: await currentTxid(tx) } : undefined;
+  });
+}
+
+/** Withdraw a step report — the step turned out to be fine, or was fixed. */
+export async function deleteStepProblem(flowRunId: string, stepId: string) {
+  return db.transaction(async (tx) => {
+    const [gone] = await tx
+      .delete(stepProblem)
+      .where(and(eq(stepProblem.flowRunId, flowRunId), eq(stepProblem.stepId, stepId)))
+      .returning();
+    return gone ? { row: gone, txid: await currentTxid(tx) } : undefined;
+  });
+}
+
 export async function getResult(resultId: string) {
   const [r] = await db.select().from(testResult).where(eq(testResult.id, resultId));
   return r;

@@ -465,4 +465,24 @@ describe("flagging a step as wrong (D40)", () => {
     expect(feed.stepProblems[0]!.context.stepNumber).toBe(at + 1);
     expect(feed.stepProblems[0]!.blocking).toBe(true);
   });
+
+  test("a report can be withdrawn and a verdict retracted; what they closed reopens", async () => {
+    const { flow, flowRunId, run } = await claimed();
+    const at = flow.steps.findIndex((s) => s.marks.length > 0);
+    const stuck = flow.steps[at]!;
+    const later = flow.steps.slice(at + 1).find((s) => s.marks.length > 0)!;
+    await call(`/api/flow-runs/${flowRunId}/step-problems`, json({ stepId: stuck.id, note: "gone", blocking: true }, noa));
+    expect((await call(`/api/flow-runs/${flowRunId}/results`, json({ stepId: later.id, testId: later.marks[0], verdict: "pass", idempotencyKey: `t-${Date.now()}-w1` }, noa))).status).toBe(409);
+
+    const withdrawn = await call(`/api/flow-runs/${flowRunId}/step-problems/${stuck.id}`, { method: "DELETE", headers: { cookie: noa } });
+    expect(withdrawn.status).toBe(200);
+    expect((await call(`/api/flow-runs/${flowRunId}/step-problems/${stuck.id}`, { method: "DELETE", headers: { cookie: noa } })).status).toBe(404);
+
+    const recorded = await call<{ id: string }>(`/api/flow-runs/${flowRunId}/results`, json({ stepId: later.id, testId: later.marks[0], verdict: "fail", note: "broken", blocking: true, idempotencyKey: `t-${Date.now()}-w2` }, noa));
+    expect(recorded.status).toBe(201);
+    const retracted = await call(`/api/results/${recorded.body.id}`, { method: "DELETE", headers: { cookie: noa } });
+    expect(retracted.status).toBe(200);
+    const state = (await call<{ results: { id: string }[] }>(`/api/runs/${run.id}`)).body;
+    expect(state.results.some((r) => r.id === recorded.body.id)).toBe(false);
+  });
 });
