@@ -1,0 +1,1 @@
+ALTER TABLE "flow" ADD COLUMN "archived" boolean DEFAULT false NOT NULL;

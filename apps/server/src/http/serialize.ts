@@ -82,6 +82,7 @@ export interface FlowRow {
   precondition: string;
   estimatedMinutes: number | null;
   position: number;
+  archived: boolean;
   steps: StepRow[];
 }
 
@@ -93,6 +94,7 @@ export function flowDto(row: FlowRow) {
     precondition: row.precondition,
     estimatedMinutes: row.estimatedMinutes,
     position: row.position,
+    archived: row.archived,
     steps: row.steps.map(stepDto),
   };
 }

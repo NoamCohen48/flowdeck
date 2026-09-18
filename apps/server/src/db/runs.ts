@@ -81,7 +81,7 @@ export async function snapshotTemplate(
         ) order by f.position
       ) filter (where f.id is not null), '[]'::jsonb) as flows
     from template tpl
-    left join flow f on f.template_id = tpl.id
+    left join flow f on f.template_id = tpl.id and not f.archived
     where tpl.id = ${templateId}
     group by tpl.id
   `);

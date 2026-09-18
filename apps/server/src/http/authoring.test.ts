@@ -36,7 +36,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<{ status: numb
 }
 
 type Step = { id: string; position: number; kind: string; text: string; expectedResult: string | null; deviceLabel: string; marks: string[] };
-type Flow = { id: string; name: string; position: number; steps: Step[] };
+type Flow = { id: string; name: string; position: number; archived: boolean; steps: Step[] };
 type Template = { id: string; name: string; status: string; flows: Flow[] };
 type Device = { label: string; letter: string; introducedAtIndex: number };
 
@@ -221,6 +221,34 @@ describe("flows and templates", () => {
     expect(gone.status).toBe(204);
     tpl = (await call<Template>(`/api/templates/${template.id}`)).body;
     expect(tpl.flows.map((f) => f.position)).toEqual([0]);
+  });
+
+  test("an archived flow leaves new testing days but keeps its marks and history", async () => {
+    const created = await call<Flow>(`/api/templates/${template.id}/flows`, req("POST", { name: "Retired", steps: [{ kind: "action", text: "Old path", deviceLabel: "Pixel 8", marks: [tests[2]] }] }));
+    const before = (await call<{ covered: number }>(`/api/products/${productId}/coverage`)).body;
+
+    const archived = await call<{ archived: boolean }>(`/api/flows/${created.body.id}`, req("PATCH", { archived: true }));
+    expect(archived.body.archived).toBe(true);
+
+    // Still in the template (with its flag) and still counting toward coverage (D3).
+    const tpl = (await call<Template & { flows: (Flow & { archived: boolean })[] }>(`/api/templates/${template.id}`)).body;
+    expect(tpl.flows.find((f) => f.id === created.body.id)?.archived).toBe(true);
+    const after = (await call<{ covered: number }>(`/api/products/${productId}/coverage`)).body;
+    expect(after.covered).toBe(before.covered);
+    const summary = (await call<{ id: string; flowCount: number }[]>(`/api/products/${productId}/templates`)).body.find((t) => t.id === template.id)!;
+    expect(summary.flowCount).toBe(1);
+
+    // A day started now does not include it.
+    const run = await call<{ id: string }>(`/api/templates/${template.id}/runs`, req("POST"));
+    expect(run.status).toBe(201);
+    const day = (await call<{ snapshot: { flows: { id: string }[] }; flowRuns: { flowId: string }[] }>(`/api/runs/${run.body.id}`)).body;
+    expect(day.snapshot.flows.map((f) => f.id)).not.toContain(created.body.id);
+    expect(day.flowRuns.map((f) => f.flowId)).not.toContain(created.body.id);
+    await sql`delete from run where id = ${run.body.id}`;
+
+    const restored = await call<{ archived: boolean }>(`/api/flows/${created.body.id}`, req("PATCH", { archived: false }));
+    expect(restored.body.archived).toBe(false);
+    await call(`/api/flows/${created.body.id}`, req("DELETE"));
   });
 
   test("archiving a template keeps its marks counting toward coverage", async () => {

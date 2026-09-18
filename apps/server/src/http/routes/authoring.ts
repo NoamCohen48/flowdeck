@@ -138,7 +138,9 @@ authoring.openapi(
     method: "patch",
     path: "/flows/{flowId}",
     tags: ["Templates"],
-    summary: "Edit a flow's name, precondition or estimate",
+    summary: "Edit a flow's name, precondition or estimate, or archive it",
+    description:
+      "Archiving (`archived: true`) is the normal way to retire a flow: new testing days leave it out, its marks still count toward coverage (D3), and days already started keep their snapshot (D21). Set `archived: false` to bring it back.",
     request: {
       params: z.object({ flowId: Uuid }),
       body: { content: { "application/json": { schema: UpdateFlowSchema } } },

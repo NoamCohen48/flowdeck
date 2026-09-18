@@ -245,6 +245,7 @@ export async function createTemplatesIn(
           precondition: f.precondition,
           estimatedMinutes: f.estimatedMinutes,
           position: flowIndex,
+          archived: f.archived,
         })
         .returning();
 
@@ -303,7 +304,7 @@ export async function listTemplateSummaries(productId: string) {
   return query<TemplateSummaryRow>(raw`
     select
       t.id, t.product_id, t.name, t.description, t.status,
-      count(distinct f.id)::int  as flow_count,
+      count(distinct f.id) filter (where not f.archived)::int as flow_count,
       count(distinct sm.test_id)::int as marks_test_count
     from template t
     left join flow f      on f.template_id = t.id

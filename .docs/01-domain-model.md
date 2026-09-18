@@ -139,6 +139,7 @@ A single continuous human path through the product.
 | `id`, `templateId`, `name` | |
 | `precondition` | Free text: "Relay uninstalled. You have QA credentials." |
 | `estimatedMinutes` | **Optional.** A hand-typed guess, editable. Not derived from run history. |
+| `archived` | Soft-delete flag, as on tests (D7). An archived flow leaves new testing days; its marks still count toward coverage (D3) and past days keep their results. |
 | `steps[]` | Ordered. Order is meaningful — this is a sequence. |
 
 A flow is the unit of work on a testing day. It is stateful and continuous: it assumes the product

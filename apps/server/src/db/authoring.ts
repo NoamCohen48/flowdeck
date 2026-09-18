@@ -43,7 +43,7 @@ export async function updateTemplate(
 
 export async function createFlow(
   templateId: string,
-  input: { name: string; precondition: string; estimatedMinutes: number | null },
+  input: { name: string; precondition: string; estimatedMinutes: number | null; archived?: boolean },
 ) {
   return db.transaction(async (tx) => {
     const [nextRow] = (await tx.execute(
@@ -59,7 +59,7 @@ export async function createFlow(
 
 export async function updateFlow(
   flowId: string,
-  patch: { name?: string; precondition?: string; estimatedMinutes?: number | null },
+  patch: { name?: string; precondition?: string; estimatedMinutes?: number | null; archived?: boolean },
 ) {
   const [row] = await db.update(flow).set(patch).where(eq(flow.id, flowId)).returning();
   return row;

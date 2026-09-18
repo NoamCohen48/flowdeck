@@ -132,7 +132,7 @@ export function FlowEditor() {
     if (!on && marks.has(key)) marks.delete(key);
   }
 
-  async function saveFlow(patch: { name?: string; precondition?: string; estimatedMinutes?: number | null }) {
+  async function saveFlow(patch: { name?: string; precondition?: string; estimatedMinutes?: number | null; archived?: boolean }) {
     await unwrap(api.PATCH("/flows/{flowId}", { params: { path: { flowId } }, body: patch }));
     await qc.invalidateQueries({ queryKey: ["template", templateId] });
   }
@@ -435,9 +435,9 @@ function EditCard({ step, index, device, labels, onSave, onCancel, onDelete, onM
 function FlowHead({
   flow, stepCount, markedCount, devices, others, onSave,
 }: {
-  flow: { name: string; precondition: string; estimatedMinutes: number | null };
+  flow: { name: string; precondition: string; estimatedMinutes: number | null; archived: boolean };
   stepCount: number; markedCount: number; devices: readonly DeviceAssignment[]; others: string[];
-  onSave: (patch: { name?: string; precondition?: string; estimatedMinutes?: number | null }) => Promise<void>;
+  onSave: (patch: { name?: string; precondition?: string; estimatedMinutes?: number | null; archived?: boolean }) => Promise<void>;
 }) {
   const [name, setName] = useState(flow.name);
   const [pre, setPre] = useState(flow.precondition);
@@ -455,6 +455,12 @@ function FlowHead({
 
   return (
     <div className="flowhead">
+      {flow.archived ? (
+        <div className="note skp" style={{ marginLeft: 0, marginBottom: 12 }}>
+          <b>Archived.</b> New testing days leave this flow out; its marks still count toward coverage and past days keep their results.
+          <button className="btn sm" style={{ marginLeft: 10 }} onClick={() => void onSave({ archived: false })}>Restore</button>
+        </div>
+      ) : null}
       <div className="row-split">
         <div style={{ flex: 1, minWidth: 240 }}>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} onBlur={commit} dir="auto" aria-label="Flow name" style={{ fontWeight: 600, fontSize: 16 }} />
@@ -463,6 +469,7 @@ function FlowHead({
           <span className="meta">~</span>
           <input className="mins" type="text" inputMode="numeric" value={mins} onChange={(e) => setMins(e.target.value)} onBlur={commit} placeholder="min" aria-label="Estimated minutes" style={{ width: 70 }} />
           <span className="meta">min · {stepCount} steps · marks {markedCount} tests</span>
+          {!flow.archived ? <button className="btn sm" onClick={() => void onSave({ archived: true })}>Archive flow</button> : null}
         </div>
       </div>
       <label className="f" htmlFor="flow-pre">Before you start</label>

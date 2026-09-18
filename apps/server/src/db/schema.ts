@@ -131,6 +131,10 @@ export const flow = pgTable(
     estimatedMinutes: integer("estimated_minutes"),
     /** Display order within the template only. */
     position: integer("position").notNull(),
+    /** Archived, never deleted (D7 applies to flows too): a day started from this
+        template stops including it, its marks still count toward coverage (D3),
+        and results already recorded against its steps stay readable. */
+    archived: boolean("archived").notNull().default(false),
     createdAt: now(),
   },
   (t) => [index("flow_template_idx").on(t.templateId)],

@@ -172,6 +172,8 @@ export const FlowSchema = z
     precondition: z.string(),
     estimatedMinutes: z.number().int().positive().nullable(),
     position: z.number().int().nonnegative(),
+    /** Archived flows stay in the template for history but leave new testing days. */
+    archived: z.boolean(),
     steps: z.array(StepSchema),
   })
   .openapi("Flow");
@@ -183,6 +185,7 @@ export const CreateFlowSchema = z
     precondition: z.string().default(""),
     /** Hand-typed, never derived from run history (D31). */
     estimatedMinutes: z.number().int().positive().nullable().default(null),
+    archived: z.boolean().default(false),
     steps: z.array(CreateStepSchema).default([]),
   })
   .openapi("CreateFlow");
@@ -316,6 +319,8 @@ export const UpdateFlowSchema = z
     name: z.string().min(1).optional(),
     precondition: z.string().optional(),
     estimatedMinutes: z.number().int().positive().nullable().optional(),
+    /** `true` archives, `false` restores. Testing days already open are unaffected (D21). */
+    archived: z.boolean().optional(),
   })
   .openapi("UpdateFlow");
 
