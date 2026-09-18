@@ -3,11 +3,12 @@
  * where a day gets started from and where new templates are made; the overview
  * only summarises them.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, unwrap } from "../lib/api.ts";
 import { useTitle } from "../lib/title.ts";
+import { FilterBar } from "../components/Filters.tsx";
 
 export function Templates() {
   const { productId } = useParams({ strict: false }) as { productId: string };
@@ -17,6 +18,8 @@ export function Templates() {
   const qc = useQueryClient();
   const [warn, setWarn] = useState<{ templateId: string; openRunId: string } | null>(null);
   const [creating, setCreating] = useState(false);
+  const [q, setQ] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
   useTitle(product.data ? `Templates · ${product.data.name} — Flowdeck` : "Flowdeck");
 
   async function start(templateId: string, force = false) {
@@ -37,8 +40,14 @@ export function Templates() {
   }
 
   const all = templates.data ?? [];
-  const active = all.filter((t) => t.status === "active");
-  const archived = all.filter((t) => t.status === "archived");
+  const archivedTotal = all.filter((t) => t.status === "archived").length;
+  const matching = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return all.filter((t) => !needle || t.name.toLowerCase().includes(needle) || t.description.toLowerCase().includes(needle));
+  }, [all, q]);
+  const active = matching.filter((t) => t.status === "active");
+  const archived = showArchived ? matching.filter((t) => t.status === "archived") : [];
+  const narrowed = q.trim().length > 0;
 
   return (
     <main className="shell">
@@ -49,6 +58,16 @@ export function Templates() {
         </div>
         <button className="btn primary" onClick={() => setCreating(true)}>New template</button>
       </div>
+
+      {all.length ? (
+        <FilterBar
+          q={q}
+          onSearch={setQ}
+          placeholder="Search templates"
+          count={{ shown: active.length + archived.length, total: all.length - (showArchived ? 0 : archivedTotal) }}
+          archived={{ shown: showArchived, total: archivedTotal, onToggle: setShowArchived }}
+        />
+      ) : null}
 
       <div className="grid gap-4">
         {creating ? <NewTemplate onSave={createTemplate} onCancel={() => setCreating(false)} /> : null}
@@ -82,12 +101,26 @@ export function Templates() {
           </div>
         ))}
 
-        {templates.data && !active.length && !creating ? (
-          <div className="empty">
-            <b>No templates yet</b>
-            <span>A template is the set of flows for one setup — a fresh install, an upgraded account, a two-device lab.</span>
-            <button className="btn primary" onClick={() => setCreating(true)}>Create the first template</button>
-          </div>
+        {templates.data && !active.length && !archived.length && !creating ? (
+          narrowed ? (
+            <div className="empty">
+              <b>No templates match “{q.trim()}”</b>
+              <span>{archivedTotal && !showArchived ? "Archived templates are hidden — switch them on to search those too." : "Try another word from the name or description."}</span>
+              <button className="btn" onClick={() => setQ("")}>Clear search</button>
+            </div>
+          ) : all.length ? (
+            <div className="empty">
+              <b>Every template is archived</b>
+              <span>Nothing runs from an archived template. Show them to restore one, or start fresh.</span>
+              <div className="flex gap-2"><button className="btn" onClick={() => setShowArchived(true)}>Show archived</button><button className="btn primary" onClick={() => setCreating(true)}>New template</button></div>
+            </div>
+          ) : (
+            <div className="empty">
+              <b>No templates yet</b>
+              <span>A template is the set of flows for one setup — a fresh install, an upgraded account, a two-device lab.</span>
+              <button className="btn primary" onClick={() => setCreating(true)}>Create the first template</button>
+            </div>
+          )
         ) : null}
 
         {archived.length ? (

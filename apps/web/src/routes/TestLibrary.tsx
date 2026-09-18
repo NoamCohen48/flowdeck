@@ -12,8 +12,9 @@ import { useLiveCoverage, useTestIndex } from "../lib/editor-model.ts";
 import { useLiveResults } from "../lib/run-model.ts";
 import { worstResultByTest, type Verdict } from "@flowdeck/domain";
 import { useTitle } from "../lib/title.ts";
+import { FilterBar } from "../components/Filters.tsx";
 
-type Filter = "all" | "uncovered" | "archived";
+type Filter = "all" | "uncovered";
 
 export function TestLibrary() {
   const { productId } = useParams({ strict: false }) as { productId: string };
@@ -32,6 +33,7 @@ export function TestLibrary() {
 
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [showArchived, setShowArchived] = useState(false);
   const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
   const [tplFilter, setTplFilter] = useState<string>("");
   const [selected, setSelected] = useState<string | null>(search.test ?? null);
@@ -49,14 +51,14 @@ export function TestLibrary() {
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return tests
-      .filter((t) => filter === "archived" ? t.archived : !t.archived)
-      .filter((t) => filter !== "uncovered" || coverage.markCount(t.id) === 0)
+      .filter((t) => showArchived || !t.archived)
+      .filter((t) => filter !== "uncovered" || (!t.archived && coverage.markCount(t.id) === 0))
       .filter((t) => !tagFilter.size || [...tagFilter].every((g) => tagsOf(t).includes(g)))
       .filter((t) => !tplFilter || templatesOf(t.id).includes(tplFilter))
       .filter((t) => !needle || t.current.title.toLowerCase().includes(needle) || t.current.expectedResult.toLowerCase().includes(needle) || tagsOf(t).some((g) => g.includes(needle)))
       .sort((a, b) => a.current.title.localeCompare(b.current.title));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tests, q, filter, tagFilter, tplFilter, coverage, covered.data]);
+  }, [tests, q, filter, showArchived, tagFilter, tplFilter, coverage, covered.data]);
   const toggleTag = (g: string) => setTagFilter((prev) => { const n = new Set(prev); if (n.has(g)) n.delete(g); else n.add(g); return n; });
 
   const live = tests.filter((t) => !t.archived);
@@ -69,7 +71,7 @@ export function TestLibrary() {
   ]);
 
   async function create(title: string, expectedResult: string, tags: string[]) {
-    const [t] = await unwrap(api.POST("/products/{productId}/tests", { params: { path: { productId } }, body: { tests: [{ title, expectedResult, metadata: tags.length ? { tags } : {} }] } }));
+    const [t] = await unwrap(api.POST("/products/{productId}/tests", { params: { path: { productId } }, body: { tests: [{ title, expectedResult, metadata: tags.length ? { tags } : {}, archived: false }] } }));
     await refresh();
     setDialog(null);
     if (t) setSelected(t.id);
@@ -94,31 +96,31 @@ export function TestLibrary() {
         <button className="btn primary" onClick={() => setDialog("new")}>Add test</button>
       </div>
 
-      <div className="panel pad" style={{ marginBottom: 16, display: "grid", gap: 12 }}>
-        <div className="row-split">
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search titles, expected results or tags" dir="auto" aria-label="Search tests" />
-          </div>
-          <div className="flex gap-2 flex-wrap items-center">
-            <button className={`btn sm${filter === "all" ? " on" : ""}`} onClick={() => setFilter("all")}>All ({live.length})</button>
-            <button className={`btn sm${filter === "uncovered" ? " on" : ""}`} style={uncovered && filter !== "uncovered" ? { borderColor: "var(--pill-fail-line)", color: "var(--color-fail)" } : undefined} onClick={() => setFilter("uncovered")}>Uncovered only ({uncovered})</button>
-            <button className={`btn sm${filter === "archived" ? " on" : ""}`} onClick={() => setFilter("archived")}>Archived ({tests.length - live.length})</button>
-            <select className="compact" value={tplFilter} onChange={(e) => setTplFilter(e.target.value)} aria-label="Covered by template">
-              <option value="">Any template</option>
-              {(templates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}{t.status === "archived" ? " (archived)" : ""}</option>)}
-            </select>
-          </div>
+      <FilterBar
+        q={q}
+        onSearch={setQ}
+        placeholder="Search tests, expected results or tags"
+        count={{ shown: rows.length, total: showArchived ? tests.length : live.length }}
+        archived={{ shown: showArchived, total: tests.length - live.length, onToggle: setShowArchived }}
+      >
+        <div className="flex gap-2 flex-wrap items-center">
+          <button className={`btn sm${filter === "all" ? " on" : ""}`} onClick={() => setFilter("all")}>All ({live.length})</button>
+          <button className={`btn sm${filter === "uncovered" ? " on" : ""}`} style={uncovered && filter !== "uncovered" ? { borderColor: "var(--pill-fail-line)", color: "var(--color-fail)" } : undefined} onClick={() => setFilter("uncovered")}>Uncovered only ({uncovered})</button>
+          <select className="compact" value={tplFilter} onChange={(e) => setTplFilter(e.target.value)} aria-label="Covered by template">
+            <option value="">Any template</option>
+            {(templates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}{t.status === "archived" ? " (archived)" : ""}</option>)}
+          </select>
         </div>
-        {allTags.length ? (
-          <div className="chips" role="group" aria-label="Filter by tag">
-            <span className="meta" style={{ fontSize: 12.5, marginRight: 2 }}>Tags</span>
-            {allTags.map((g) => (
-              <button key={g} type="button" className={`chip${tagFilter.has(g) ? " on" : ""}`} aria-pressed={tagFilter.has(g)} onClick={() => toggleTag(g)}>{g}</button>
-            ))}
-            {tagFilter.size || tplFilter ? <button type="button" className="chip" style={{ borderStyle: "dashed" }} onClick={() => { setTagFilter(new Set()); setTplFilter(""); }}>Clear</button> : null}
-          </div>
-        ) : null}
-      </div>
+      </FilterBar>
+      {allTags.length ? (
+        <div className="chips" role="group" aria-label="Filter by tag" style={{ margin: "-6px 0 18px" }}>
+          <span className="meta" style={{ fontSize: 12.5, marginRight: 2 }}>Tags</span>
+          {allTags.map((g) => (
+            <button key={g} type="button" className={`chip${tagFilter.has(g) ? " on" : ""}`} aria-pressed={tagFilter.has(g)} onClick={() => toggleTag(g)}>{g}</button>
+          ))}
+          {tagFilter.size || tplFilter ? <button type="button" className="chip" style={{ borderStyle: "dashed" }} onClick={() => { setTagFilter(new Set()); setTplFilter(""); }}>Clear</button> : null}
+        </div>
+      ) : null}
 
       <div className="tbl" style={{ overflowX: "auto" }}>
         <table>
@@ -153,7 +155,7 @@ export function TestLibrary() {
                 </Fragment>
               );
             })}
-            {!rows.length ? <tr><td colSpan={3} className="meta">Nothing matches.</td></tr> : null}
+            {!rows.length ? <tr><td colSpan={3} className="meta">Nothing matches{tests.length - live.length && !showArchived ? " — archived tests are hidden" : ""}.</td></tr> : null}
           </tbody>
         </table>
       </div>

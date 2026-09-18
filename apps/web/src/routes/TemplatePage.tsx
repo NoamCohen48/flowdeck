@@ -2,7 +2,7 @@
  * A template: its flows, and what they add up to. Coverage here is a report,
  * never a form — "covers 20 of 25" is whatever the flows happen to mark (D1).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { computeHandoffs } from "@flowdeck/domain";
@@ -10,6 +10,7 @@ import { api, ApiError, unwrap } from "../lib/api.ts";
 import { useTestIndex } from "../lib/editor-model.ts";
 import { useTitle } from "../lib/title.ts";
 import { DeviceChip } from "../components/Device.tsx";
+import { FilterBar } from "../components/Filters.tsx";
 
 export function TemplatePage() {
   const { productId, templateId } = useParams({ strict: false }) as { productId: string; templateId: string };
@@ -27,7 +28,27 @@ export function TemplatePage() {
   const [showMisses, setShowMisses] = useState(false);
   const [adding, setAdding] = useState(false);
   const [warn, setWarn] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [device, setDevice] = useState<string>("");
+  const [showArchived, setShowArchived] = useState(false);
   useTitle(template.data ? `${template.data.name} — Flowdeck` : "Flowdeck");
+
+  // Archived flows are hidden until asked for; the rest narrows by words in the
+  // flow or by the device it needs. Devices come from the live flows only.
+  const flows = template.data?.flows ?? [];
+  const archivedTotal = flows.filter((f) => f.archived).length;
+  const withDevices = useMemo(() => flows.map((f) => ({ flow: f, devices: computeHandoffs(f.steps).devices })), [flows]);
+  const allDevices = useMemo(() => [...new Set(withDevices.filter((x) => !x.flow.archived).flatMap((x) => x.devices.map((d) => d.label)))], [withDevices]);
+  const visible = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return withDevices.filter(({ flow: f, devices }) =>
+      (showArchived || !f.archived)
+      && (!device || devices.some((d) => d.label === device))
+      && (!needle || f.name.toLowerCase().includes(needle) || f.precondition.toLowerCase().includes(needle) || f.steps.some((st) => st.text.toLowerCase().includes(needle))));
+  }, [withDevices, q, device, showArchived]);
+  const narrowed = q.trim().length > 0 || device !== "";
+  // Positions are meaningful across the whole list, so reordering needs the whole list on screen.
+  const canReorder = !narrowed && !showArchived;
 
   const refresh = () => Promise.all([
     qc.invalidateQueries({ queryKey: ["template", templateId] }),
@@ -42,14 +63,14 @@ export function TemplatePage() {
   }
 
   async function addFlow(name: string) {
-    const flow = await unwrap(api.POST("/templates/{templateId}/flows", { params: { path: { templateId } }, body: { name, precondition: "", estimatedMinutes: null, steps: [] } }));
+    const flow = await unwrap(api.POST("/templates/{templateId}/flows", { params: { path: { templateId } }, body: { name, precondition: "", estimatedMinutes: null, archived: false, steps: [] } }));
     await refresh();
     void navigate({ to: "/products/$productId/templates/$templateId/flows/$flowId", params: { productId, templateId, flowId: flow.id } });
   }
 
-  async function removeFlow(flowId: string, name: string, stepCount: number) {
-    if (!confirm(`Delete "${name}" and its ${stepCount} steps? Testing days already started keep their copy.`)) return;
-    await unwrap(api.DELETE("/flows/{flowId}", { params: { path: { flowId } } }));
+  /** Archive, never delete: history keeps its steps, coverage keeps its marks (D3, D7). */
+  async function setFlowArchived(flowId: string, archived: boolean) {
+    await unwrap(api.PATCH("/flows/{flowId}", { params: { path: { flowId } }, body: { archived } }));
     await refresh();
   }
 
@@ -125,28 +146,68 @@ export function TemplatePage() {
         <h2 style={{ margin: 0 }}>Flows</h2>
         <button className="btn sm" onClick={() => setAdding(true)}>＋ Add flow</button>
       </div>
-      <div className="stack" style={{ marginTop: 12 }}>
-        {tpl.flows.map((f, i) => {
-          const devices = computeHandoffs(f.steps).devices;
+      {tpl.flows.length > 1 || archivedTotal ? (
+        <div style={{ marginTop: 12 }}>
+          <FilterBar
+            q={q}
+            onSearch={setQ}
+            placeholder="Search flows and their steps"
+            count={{ shown: visible.length, total: showArchived ? tpl.flows.length : tpl.flows.length - archivedTotal }}
+            archived={{ shown: showArchived, total: archivedTotal, onToggle: setShowArchived }}
+          >
+            {allDevices.length > 1 ? (
+              <div className="chips" role="group" aria-label="Filter by device">
+                {allDevices.map((label) => (
+                  <button key={label} type="button" className={`chip${device === label ? " on" : ""}`} aria-pressed={device === label} onClick={() => setDevice(device === label ? "" : label)} dir="auto">{label}</button>
+                ))}
+              </div>
+            ) : null}
+          </FilterBar>
+        </div>
+      ) : null}
+      <div className="stack" style={{ marginTop: tpl.flows.length > 1 || archivedTotal ? 0 : 12 }}>
+        {visible.map(({ flow: f, devices }) => {
+          const i = tpl.flows.findIndex((x) => x.id === f.id);
           const marked = new Set(f.steps.flatMap((s) => s.marks)).size;
           return (
-            <div key={f.id} className="panel pad row-split">
+            <div key={f.id} className={`panel pad row-split${f.archived ? " archivedrow" : ""}`}>
               <div style={{ flex: 1, minWidth: 220 }}>
-                <h3><Link to="/products/$productId/templates/$templateId/flows/$flowId" params={{ productId, templateId, flowId: f.id }} className="lnk" dir="auto">{f.name}</Link></h3>
+                <h3><Link to="/products/$productId/templates/$templateId/flows/$flowId" params={{ productId, templateId, flowId: f.id }} className="lnk" dir="auto">{f.name}</Link>{f.archived ? <span className="tag" style={{ marginLeft: 8 }}>archived</span> : null}</h3>
                 <p className="meta" style={{ margin: "2px 0 0" }}>{f.steps.length} steps · marks {marked} tests{f.estimatedMinutes ? ` · ~${f.estimatedMinutes} min` : ""}</p>
               </div>
               <div className="flex gap-1.5 flex-wrap">{devices.map((d) => <DeviceChip key={d.label} device={d} ghost />)}</div>
               <div className="flex gap-1">
-                <button className="btn sm" disabled={i === 0} onClick={() => void move(f.id, -1)} aria-label="Move up">↑</button>
-                <button className="btn sm" disabled={i === tpl.flows.length - 1} onClick={() => void move(f.id, 1)} aria-label="Move down">↓</button>
-                <Link className="btn sm" to="/products/$productId/templates/$templateId/flows/$flowId" params={{ productId, templateId, flowId: f.id }}>Edit</Link>
-                <button className="btn sm danger" onClick={() => void removeFlow(f.id, f.name, f.steps.length)}>Delete</button>
+                {f.archived ? (
+                  <button className="btn sm" onClick={() => void setFlowArchived(f.id, false)}>Restore</button>
+                ) : (
+                  <>
+                    <button className="btn sm" disabled={!canReorder || i === 0} onClick={() => void move(f.id, -1)} aria-label="Move up" title={canReorder ? undefined : "Show every live flow, unfiltered, to reorder"}>↑</button>
+                    <button className="btn sm" disabled={!canReorder || i === tpl.flows.length - 1} onClick={() => void move(f.id, 1)} aria-label="Move down" title={canReorder ? undefined : "Show every live flow, unfiltered, to reorder"}>↓</button>
+                    <Link className="btn sm" to="/products/$productId/templates/$templateId/flows/$flowId" params={{ productId, templateId, flowId: f.id }}>Edit</Link>
+                    <button className="btn sm" onClick={() => void setFlowArchived(f.id, true)}>Archive</button>
+                  </>
+                )}
               </div>
             </div>
           );
         })}
         {adding ? <NewFlow onSave={addFlow} onCancel={() => setAdding(false)} /> : null}
         {!tpl.flows.length && !adding ? <p className="meta">No flows yet. A flow is what one tester does in one sitting — a path through the product, with checks along the way.</p> : null}
+        {tpl.flows.length && !visible.length ? (
+          narrowed ? (
+            <div className="empty">
+              <b>No flows match</b>
+              <span>{device ? `No flow${q.trim() ? ` mentioning “${q.trim()}”` : ""} uses “${device}”.` : `Nothing here mentions “${q.trim()}”.`}{archivedTotal && !showArchived ? " Archived flows are hidden." : ""}</span>
+              <button className="btn" onClick={() => { setQ(""); setDevice(""); }}>Clear</button>
+            </div>
+          ) : (
+            <div className="empty">
+              <b>Every flow is archived</b>
+              <span>A testing day started now would have nothing to run. Show them to restore one, or add a flow.</span>
+              <div className="flex gap-2"><button className="btn" onClick={() => setShowArchived(true)}>Show archived</button><button className="btn primary" onClick={() => setAdding(true)}>Add flow</button></div>
+            </div>
+          )
+        ) : null}
       </div>
     </main>
   );

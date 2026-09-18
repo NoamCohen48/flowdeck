@@ -149,12 +149,12 @@
   h1 { font-size: 28px; line-height: 1.15; letter-spacing: -0.025em; margin: 0 0 4px; font-weight: 600; text-wrap: balance; }
   h2 { font-size: 18px; letter-spacing: -0.01em; margin: 34px 0 12px; font-weight: 600; }
   h3 { font-size: 15px; margin: 0 0 6px; font-weight: 600; }
-  textarea, input[type="text"], select {
+  textarea, input[type="text"], input[type="search"], select {
     width: 100%; font-family: inherit; font-size: 14px; padding: 8px 10px;
     border: 1px solid var(--line); border-radius: var(--radius-r); background: var(--surface); color: var(--ink);
     transition: border-color 150ms, box-shadow 150ms;
   }
-  textarea:focus, input[type="text"]:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
+  textarea:focus, input[type="text"]:focus, input[type="search"]:focus, select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
   textarea { min-height: 84px; resize: vertical; }
 }
 
@@ -554,6 +554,28 @@
   .chip.on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
   select.compact { width: auto; padding: 5px 28px 5px 10px; font-size: 13.5px; }
 
+  /* ---- List filters (Filters.tsx): the same bar on templates, flows and tests ---- */
+  .filterbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .filterbar .search { position: relative; flex: 1 1 260px; min-width: 200px; max-width: 460px; color: var(--muted); }
+  .filterbar .search svg { position: absolute; left: 11px; top: 50%; width: 15px; height: 15px; transform: translateY(-50%); pointer-events: none; }
+  .filterbar .search input { padding-left: 33px; }
+  .filterbar .search input::-webkit-search-cancel-button { cursor: pointer; }
+  .filterbar .count { white-space: nowrap; }
+  .filterbar .switch { margin-left: auto; }
+  .filterbar .chips { gap: 4px; }
+
+  /* A switch, not a checkbox: it shows or hides, it does not select. */
+  .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink-2); cursor: pointer; user-select: none; white-space: nowrap; }
+  .switch.off { color: var(--muted); cursor: default; }
+  .switch .track { width: 32px; height: 18px; border-radius: 10px; background: var(--bar-track); position: relative; flex: none; transition: background-color 150ms; }
+  /* The input is the whole track, invisible: clicks and taps land on the real control. */
+  .switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit; }
+  .switch .knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(20, 27, 45, 0.25); transition: transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1); pointer-events: none; }
+  .switch .track:has(input:checked) { background: var(--primary); }
+  .switch input:checked + .knob { transform: translateX(14px); }
+  .switch .track:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .switch .track:has(input:disabled) { opacity: 0.5; }
+
   .kbd { font-family: ui-monospace, monospace; font-size: 12px; padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--surface-2); }
 
 
@@ -699,6 +721,8 @@
   .tplcard h3 a:hover { color: var(--primary); }
   .tplcard .stats { display: flex; gap: 16px; font-size: 13px; color: var(--muted); }
   .tplcard .stats b { color: var(--ink); font-weight: 600; }
+  .archivedrow { opacity: 0.7; background: var(--surface-3); }
+  .archivedrow:hover { opacity: 1; }
   .tplcard.archived { opacity: 0.7; }
   .tplcard.archived:hover { opacity: 1; }
 
