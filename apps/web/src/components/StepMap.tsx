@@ -1,5 +1,5 @@
 /**
- * The step map (improvement I3, and `07-open-items.md`'s sidebar). A fifty-step
+ * The step map. A fifty-step
  * flow does not fit on one screen; this does. Click to jump. In the editor it is
  * also sortable: reordering against a map beats dragging through hundreds of
  * pixels of step detail. Drag is never the only way — the edit form has Move up

@@ -2,7 +2,7 @@ import { deviceColor, deviceSlots, type DeviceAssignment, type DeviceSlots, type
 import type { CSSProperties } from "react";
 
 /**
- * A template's device slots as every screen must see them (D41). Active flows
+ * A template's device slots as every screen must see them. Active flows
  * first, in order, then archived ones: a testing day's snapshot leaves archived
  * flows out, so this is the only order in which the template page and the
  * editor agree with the board and the runner.
@@ -17,7 +17,7 @@ export function deviceStyle(slot: number): CSSProperties {
 }
 
 /**
- * Colour + letter + name, always all three (`.docs/05-design-and-ux.md`).
+ * Colour + letter + name, always all three.
  * Colour is never load-bearing alone.
  */
 export function DeviceChip({ device, ghost = false }: { device: DeviceAssignment; ghost?: boolean }) {
@@ -32,7 +32,7 @@ export function DeviceChip({ device, ghost = false }: { device: DeviceAssignment
 
 /**
  * The hand-off banner. Deliberately the loudest element in the product: picking up
- * the wrong device is the most confusing failure mode in the old suite (D18).
+ * the wrong device is the most confusing failure mode in the old suite.
  */
 export function Pickup({ device, muted = false }: { device: DeviceAssignment; muted?: boolean }) {
   // Muted when the steps it introduces are blocked: nobody should pick up a phone for work they cannot do.

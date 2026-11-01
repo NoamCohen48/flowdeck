@@ -1,10 +1,10 @@
 /**
  * The testing-day board. Every flow with its precondition, devices, estimate,
- * state and who holds it — live. Claims are advisory (D26): a flow someone else
+ * state and who holds it — live. Claims are advisory: a flow someone else
  * holds can still be taken, after a confirmation that says who and how far.
  *
  * Recorded results arrive when a flow is finished. Until then each running flow
- * shows its tester's provisional progress (D42): the step they are on, a tally,
+ * shows its tester's provisional progress: the step they are on, a tally,
  * and anything that went wrong, with the note — never counted in the day's numbers.
  */
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
@@ -198,7 +198,7 @@ const KIND_LABEL: Record<LiveProgress["issues"][number]["kind"], string> = {
 
 /**
  * A flow someone is running right now: where they are and what has gone wrong so
- * far, from their device's draft (D42). Provisional — dashed, and not in the totals.
+ * far, from their device's draft. Provisional — dashed, and not in the totals.
  */
 function LiveRow({ productId, runId, flow, flowRun, testTitle }: { productId: string; runId: string; flow: SnapshotFlow; flowRun: FlowRunRow; testTitle: (id: string) => string }) {
   const by = flowRun.claimed_by ?? "someone";

@@ -1,7 +1,7 @@
 /**
  * Structural editing — the writes behind the template page and the flow editor.
  *
- * Bulk creation (import, D29) lives in templates.ts and tests.ts. These routes
+ * Bulk creation lives in templates.ts and tests.ts. These routes
  * are the per-row edits a person makes: one step, one flow, one order. Each
  * returns the transaction id so the editor can reconcile its optimistic state
  * against the Electric stream (`flow.steps`, `flow.marks`).
@@ -185,7 +185,7 @@ authoring.openapi(
     tags: ["Templates"],
     summary: "Edit a flow's name, precondition or estimate, or archive it",
     description:
-      "Archiving (`archived: true`) is the normal way to retire a flow: new testing days leave it out, its marks still count toward coverage (D3), and days already started keep their snapshot (D21). Set `archived: false` to bring it back.",
+      "Archiving (`archived: true`) is the normal way to retire a flow: new testing days leave it out, its marks still count toward coverage, and days already started keep their snapshot. Set `archived: false` to bring it back.",
     request: {
       params: z.object({ flowId: Uuid }),
       body: { content: { "application/json": { schema: UpdateFlowSchema } } },
@@ -212,7 +212,7 @@ authoring.openapi(
     tags: ["Templates"],
     summary: "Delete a flow and its steps",
     description:
-      "Runs already started keep their snapshot (D21), so nothing historical is lost. Marks vanish with the steps, which can uncover tests — the template page reports that.",
+      "Runs already started keep their snapshot, so nothing historical is lost. Marks vanish with the steps, which can uncover tests — the template page reports that.",
     request: { params: z.object({ flowId: Uuid }) },
     responses: {
       204: { description: "Deleted" },
@@ -237,7 +237,7 @@ authoring.openapi(
     tags: ["Templates"],
     summary: "Insert a step at a position",
     description:
-      "Insert anywhere (07 §1): the step takes the given index and what was there moves down. Hand-off banners are derived from order, so they follow automatically.",
+      "Insert anywhere: the step takes the given index and what was there moves down. Hand-off banners are derived from order, so they follow automatically.",
     request: {
       params: z.object({ flowId: Uuid }),
       body: { content: { "application/json": { schema: InsertStepSchema } } },
@@ -268,7 +268,7 @@ authoring.openapi(
     path: "/steps/{stepId}",
     tags: ["Templates"],
     summary: "Edit one step",
-    description: "Last write wins per step (D37). Changing kind to action drops the expected result.",
+    description: "Last write wins per step. Changing kind to action drops the expected result.",
     request: {
       params: z.object({ stepId: Uuid }),
       body: { content: { "application/json": { schema: UpdateStepSchema } } },
@@ -347,7 +347,7 @@ authoring.openapi(
     path: "/steps/{stepId}/marks/{testId}",
     tags: ["Templates", "Coverage"],
     summary: "Mark a test on a step",
-    description: "Idempotent. The same test may be marked on any number of steps (D19).",
+    description: "Idempotent. The same test may be marked on any number of steps.",
     request: { params: z.object({ stepId: Uuid, testId: Uuid }) },
     responses: {
       200: { content: { "application/json": { schema: TxidSchema } }, description: "Marked" },
@@ -402,7 +402,7 @@ authoring.openapi(
     tags: ["Tests", "Coverage"],
     summary: "Every step that marks this test",
     description:
-      "Answers 'if I change this, what am I affecting?' (04), and gives the archive confirmation its numbers before anything happens (D24).",
+      "Answers 'if I change this, what am I affecting?', and gives the archive confirmation its numbers before anything happens.",
     request: { params: z.object({ testId: Uuid }) },
     responses: {
       200: { content: { "application/json": { schema: UsageReportSchema } }, description: "Usage report" },

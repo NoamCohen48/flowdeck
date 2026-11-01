@@ -1,8 +1,8 @@
 /**
- * The device palette (improvement I4).
+ * The device palette.
  *
- * `.docs/05-design-and-ux.md` defines exactly four device colours, but device labels
- * are free text and unbounded (D16) — a flow using five devices had no defined
+ * The design has exactly four device colours, but device labels
+ * are free text and unbounded — a flow using five devices had no defined
  * behaviour. The first four slots are the demo's original colours, unchanged.
  *
  * Constraints, all enforced by `devices.test.ts` rather than asserted in prose:
@@ -18,19 +18,18 @@
  * candidate for an eighth sat within ~20° of something it would be confused with, so
  * the palette stops at seven rather than shipping a slot that reads as a verdict.
  *
- * **Inherited collisions, flagged not fixed.** The demo's own ochre (`--dev-c`, hue 30)
- * is 8° from the minor amber `#A66A00`, and its magenta (`--dev-d`, hue 332) is 28°
- * from the fail red `#C22F2F`. Matching the demo was the instruction, so these stand —
- * but a device C chip beside a minor-verdict pill is genuinely hard to tell apart, and
- * it is worth a decision. See `docs` note in the implementation plan.
+ * **Inherited collisions, flagged not fixed.** The original ochre (`--dev-c`, hue 30)
+ * is 8° from the minor amber `#A66A00`, and the magenta (`--dev-d`, hue 332) is 28°
+ * from the fail red `#C22F2F`. They were kept from the first design, but a device C
+ * chip beside a minor-verdict pill is genuinely hard to tell apart.
  *
  * Colour is never load-bearing alone: every device is shown as colour + letter + name.
  */
 export const DEVICE_PALETTE = [
-  "#5B45C7", // A · violet   — the demo's --dev-a   (hue 250)
-  "#0C7F80", // B · teal     — the demo's --dev-b   (hue 181)
-  "#A85C10", // C · ochre    — the demo's --dev-c   (hue  30)
-  "#B23A72", // D · magenta  — the demo's --dev-d   (hue 332)
+  "#5B45C7", // A · violet   — the original --dev-a (hue 250)
+  "#0C7F80", // B · teal     — the original --dev-b (hue 181)
+  "#A85C10", // C · ochre    — the original --dev-c (hue  30)
+  "#B23A72", // D · magenta  — the original --dev-d (hue 332)
   // Blue sits only 9° from the skipped grey-blue, so it is separated by lightness
   // instead — dark enough to clear it by contrast. `distinguishable()` encodes that.
   "#15529B", // E · blue                            (hue 213)
@@ -44,7 +43,7 @@ export function deviceColor(slot: number): string {
   return color ?? DEVICE_PALETTE[0];
 }
 
-/** Result-state colours, from `.docs/05-design-and-ux.md`. Skipped is deliberately colourless. */
+/** Result-state colours. Skipped is deliberately colourless. */
 export const RESULT_COLORS = {
   pass: "#1B7A46",
   fail: "#C22F2F",

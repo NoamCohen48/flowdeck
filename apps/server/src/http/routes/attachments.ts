@@ -1,5 +1,5 @@
 /**
- * Screenshots and photos on failures (`.docs/03-execution.md`).
+ * Screenshots and photos on failures.
  *
  * Bytes live on a mounted volume, content-addressed by SHA-256, and only the
  * metadata is in Postgres — large binaries stay out of the database and out of

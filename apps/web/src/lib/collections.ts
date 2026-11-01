@@ -1,5 +1,5 @@
 /**
- * Live collections (D32, D33), one per shape the server allows.
+ * Live collections, one per shape the server allows.
  *
  * TanStack DB holds the rows Electric syncs; components read them with live
  * queries and join them client-side. Writes still go through REST — each handler
@@ -23,7 +23,7 @@ export type FlowRunRow = {
   state: "open" | "claimed" | "finished" | "abandoned" | "released";
   started_at: string;
   finished_at: string | null;
-  /** The tester's draft, summarised, while the flow is claimed (D42). Provisional; never counted. */
+  /** The tester's draft, summarised, while the flow is claimed. Provisional; never counted. */
   progress: LiveProgress | null;
 };
 
@@ -41,7 +41,7 @@ export type TestResultRow = {
   idempotency_key: string;
 };
 
-/** "This step is wrong" (D40): one per step per flow run, not a verdict. */
+/** "This step is wrong": one per step per flow run, not a verdict. */
 export type StepProblemRow = {
   id: string;
   flow_run_id: string;
@@ -184,7 +184,7 @@ export function testsOf(productId: string) {
   );
 }
 
-/* ── The flow editor (D37) ──────────────────────────────────────────────
+/* ── The flow editor ──────────────────────────────────────────────
    Steps and marks of one flow. Writes are optimistic: the author sees the
    change at once, the API confirms it with a txid, and the stream carries the
    same rows to any other author with the flow open. */

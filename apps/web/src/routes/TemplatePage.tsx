@@ -1,6 +1,6 @@
 /**
  * A template: its flows, and what they add up to. Coverage here is a report,
- * never a form — "covers 20 of 25" is whatever the flows happen to mark (D1).
+ * never a form — "covers 20 of 25" is whatever the flows happen to mark.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
@@ -71,7 +71,7 @@ export function TemplatePage() {
     void navigate({ to: "/products/$productId/templates/$templateId/flows/$flowId", params: { productId, templateId, flowId: flow.id } });
   }
 
-  /** Archive, never delete: history keeps its steps, coverage keeps its marks (D3, D7). */
+  /** Archive, never delete: history keeps its steps, coverage keeps its marks. */
   async function setFlowArchived(flowId: string, archived: boolean) {
     await unwrap(api.PATCH("/flows/{flowId}", { params: { path: { flowId } }, body: { archived } }));
     await refresh();

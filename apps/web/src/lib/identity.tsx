@@ -1,5 +1,5 @@
 /**
- * The name picker (D38). Not authentication: seven people in one room, no roles,
+ * The name picker. Not authentication: seven people in one room, no roles,
  * every change attributed. Everything that writes reads `useMe()`.
  */
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";

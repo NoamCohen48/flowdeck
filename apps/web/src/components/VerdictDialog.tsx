@@ -2,8 +2,8 @@
  * The dialog behind fail, skipped and (optionally) minor.
  *
  * It asks a human question — "Can you keep going?" — rather than exposing the data
- * model's word for it. The answer decides whether the rest of the flow is blocked
- * (D11), taken at the moment the tester has the most context.
+ * model's word for it. The answer decides whether the rest of the flow is blocked,
+ * taken at the moment the tester has the most context.
  */
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState } from "react";

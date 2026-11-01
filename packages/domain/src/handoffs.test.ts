@@ -11,7 +11,7 @@ const step = (id: string, deviceLabel: string): StepLike => ({
 });
 
 /**
- * `.docs/07-open-items.md` names this the derived-state bug that is easy to ship and
+ * This is the derived-state bug that is easy to ship and
  * hard to notice. These are the invariants that make it impossible rather than unlikely.
  */
 const arbSteps = fc
@@ -152,7 +152,7 @@ describe("slotLetter", () => {
   });
 });
 
-describe("template-wide device slots (D41)", () => {
+describe("template-wide device slots", () => {
   const flowA = [step("a1", "Pixel 8"), step("a2", "iPhone 13"), step("a3", "Second laptop")];
   const flowB = [step("b1", "Pixel 8"), step("b2", "Second laptop")];
 

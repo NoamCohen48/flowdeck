@@ -18,7 +18,7 @@ const steps = [
   step("5", ["t5"]),
 ];
 
-describe("computeBlocked (D11)", () => {
+describe("computeBlocked", () => {
   test("nothing is blocked when no failure blocks", () => {
     const view = computeBlocked(steps, undefined);
     expect(view.blockedFromIndex).toBeUndefined();
@@ -66,7 +66,7 @@ describe("computeBlocked (D11)", () => {
   });
 });
 
-describe("blockingStepIndex (D11, D40)", () => {
+describe("blockingStepIndex", () => {
   test("nothing blocks when no blocker is marked blocking", () => {
     expect(blockingStepIndex(steps, [{ stepId: "2", blocking: false }])).toBeUndefined();
     expect(blockingStepIndex(steps, [])).toBeUndefined();

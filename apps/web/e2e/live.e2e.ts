@@ -55,7 +55,7 @@ test("a claim and a verdict in one browser land on the other's board without a r
   await expect(noa.locator(".trow .v.on.pass")).toHaveCount(1);
   await noa.waitForTimeout(1500);
   expect(await dana.locator(".kpi").innerText()).toBe(passedBefore);
-  // …but Dana does see it as in flight under the flow (D42): provisional, not counted.
+  // …but Dana does see it as in flight under the flow: provisional, not counted.
   await expect(danaCard.locator(".resultrow.live")).toContainText(/1 of \d+ tests checked/, { timeout: 15_000 });
 
   // Finishing records it; Dana's board counts it without a reload.

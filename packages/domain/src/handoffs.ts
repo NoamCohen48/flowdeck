@@ -3,7 +3,7 @@ import type { StepLike } from "./types.ts";
 /**
  * Device hand-offs.
  *
- * `.docs/07-open-items.md` flags this as the derived-state bug that is easy to ship
+ * This is the derived-state bug that is easy to ship
  * and hard to notice: a hand-off banner is "the first step using this device label",
  * so every insert and every reorder can move it. Moving a step above the point where
  * its device is introduced must move the banner with it, not orphan the step.
@@ -41,7 +41,7 @@ export function slotLetter(slot: number): string {
 }
 
 /**
- * A device label → palette slot map shared by every flow of a template (D41).
+ * A device label → palette slot map shared by every flow of a template.
  *
  * Slots go by order of first appearance across the template's flows, in flow order.
  * Two things follow. A device has the same colour and letter on the board, the
@@ -112,7 +112,7 @@ export function namesSeveralDevices(text: string): string | undefined {
 
 /**
  * The existing label a typed one most likely means: the same words, ignoring case
- * and spacing. A step's device is free text (D16), so "Pixel  8" would otherwise
+ * and spacing. A step's device is free text, so "Pixel  8" would otherwise
  * be a new device with its own colour and its own hand-off banner.
  */
 export function matchDeviceLabel(typed: string, known: Iterable<string>): string | undefined {
@@ -124,7 +124,7 @@ export function matchDeviceLabel(typed: string, known: Iterable<string>): string
 
 /**
  * Known device labels a step's text names besides its own — "Check the iPhone and
- * the second laptop" on a step for the iPhone. A step happens on one device (D41),
+ * the second laptop" on a step for the iPhone. A step happens on one device,
  * so the editor offers to split it. Whole words, case-insensitive.
  */
 export function otherDevicesMentioned(text: string, ownLabel: string, known: Iterable<string>): string[] {
@@ -139,7 +139,7 @@ export function otherDevicesMentioned(text: string, ownLabel: string, known: Ite
 }
 
 /**
- * The sticky "in your hands" bar (`.docs/05-design-and-ux.md`): every device in play
+ * The sticky "in your hands" bar: every device in play
  * at a given point, growing as the flow introduces more. The tester's physical setup
  * and the screen always agree.
  */
@@ -150,7 +150,7 @@ export function devicesInPlayAt(
   return handoffs.devices.filter((d) => d.introducedAtIndex <= stepIndex);
 }
 
-/** The flow header's up-front device list — the agreed fallback position for D17. */
+/** The flow header's up-front device list — the fallback if mid-flow introduction proves disruptive. */
 export function devicesUsed(steps: readonly StepLike[]): readonly string[] {
   return computeHandoffs(steps).devices.map((d) => d.label);
 }

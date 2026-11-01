@@ -1,10 +1,10 @@
 /**
- * The flow editor (`02-authoring.md`, `07-open-items.md` §1).
+ * The flow editor.
  *
  * The same visual language as the runner — device colours, action/check
  * markers, attached test rows — so authors see what testers will see. Steps and
  * marks are live: another author's edits arrive as they happen, and hand-off
- * banners are recomputed from order after every insert and drag (07 §1's
+ * banners are recomputed from order after every insert and drag (the
  * derived-state trap).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -47,7 +47,7 @@ export function FlowEditor() {
 
   useTitle(flow ? `Editing ${flow.name} — Flowdeck` : "Flowdeck");
 
-  // Colours and letters across the whole template (D41), with this flow's live steps
+  // Colours and letters across the whole template, with this flow's live steps
   // standing in for its saved ones so a device typed a moment ago is placed right.
   const slots = useMemo(
     () => templateSlots((template.data?.flows ?? []).map((f) => (f.id === flowId ? { ...f, steps } : f))),
@@ -112,7 +112,7 @@ export function FlowEditor() {
     setCurrent(index);
   }
 
-  /** A step names a second device (D41): save it, and open a new step on that device right after. */
+  /** A step names a second device: save it, and open a new step on that device right after. */
   function saveAndSplit(step: SnapshotStep, d: Draft, device: string) {
     save(step, d);
     setDraft({ index: steps.indexOf(step) + 1, kind: d.kind, device });
@@ -295,7 +295,7 @@ export function FlowEditor() {
 
 /* ── Pieces ──────────────────────────────────────────────────────────── */
 
-/** The badge on a saved step that reads as happening on more than one device (D41), or null. */
+/** The badge on a saved step that reads as happening on more than one device, or null. */
 function multiDeviceWarning(text: string, own: string, labels: string[]): string | null {
   const others = otherDevicesMentioned(text, own, labels);
   if (others.length) return `Also names ${others.join(", ")}`;
@@ -316,7 +316,7 @@ function SortableStep({ id, refCb, style, children }: { id: string; refCb: (el: 
   );
 }
 
-/** The affordance on the boundary between two steps (07 §1). */
+/** The affordance on the boundary between two steps. */
 function Between({ onAdd }: { onAdd: (kind: StepKind) => void }) {
   const [open, setOpen] = useState(false);
   // Once opened it stays until a click lands anywhere outside it, or Escape.
@@ -401,7 +401,7 @@ function StepForm({
 }: {
   initial: Draft; index: number; labels: string[]; submitLabel: string;
   onSave: (d: Draft) => void; onCancel: () => void; onDelete?: () => void;
-  /** Save, then start a new step on `device` straight after this one (D41). */
+  /** Save, then start a new step on `device` straight after this one. */
   onSplit?: (d: Draft, device: string) => void;
   /** Pointer-free reorder (WCAG 2.2 dragging movements): drag is never the only way. */
   onMove?: { up: (() => void) | null; down: (() => void) | null };
@@ -411,7 +411,7 @@ function StepForm({
   useEffect(() => { textRef.current?.focus(); }, []);
   const isCheck = d.kind === "assertion";
   const canSave = d.text.trim().length > 0 && d.deviceLabel.trim().length > 0;
-  // Free-text devices (D16), minus the accidents: "pixel  8" is the Pixel 8 the
+  // Free-text devices, minus the accidents: "pixel  8" is the Pixel 8 the
   // template already has, not a new device with its own colour and banner.
   const known = matchDeviceLabel(d.deviceLabel, labels);
   const device = known ?? d.deviceLabel.trim();

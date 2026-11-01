@@ -1,7 +1,7 @@
 /**
  * Claiming a flow, from the board or from the runner.
  *
- * Nothing navigates until the server has said yes. A claim is advisory (D26),
+ * Nothing navigates until the server has said yes. A claim is advisory,
  * so the server never refuses — but when someone else already holds the flow
  * it answers 409 with their names instead of claiming, and this asks before
  * trying again with `confirm`. Two people can run the same flow; they cannot
@@ -11,7 +11,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useState, type ReactNode } from "react";
 import { api, ApiError, unwrap } from "../lib/api.ts";
 
-/** Who holds the flow, and — from their live progress (D42) — how far in and how recently. */
+/** Who holds the flow, and — from their live progress — how far in and how recently. */
 interface Holder { name: string; since: string; step: number | null; steps: number | null; seen: string | null }
 interface Conflict { flowId: string; flowName: string; holders: Holder[]; then: (flowRunId: string) => void }
 

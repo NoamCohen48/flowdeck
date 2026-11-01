@@ -1,6 +1,6 @@
 /**
  * The typed client for Flowdeck's REST API, generated from the OpenAPI document
- * the server derives from its own Zod schemas (D35). The web app is the heaviest
+ * the server derives from its own Zod schemas. The web app is the heaviest
  * consumer of the same API external adapters use, so a contract break is noticed
  * here first.
  */

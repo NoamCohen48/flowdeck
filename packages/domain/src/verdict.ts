@@ -1,11 +1,11 @@
 import type { ResultLike, Verdict } from "./types.ts";
 
 /**
- * Worst result wins (D19). A fail anywhere means the test failed that day —
+ * Worst result wins. A fail anywhere means the test failed that day —
  * a passing path must never bury a real bug. Skipped outranks minor and pass
  * because a test reported as invalid should not appear green.
  *
- * `.docs/04-coverage-and-reporting.md`:  fail > skipped > minor > pass
+ *   fail > skipped > minor > pass
  *
  * The same ordering exists in SQL as `verdict_rank()`; `verdict.sql.test.ts`
  * asserts the two agree.
@@ -49,9 +49,9 @@ export function worstResultByTest(
 }
 
 /**
- * Fail and skipped require a written explanation (D13). Fail because a bug report
+ * Fail and skipped require a written explanation. Fail because a bug report
  * without a description is not actionable; skipped because it is the only channel
- * through which testers report that the suite itself is wrong (D20).
+ * through which testers report that the suite itself is wrong.
  */
 export function verdictRequiresNote(verdict: Verdict): boolean {
   return verdict === "fail" || verdict === "skipped";
@@ -66,12 +66,12 @@ export function verdictCountsAsVerified(verdict: Verdict): boolean {
   return verdict === "pass" || verdict === "minor";
 }
 
-/** Everything the issue feed exports (D28). Pass is the only thing left out. */
+/** Everything the issue feed exports. Pass is the only thing left out. */
 export function isIssue(verdict: Verdict): boolean {
   return verdict !== "pass";
 }
 
-/** `.docs/08-api-and-integration.md` — Flowdeck labels, the adapter decides. */
+/** Flowdeck labels, the adapter decides. */
 export function issueType(
   verdict: Exclude<Verdict, "pass">,
 ): "failure" | "minor" | "invalid_test" {

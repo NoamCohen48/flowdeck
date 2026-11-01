@@ -2,7 +2,7 @@
  * The one filter bar every list uses: a search field on the left, whatever
  * narrows the list in the middle, and the archived switch on the right. The
  * default view is always the working set — archived things are kept, not shown,
- * until asked for (D7: nothing is ever erased, so the lists would otherwise
+ * until asked for (nothing is ever erased, so the lists would otherwise
  * only ever grow).
  */
 import type { ReactNode } from "react";

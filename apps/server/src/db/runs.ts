@@ -1,8 +1,8 @@
 /**
  * Runs, flow runs and results — the testing-day data path.
  *
- * The template is the class; the run is the object (D8). Everything here reads
- * from the run's frozen snapshot, never the live template (D21).
+ * The template is the class; the run is the object. Everything here reads
+ * from the run's frozen snapshot, never the live template.
  */
 import { and, asc, desc, eq, sql as raw } from "drizzle-orm";
 import { db, query } from "./client.ts";
@@ -50,7 +50,7 @@ export interface TemplateSnapshot {
 }
 
 /**
- * The frozen copy a run executes against (D21). Taken at start, never re-read,
+ * The frozen copy a run executes against. Taken at start, never re-read,
  * so an edit during the day cannot reshuffle the checklist of a tester on step 14.
  */
 export async function snapshotTemplate(
@@ -132,7 +132,7 @@ export async function startRun(templateId: string, startedBy: string) {
       .returning();
 
     // One open FlowRun per flow, so the board has a row to show before anyone
-    // claims anything. Claims by further testers add rows (D26).
+    // claims anything. Claims by further testers add rows.
     if (snapshot.flows.length) {
       await tx.insert(flowRun).values(
         snapshot.flows.map((f) => ({ runId: r!.id, flowId: f.id, state: "open" as const })),
@@ -173,7 +173,7 @@ export async function getRun(runId: string) {
 
 /**
  * Every testing day of a product, with its tally: tests in scope, and each one's
- * worst result across every flow run (D19, same `verdict_rank` as the board).
+ * worst result across every flow run (the same `verdict_rank` as the board).
  * A closed day never changes, so the runs list reads this once over REST rather
  * than holding two live shapes open per day — hundreds of long-polls, which
  * starve every other request the browser makes to this origin.
@@ -222,7 +222,7 @@ export async function listRuns(productId: string) {
   `);
 }
 
-/** A run already open for this template — the "start a run" confirmation warns about it (D24). */
+/** A run already open for this template — the "start a run" confirmation warns about it. */
 export async function openRunFor(templateId: string) {
   const [r] = await db
     .select()
@@ -241,12 +241,12 @@ export async function getFlowRun(flowRunId: string) {
 }
 
 /**
- * Claiming is advisory (D26). If the flow's open placeholder row is unclaimed,
+ * Claiming is advisory. If the flow's open placeholder row is unclaimed,
  * this tester takes it; otherwise a new FlowRun is created alongside whoever is
  * already on it. Nobody is ever kicked off, and both result sets are kept.
  */
 /**
- * Claim a flow for `actor`. Advisory (D26): if someone else already holds it
+ * Claim a flow for `actor`. Advisory: if someone else already holds it
  * the claim goes through only with `confirm`, and otherwise reports who.
  *
  * The check and the write happen under one per-flow lock, so two people who
@@ -306,7 +306,7 @@ export async function setFlowRunState(flowRunId: string, state: FlowRunState) {
       .set({
         state,
         finishedAt: state === "finished" || state === "abandoned" ? new Date() : null,
-        // Live progress describes a draft; once the flow is over there is no draft (D42).
+        // Live progress describes a draft; once the flow is over there is no draft.
         progress: null,
       })
       .where(eq(flowRun.id, flowRunId))
@@ -316,7 +316,7 @@ export async function setFlowRunState(flowRunId: string, state: FlowRunState) {
 }
 
 /**
- * Publishes a claimed flow run's draft, summarised (D42). Only while it is claimed,
+ * Publishes a claimed flow run's draft, summarised. Only while it is claimed,
  * and only by the person who claimed it: anything else is a stale tab talking.
  *
  * Two updates can cross on the wire, so the newer `updatedAt` wins: an older one
@@ -351,7 +351,7 @@ export interface RecordResultInput {
 }
 
 /**
- * Upsert on the idempotency key (D36): a tired tester tapping twice records
+ * Upsert on the idempotency key: a tired tester tapping twice records
  * once. A *different* verdict for the same test on the same step in the same
  * flow run replaces the earlier one — the tester changed their mind, and the
  * latest opinion is the one that stands.
@@ -382,7 +382,7 @@ export async function recordResult(input: RecordResultInput) {
   });
 }
 
-/* ── Step problems (D40) ─────────────────────────────────────────────── */
+/* ── Step problems ─────────────────────────────────────────────── */
 
 export interface RecordStepProblemInput {
   flowRunId: string;
@@ -454,7 +454,7 @@ export async function listAttachments(testResultId: string) {
 
 /* ── Reporting ───────────────────────────────────────────────────────── */
 
-/** Closing is bookkeeping: the day is over. Nothing is locked (D25 keeps runs open indefinitely otherwise). */
+/** Closing is bookkeeping: the day is over. Nothing is locked; a run otherwise stays open indefinitely. */
 export async function closeRun(runId: string, reopen = false) {
   const [row] = await db
     .update(run)

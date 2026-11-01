@@ -26,7 +26,7 @@ export function TestsIcon() {
 }
 
 /**
- * Where the tester should be once the step is done (D40). Quieter than the
+ * Where the tester should be once the step is done. Quieter than the
  * expected-result block on purpose: "Expected" means stop and look; this is
  * orientation, the thing a tester improvises toward when the step itself is stale.
  */
@@ -50,7 +50,7 @@ export function FlagIcon() {
 }
 
 /**
- * A step the tester flagged as wrong (D40): what is wrong, and whether they got
+ * A step the tester flagged as wrong: what is wrong, and whether they got
  * past it. Grey like a skipped test, and for the same reason — it is a statement
  * about the flow, not about the product.
  */

@@ -14,7 +14,7 @@ import { query, sql } from "./client.ts";
 
 const ALL: Verdict[] = ["pass", "fail", "minor", "skipped"];
 
-describe("verdict_rank() in SQL matches VERDICT_RANK in TypeScript (D19)", () => {
+describe("verdict_rank() in SQL matches VERDICT_RANK in TypeScript", () => {
   test("every verdict ranks identically in both", async () => {
     const rows = await query<{ v: string; rank: number }>(raw`
       select v, verdict_rank(v) as rank
@@ -61,7 +61,7 @@ describe("the coverage view", () => {
     expect(rows[0]!.bad).toBe(0);
   });
 
-  test("never flags an archived test — archiving stops it counting (D7)", async () => {
+  test("never flags an archived test — archiving stops it counting", async () => {
     const rows = await query<{ bad: number }>(raw`
       select count(*)::int as bad from test_coverage
       where archived and needs_attention

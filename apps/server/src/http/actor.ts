@@ -2,9 +2,9 @@ import { createMiddleware } from "hono/factory";
 import { getSignedCookie, setSignedCookie } from "hono/cookie";
 
 /**
- * Identity (D38). A name picker, not authentication.
+ * Identity. A name picker, not authentication.
  *
- * Seven people in one room, no roles (D24), every change attributed. Real
+ * Seven people in one room, no roles, every change attributed. Real
  * authentication would add password resets, session security and an IdP dependency
  * to counter a threat that does not exist inside this team. It is trivially
  * spoofable and that is understood.

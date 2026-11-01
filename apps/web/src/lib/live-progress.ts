@@ -1,5 +1,5 @@
 /**
- * The tester's draft, summarised for the board while they run a flow (D42).
+ * The tester's draft, summarised for the board while they run a flow.
  *
  * Verdicts stay on this device until Finish (see draft-results.ts). This is the
  * one thing that leaves early: where the tester is, a tally, and every non-pass

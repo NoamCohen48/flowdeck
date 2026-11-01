@@ -1,14 +1,14 @@
 /**
- * Coverage (`.docs/04-coverage-and-reporting.md`).
+ * Coverage.
  *
  *   A test is covered if at least one step, in at least one flow, in at least one
  *   template of its product, marks it.
  *
- * Deliberately broad. Archived and never-run templates count (D3), because the
+ * Deliberately broad. Archived and never-run templates count, because the
  * question is "is this reachable by some flow somewhere", not "was it executed
  * recently" — recency is a run question with its own reporting.
  *
- * Uncovered is legal (D2). The system warns; it never blocks.
+ * Uncovered is legal. The system warns; it never blocks.
  */
 
 export interface CoverageInput {
@@ -31,7 +31,7 @@ export function coverageOf(input: CoverageInput): CoverageState {
   return {
     testId: input.testId,
     covered,
-    // An archived test stops counting toward coverage (D7) — flagging it would be noise.
+    // An archived test stops counting toward coverage — flagging it would be noise.
     needsAttention: !covered && !input.archived,
     templateIds: input.markedByTemplateIds,
   };
