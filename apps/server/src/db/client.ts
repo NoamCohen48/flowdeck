@@ -35,3 +35,16 @@ export async function query<T extends object>(
   const result = await db.execute(statement);
   return result as unknown as T[];
 }
+
+/**
+ * The Postgres error code (`23505` unique, `23503` foreign key, …) behind an
+ * error, or undefined. Drizzle wraps the driver's error and keeps it as `cause`,
+ * so the code can sit one or more levels down.
+ */
+export function pgErrorCode(error: unknown): string | undefined {
+  for (let e = error; typeof e === "object" && e !== null; e = (e as { cause?: unknown }).cause) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  return undefined;
+}
