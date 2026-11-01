@@ -323,7 +323,14 @@
               "steps": [
                 {
                   "kind": "action",
-                  "text": "Install the release build on the Pixel and open it.",
+                  "text": "Install the release build on the Pixel.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Open the app.",
                   "expectedResult": null,
                   "deviceLabel": "Pixel 8",
                   "marks": [],
@@ -340,7 +347,14 @@
                 },
                 {
                   "kind": "action",
-                  "text": "Enter the QA email and a deliberately wrong password, then tap Sign in.",
+                  "text": "Enter the QA email and a deliberately wrong password.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Tap Sign in.",
                   "expectedResult": null,
                   "deviceLabel": "Pixel 8",
                   "marks": [],
@@ -357,7 +371,14 @@
                 },
                 {
                   "kind": "action",
-                  "text": "Correct the password and tap Sign in.",
+                  "text": "Correct the password.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Tap Sign in.",
                   "expectedResult": null,
                   "deviceLabel": "Pixel 8",
                   "marks": []
@@ -374,7 +395,14 @@
                 },
                 {
                   "kind": "action",
-                  "text": "Open Settings → Appearance and switch to Dark.",
+                  "text": "Open Settings → Appearance.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Switch to Dark.",
                   "expectedResult": null,
                   "deviceLabel": "Pixel 8",
                   "marks": []
@@ -422,7 +450,21 @@
                 },
                 {
                   "kind": "action",
-                  "text": "Unlock the iPhone, sign in with the same account and open #qa-sandbox.",
+                  "text": "Unlock the iPhone.",
+                  "expectedResult": null,
+                  "deviceLabel": "iPhone 13",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Sign in with the same account.",
+                  "expectedResult": null,
+                  "deviceLabel": "iPhone 13",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Open #qa-sandbox.",
                   "expectedResult": null,
                   "deviceLabel": "iPhone 13",
                   "marks": []
@@ -447,7 +489,14 @@
                 },
                 {
                   "kind": "action",
-                  "text": "Long-press \"ping 1\" and add a 👍 reaction.",
+                  "text": "Long-press \"ping 1\".",
+                  "expectedResult": null,
+                  "deviceLabel": "iPhone 13",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Add a 👍 reaction.",
                   "expectedResult": null,
                   "deviceLabel": "iPhone 13",
                   "marks": []
@@ -463,7 +512,28 @@
                 },
                 {
                   "kind": "action",
-                  "text": "Long-press your message, choose Edit, change it to \"ping 1 edited\" and save.",
+                  "text": "Long-press your message.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Choose Edit.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Change it to \"ping 1 edited\".",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Tap Save.",
                   "expectedResult": null,
                   "deviceLabel": "Pixel 8",
                   "marks": []
@@ -479,7 +549,14 @@
                 },
                 {
                   "kind": "action",
-                  "text": "On the second laptop, signed in as Dana, open #qa-sandbox and start typing.",
+                  "text": "On the second laptop, signed in as Dana, open #qa-sandbox.",
+                  "expectedResult": null,
+                  "deviceLabel": "Second laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Start typing a message, without sending it.",
                   "expectedResult": null,
                   "deviceLabel": "Second laptop",
                   "marks": []
@@ -528,7 +605,14 @@
               "steps": [
                 {
                   "kind": "action",
-                  "text": "In #qa-sandbox, attach a photo from the gallery and send it.",
+                  "text": "In #qa-sandbox, attach a photo from the gallery.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Tap Send.",
                   "expectedResult": null,
                   "deviceLabel": "Pixel 8",
                   "marks": []
@@ -576,7 +660,21 @@
                 },
                 {
                   "kind": "action",
-                  "text": "Open the web app on the laptop, find the photo in #qa-sandbox and download it.",
+                  "text": "Open the web app on the laptop.",
+                  "expectedResult": null,
+                  "deviceLabel": "Chrome on laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Find the photo in #qa-sandbox.",
+                  "expectedResult": null,
+                  "deviceLabel": "Chrome on laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Download it.",
                   "expectedResult": null,
                   "deviceLabel": "Chrome on laptop",
                   "marks": []
@@ -662,7 +760,14 @@
                 },
                 {
                   "kind": "action",
-                  "text": "Sign out on the Pixel, then sign in as Dana.",
+                  "text": "Sign out on the Pixel.",
+                  "expectedResult": null,
+                  "deviceLabel": "Pixel 8",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Sign in as Dana.",
                   "expectedResult": null,
                   "deviceLabel": "Pixel 8",
                   "marks": []
@@ -916,7 +1021,14 @@
               "steps": [
                 {
                   "kind": "action",
-                  "text": "Open Workspaces and choose New workspace.",
+                  "text": "Open Workspaces.",
+                  "expectedResult": null,
+                  "deviceLabel": "Chrome on laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Choose New workspace.",
                   "expectedResult": null,
                   "deviceLabel": "Chrome on laptop",
                   "marks": []
@@ -939,7 +1051,14 @@
                 },
                 {
                   "kind": "action",
-                  "text": "Invite two members and accept one invitation from the second laptop.",
+                  "text": "Invite two members.",
+                  "expectedResult": null,
+                  "deviceLabel": "Chrome on laptop",
+                  "marks": []
+                },
+                {
+                  "kind": "action",
+                  "text": "Accept one of the invitations.",
                   "expectedResult": null,
                   "deviceLabel": "Second laptop",
                   "marks": []

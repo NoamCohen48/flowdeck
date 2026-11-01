@@ -1,7 +1,7 @@
 /**
  * Seeds a development database.
  *
- * Two products, because multi-product is day one (D23) and product switching is a
+ * Two products, because multi-product is day one and product switching is a
  * real surface rather than a modelled-but-unused one. The Relay data is the demo's,
  * translated into the split the docs describe — its assertions become tests, its
  * procedures become flow steps, and the join between them becomes step marks.
@@ -29,7 +29,7 @@ import {
 } from "./schema.ts";
 import seedData from "./seed-data.json" with { type: "json" };
 import { snapshotTemplate } from "./runs.ts";
-import type { StepKind, TemplateStatus, Verdict } from "@flowdeck/domain";
+import { slugify, uniqueKey, type StepKind, type TemplateStatus, type Verdict } from "@flowdeck/domain";
 
 const args = new Set(process.argv.slice(2));
 const WITH_VOLUME = args.has("--volume");
@@ -46,6 +46,13 @@ if (IF_EMPTY && !RESET) {
 }
 
 const TESTERS = ["Noa", "Yuval", "Ori", "Dana", "Amit", "Roni", "Tomer"];
+
+/** A readable key from a name, unique among `taken`. */
+function keyFrom(name: string, taken: Set<string>) {
+  const key = uniqueKey(slugify(name), taken);
+  taken.add(key);
+  return key;
+}
 
 /** The demo's verdict keys are abbreviated; the model's are not. */
 const VERDICT: Record<string, Verdict> = {
@@ -71,18 +78,19 @@ for (const name of TESTERS) {
 for (const p of seedData.products) {
   const [row] = await db
     .insert(product)
-    .values({ name: p.name, description: p.description })
+    .values({ slug: p.key, name: p.name, description: p.description })
     .returning();
   const productId = row!.id;
 
   /* Tests. Each carries a version history, because a test is immutable at the
-     version level and stable at the identity level (D6) — and the version view
+     version level and stable at the identity level — and the version view
      is not worth much against a library where everything is at v1. */
   const testIdByKey = new Map<string, string>();
   const currentVersionIdByKey = new Map<string, string>();
 
+  const testKeys = new Set<string>();
   for (const t of p.tests) {
-    const [testRow] = await db.insert(test).values({ productId }).returning();
+    const [testRow] = await db.insert(test).values({ productId, key: keyFrom(t.title, testKeys) }).returning();
     const testId = testRow!.id;
 
     let currentVersionId = "";
@@ -119,11 +127,13 @@ for (const p of seedData.products) {
   /** test key -> the steps that mark it, so the seeded run can attach results. */
   const stepsByTestKey = new Map<string, { stepId: string; flowKey: string }[]>();
 
+  const templateKeys = new Set<string>();
   for (const tpl of p.templates) {
     const [templateRow] = await db
       .insert(template)
       .values({
         productId,
+        key: keyFrom(tpl.name, templateKeys),
         name: tpl.name,
         description: tpl.description,
         status: tpl.status as TemplateStatus,
@@ -131,11 +141,13 @@ for (const p of seedData.products) {
       .returning();
     templateIdByKey.set(tpl.key, templateRow!.id);
 
+    const flowKeys = new Set<string>();
     for (const [flowIndex, f] of tpl.flows.entries()) {
       const [flowRow] = await db
         .insert(flow)
         .values({
           templateId: templateRow!.id,
+          key: keyFrom(f.name, flowKeys),
           name: f.name,
           precondition: f.precondition,
           estimatedMinutes: f.estimatedMinutes ?? null,
@@ -241,7 +253,7 @@ await sql.end();
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
 /**
- * Scale, not realism. `07-open-items.md` specifies a summary sidebar precisely
+ * Scale, not realism. The editor has a summary sidebar precisely
  * because "a flow is hard to navigate in a single scrolling column when the flow is
  * fifty steps long" — so the seed had better contain fifty-step flows.
  */
@@ -249,6 +261,7 @@ async function seedVolumeProduct() {
   const [row] = await db
     .insert(product)
     .values({
+      slug: "atlas",
       name: "Atlas (volume)",
       description:
         "Synthetic data at the scale the interface has to survive. Not a real product.",
@@ -258,7 +271,7 @@ async function seedVolumeProduct() {
 
   const testIds: string[] = [];
   for (let i = 1; i <= 300; i++) {
-    const [t] = await db.insert(test).values({ productId }).returning();
+    const [t] = await db.insert(test).values({ productId, key: `synthetic-${i}` }).returning();
     const [v] = await db
       .insert(testVersion)
       .values({
@@ -281,6 +294,7 @@ async function seedVolumeProduct() {
     .insert(template)
     .values({
       productId,
+      key: "full-synthetic-sweep",
       name: "Full synthetic sweep",
       description: "Eight flows, up to fifty steps each.",
       status: "active",
@@ -295,6 +309,7 @@ async function seedVolumeProduct() {
       .insert(flow)
       .values({
         templateId: tpl!.id,
+        key: `synthetic-flow-${f + 1}`,
         name: `Synthetic flow ${f + 1}`,
         precondition: "A freshly reset synthetic environment.",
         estimatedMinutes: 20 + f * 5,
@@ -321,7 +336,7 @@ async function seedVolumeProduct() {
 
       if (isCheck && cursor < testIds.length) {
         // Most checks mark one test; every fifth marks three, since a single check
-        // confirming several assertions is normal (D12).
+        // confirming several assertions is normal.
         const count = s % 5 === 2 ? 3 : 1;
         for (let k = 0; k < count && cursor < testIds.length; k++) {
           await db.insert(stepMark).values({

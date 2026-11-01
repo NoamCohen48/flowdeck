@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * List products
-         * @description Products are fully independent (D23) — different systems, different teams, no shared data.
+         * @description Products are fully independent — different systems, different teams, no shared data.
          */
         get: {
             parameters: {
@@ -76,20 +76,20 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/products/{productId}": {
+    "/products/{product}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get one product */
+        /** Get one product, by id or slug */
         get: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    productId: string;
+                    product: string;
                 };
                 cookie?: never;
             };
@@ -128,7 +128,7 @@ export interface paths {
                 };
                 header?: never;
                 path: {
-                    productId: string;
+                    product: string;
                 };
                 cookie?: never;
             };
@@ -178,7 +178,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
-                    productId: string;
+                    product: string;
                 };
                 cookie?: never;
             };
@@ -219,58 +219,6 @@ export interface paths {
         };
         trace?: never;
     };
-    "/products/{productId}/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Export a product as an import bundle
-         * @description Every test (archived ones included, flagged) and every template with its flows, steps and marks. The result is a valid body for `POST /products/{productId}/import`: test `key`s are the ids here, and each step's `marks` use them. Runs and results are not part of a suite and are not included — see `GET /runs/{runId}`.
-         */
-        get: {
-            parameters: {
-                query?: {
-                    download?: "true" | "false";
-                };
-                header?: never;
-                path: {
-                    productId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description The bundle */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ExportBundle"];
-                    };
-                };
-                /** @description No such product */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Error"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/products/{productId}/tests": {
         parameters: {
             query?: never;
@@ -309,7 +257,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk-create tests
-         * @description Returns the created tests in request order, which is what lets an importing script hold the mapping from its source rows to Flowdeck IDs (D29). Import is knowingly not idempotent: running a parser twice creates everything twice.
+         * @description Returns the created tests in request order, which is what lets an importing script hold the mapping from its source rows to Flowdeck IDs. Import is knowingly not idempotent: running a parser twice creates everything twice.
          */
         post: {
             parameters: {
@@ -407,7 +355,7 @@ export interface paths {
         head?: never;
         /**
          * Edit a test — creates a new version
-         * @description The old version is never modified. Flows reference the test ID, so nothing needs repointing; that is the whole reason identity and versioning are separate (D6).
+         * @description The old version is never modified. Flows reference the test ID, so nothing needs repointing; that is the whole reason identity and versioning are separate.
          */
         patch: {
             parameters: {
@@ -464,7 +412,7 @@ export interface paths {
         };
         /**
          * Every version of a test, oldest first
-         * @description The old version is never modified and never deleted, so a result recorded in March stays readable against March's wording after six edits (D6).
+         * @description The old version is never modified and never deleted, so a result recorded in March stays readable against March's wording after six edits.
          */
         get: {
             parameters: {
@@ -557,7 +505,7 @@ export interface paths {
         put?: never;
         /**
          * Archive a test
-         * @description Archiving stops the test counting toward coverage; existing marks render as 'archived test' and historical runs stay intact. Hard deletion is never offered — a test referenced in six flows and three runs cannot be safely erased (D7).
+         * @description Archiving stops the test counting toward coverage; existing marks render as 'archived test' and historical runs stay intact. Hard deletion is never offered — a test referenced in six flows and three runs cannot be safely erased.
          */
         post: {
             parameters: {
@@ -623,7 +571,7 @@ export interface paths {
         };
         /**
          * List a product's templates
-         * @description Several templates per product is the norm — one per setup. Archived templates are included, because they stop appearing in the run picker but keep counting toward coverage (D3).
+         * @description Several templates per product is the norm — one per setup. Archived templates are included, because they stop appearing in the run picker but keep counting toward coverage.
          */
         get: {
             parameters: {
@@ -650,7 +598,7 @@ export interface paths {
         put?: never;
         /**
          * Bulk-create templates with their flows and steps
-         * @description Phase two of an import (D29). Steps reference tests by the IDs returned from phase one, so the importing script holds the mapping rather than Flowdeck knowing anything about the source.
+         * @description Phase two of an import. Steps reference tests by the IDs returned from phase one, so the importing script holds the mapping rather than Flowdeck knowing anything about the source.
          */
         post: {
             parameters: {
@@ -993,7 +941,7 @@ export interface paths {
         };
         /**
          * Pick a name
-         * @description A name picker, not authentication. Seven people in one room, no roles, every change attributed (D24, D38).
+         * @description A name picker, not authentication. Seven people in one room, no roles, every change attributed.
          */
         put: {
             parameters: {
@@ -1182,7 +1130,7 @@ export interface paths {
         put?: never;
         /**
          * Start a testing day
-         * @description Takes a frozen snapshot of the template (D21). Edits made during the day apply to the next run, never this one. Warns, via 409, if a run is already open for this template unless `force=true` (D24).
+         * @description Takes a frozen snapshot of the template. Edits made during the day apply to the next run, never this one. Warns, via 409, if a run is already open for this template unless `force=true`.
          */
         post: {
             parameters: {
@@ -1302,7 +1250,7 @@ export interface paths {
         put?: never;
         /**
          * Claim a flow
-         * @description Advisory, not exclusive (D26). If someone already holds it, you get your own FlowRun alongside theirs and the response lists them, so the UI can ask 'Dana is on step 12 of 34 — run it anyway?' before this is called with confirm=true.
+         * @description Advisory, not exclusive. If someone already holds it, you get your own FlowRun alongside theirs and the response lists them, so the UI can ask 'Dana is on step 12 of 34 — run it anyway?' before this is called with confirm=true.
          */
         post: {
             parameters: {
@@ -1429,7 +1377,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Abandon a flow — the next person starts from step 1 (D10) */
+        /** Abandon a flow — the next person starts from step 1 */
         post: {
             parameters: {
                 query?: never;
@@ -1486,7 +1434,7 @@ export interface paths {
         get?: never;
         /**
          * Publish where you are in a flow you are running
-         * @description Verdicts stay a draft on the tester's device until Finish, so an abandoned flow leaves nothing behind. This is the board's view of that draft while it lasts (D42): the step the tester is on, a tally, and every non-pass with its note. Provisional — never counted in the day's numbers, and cleared on finish and abandon. Only the person who claimed the flow run can publish, and only while it is claimed.
+         * @description Verdicts stay a draft on the tester's device until Finish, so an abandoned flow leaves nothing behind. This is the board's view of that draft while it lasts: the step the tester is on, a tally, and every non-pass with its note. Provisional — never counted in the day's numbers, and cleared on finish and abandon. Only the person who claimed the flow run can publish, and only while it is claimed.
          */
         put: {
             parameters: {
@@ -1570,7 +1518,7 @@ export interface paths {
         put?: never;
         /**
          * Record a verdict for one test on one step
-         * @description Per test, not per step (D12). Fail and skipped require a note (D13). Idempotent on the client key (D36). A blocking failure marks every later step in the flow as blocked; their tests report as not verified, never as failures (D11).
+         * @description Per test, not per step. Fail and skipped require a note. Idempotent on the client key. A blocking failure marks every later step in the flow as blocked; their tests report as not verified, never as failures.
          */
         post: {
             parameters: {
@@ -1770,7 +1718,7 @@ export interface paths {
         put?: never;
         /**
          * Pass every test a step marks, in one click
-         * @description The common case stays as fast as the old per-step checkbox (D12).
+         * @description The common case stays as fast as the old per-step checkbox.
          */
         post: {
             parameters: {
@@ -1842,7 +1790,7 @@ export interface paths {
         put?: never;
         /**
          * Flag a step as wrong
-         * @description "The step, not the product": the button moved, the wording is stale, the screen is gone (D40). Not a verdict — the tests the step marks can still be recorded. Either the tester got past it and `workaround` says how, or `blocking=true` closes the rest of the flow exactly as a blocking failure does (D11). One report per step per flow run; flagging again replaces it.
+         * @description "The step, not the product": the button moved, the wording is stale, the screen is gone. Not a verdict — the tests the step marks can still be recorded. Either the tester got past it and `workaround` says how, or `blocking=true` closes the rest of the flow exactly as a blocking failure does. One report per step per flow run; flagging again replaces it.
          */
         post: {
             parameters: {
@@ -2224,7 +2172,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a flow and its steps
-         * @description Runs already started keep their snapshot (D21), so nothing historical is lost. Marks vanish with the steps, which can uncover tests — the template page reports that.
+         * @description Runs already started keep their snapshot, so nothing historical is lost. Marks vanish with the steps, which can uncover tests — the template page reports that.
          */
         delete: {
             parameters: {
@@ -2268,7 +2216,7 @@ export interface paths {
         head?: never;
         /**
          * Edit a flow's name, precondition or estimate, or archive it
-         * @description Archiving (`archived: true`) is the normal way to retire a flow: new testing days leave it out, its marks still count toward coverage (D3), and days already started keep their snapshot (D21). Set `archived: false` to bring it back.
+         * @description Archiving (`archived: true`) is the normal way to retire a flow: new testing days leave it out, its marks still count toward coverage, and days already started keep their snapshot. Set `archived: false` to bring it back.
          */
         patch: {
             parameters: {
@@ -2296,6 +2244,8 @@ export interface paths {
                             id: string;
                             /** Format: uuid */
                             templateId: string;
+                            /** @example sign-in-rejects-a-wrong-password */
+                            key: string;
                             name: string;
                             precondition: string;
                             estimatedMinutes: number | null;
@@ -2337,7 +2287,7 @@ export interface paths {
         put?: never;
         /**
          * Insert a step at a position
-         * @description Insert anywhere (07 §1): the step takes the given index and what was there moves down. Hand-off banners are derived from order, so they follow automatically.
+         * @description Insert anywhere: the step takes the given index and what was there moves down. Hand-off banners are derived from order, so they follow automatically.
          */
         post: {
             parameters: {
@@ -2444,7 +2394,7 @@ export interface paths {
         head?: never;
         /**
          * Edit one step
-         * @description Last write wins per step (D37). Changing kind to action drops the expected result.
+         * @description Last write wins per step. Changing kind to action drops the expected result.
          */
         patch: {
             parameters: {
@@ -2565,7 +2515,7 @@ export interface paths {
         get?: never;
         /**
          * Mark a test on a step
-         * @description Idempotent. The same test may be marked on any number of steps (D19).
+         * @description Idempotent. The same test may be marked on any number of steps.
          */
         put: {
             parameters: {
@@ -2656,7 +2606,7 @@ export interface paths {
         };
         /**
          * Every step that marks this test
-         * @description Answers 'if I change this, what am I affecting?' (04), and gives the archive confirmation its numbers before anything happens (D24).
+         * @description Answers 'if I change this, what am I affecting?', and gives the archive confirmation its numbers before anything happens.
          */
         get: {
             parameters: {
@@ -2711,7 +2661,7 @@ export interface paths {
         };
         /**
          * The issue feed: every non-pass result, self-contained
-         * @description Typed `failure | minor | invalid_test` (D28). Flowdeck does not filter — the adapter routes failures to the bug tracker and invalid tests to suite maintenance. Pass `includePass=true` for the whole day's data.
+         * @description Typed `failure | minor | invalid_test`. Flowdeck does not filter — the adapter routes failures to the bug tracker and invalid tests to suite maintenance. Pass `includePass=true` for the whole day's data.
          */
         get: {
             parameters: {
@@ -2865,44 +2815,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/products/{productId}/import": {
+    "/products/{product}/suite": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Import tests and templates together, in one transaction
-         * @description The one-request form of the two-phase import. Each test carries a caller-chosen `key`; steps mark tests by that key (or by the id of a test that already exists in the product). Either the whole bundle lands or none of it does. Not idempotent: importing the same bundle twice creates everything twice (D29).
+         * The whole suite, as one document
+         * @description Every test, template, flow and step, addressed by key. Archived templates and flows are included and say so; an archived test is included only while a step still verifies it. Keep `revision` — a push names it as `baseRevision`.
          */
-        post: {
+        get: {
+            parameters: {
+                query?: {
+                    download?: "true" | "false";
+                };
+                header?: never;
+                path: {
+                    product: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The suite and its revision */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SuiteDocument"];
+                    };
+                };
+                /** @description No such product */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        /**
+         * Replace the suite
+         * @description In one transaction. Matched by key: new keys are created, edited tests get a new version (the old one stays), and anything the document leaves out is archived — never deleted — so pushing it back restores it. Steps keep their ids where their content survives. Results already recorded are untouched: a testing day reads its own snapshot. Refused with 409 when the suite changed since `baseRevision`; pull again, or send `force`.
+         */
+        put: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    productId: string;
+                    product: string;
                 };
                 cookie?: never;
             };
             requestBody?: {
                 content: {
-                    "application/json": components["schemas"]["ImportBundle"];
+                    "application/json": components["schemas"]["PushSuite"];
                 };
             };
             responses: {
-                /** @description What was created, and the key → id mapping */
-                201: {
+                /** @description What changed, and the new revision */
+                200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ImportResult"];
+                        "application/json": components["schemas"]["PushResult"];
                     };
                 };
-                /** @description A duplicate key, or a mark that resolves to nothing; `details` names each by path */
+                /** @description The suite has errors; `details` lists them */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2929,15 +2914,27 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description The suite changed since `baseRevision`; `revision` is the current one */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"] & {
+                            revision: string;
+                        };
+                    };
+                };
             };
         };
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/products/import": {
+    "/products/{product}/suite/plan": {
         parameters: {
             query?: never;
             header?: never;
@@ -2947,32 +2944,34 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create a product from an export bundle
-         * @description Takes the shape `GET /products/{productId}/export` returns: `product` plus `tests` and `templates`. Creates the product, then imports the rest into it in one transaction. `product.name` may be overridden in the body to keep the original apart from the copy.
+         * What pushing this suite would change
+         * @description Changes nothing. Lists each change (`+` created or restored, `~` edited, `-` archived) and the warnings. Errors — a bad key, a step verifying a test that does not exist — make it a 400 with each problem in `details`, by path.
          */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
-                path?: never;
+                path: {
+                    product: string;
+                };
                 cookie?: never;
             };
             requestBody?: {
                 content: {
-                    "application/json": components["schemas"]["ImportProduct"];
+                    "application/json": components["schemas"]["Suite"];
                 };
             };
             responses: {
-                /** @description The new product and what went into it */
-                201: {
+                /** @description The plan */
+                200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ImportProductResult"];
+                        "application/json": components["schemas"]["SuitePlan"];
                     };
                 };
-                /** @description The bundle does not resolve */
+                /** @description The suite has errors; `details` lists them */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2981,8 +2980,8 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
-                /** @description No identity on the request */
-                401: {
+                /** @description No such product */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3092,7 +3091,7 @@ export interface paths {
         put?: never;
         /**
          * Save a product's suite to the backup bucket
-         * @description Writes `GET /products/{productId}/export` as one JSON object under `suites/` in the bucket. Attributed to the caller.
+         * @description Writes `GET /products/{product}/suite` as one JSON object under `suites/` in the bucket. Attributed to the caller.
          */
         post: {
             parameters: {
@@ -3156,7 +3155,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** One snapshot's contents — an export bundle */
+        /** One snapshot's contents — a suite document */
         get: {
             parameters: {
                 query?: never;
@@ -3168,13 +3167,13 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description The bundle as saved */
+                /** @description The suite as saved, with the revision it had */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ExportBundle"];
+                        "application/json": components["schemas"]["SuiteDocument"];
                     };
                 };
                 /** @description No such snapshot */
@@ -3252,7 +3251,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/suites/{suiteId}/import": {
+    "/suites/{suiteId}/restore": {
         parameters: {
             query?: never;
             header?: never;
@@ -3262,8 +3261,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Import a snapshot into an existing product, or a new one
-         * @description `{ into: <productId> }` adds the snapshot's tests and templates to that product (creating, not merging — same as any import). `{ into: "new", name? }` creates a product from it, named after the original unless `name` says otherwise.
+         * Bring a snapshot back, over a product or as a new one
+         * @description `{ into: <product id or slug> }` pushes the snapshot over that product, forced: the product's suite becomes the snapshot's, and whatever the snapshot does not have is archived, never deleted. `{ into: "new", name? }` creates a product from it, named after the original unless `name` says otherwise.
          */
         post: {
             parameters: {
@@ -3276,20 +3275,20 @@ export interface paths {
             };
             requestBody?: {
                 content: {
-                    "application/json": components["schemas"]["ImportSuite"];
+                    "application/json": components["schemas"]["RestoreSuite"];
                 };
             };
             responses: {
-                /** @description What was created; `product` is the one it went into */
-                201: {
+                /** @description What changed; `product` is the one it went into */
+                200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ImportProductResult"];
+                        "application/json": components["schemas"]["RestoreResult"];
                     };
                 };
-                /** @description The snapshot does not resolve against that product */
+                /** @description The snapshot is not a valid suite */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -3340,6 +3339,8 @@ export interface components {
         Product: {
             /** Format: uuid */
             id: string;
+            /** @example sign-in-rejects-a-wrong-password */
+            slug: string;
             name: string;
             description: string;
         };
@@ -3349,82 +3350,16 @@ export interface components {
         };
         CreateProduct: {
             name: string;
+            /** @example sign-in-rejects-a-wrong-password */
+            slug?: string;
             /** @default  */
             description: string;
         };
         UpdateProduct: {
             name?: string;
+            /** @example sign-in-rejects-a-wrong-password */
+            slug?: string;
             description?: string;
-        };
-        CreateTest: {
-            title: string;
-            expectedResult: string;
-            /** @default {} */
-            metadata: {
-                [key: string]: unknown;
-            };
-            /** @default false */
-            archived: boolean;
-        };
-        BundleTest: components["schemas"]["CreateTest"] & {
-            key: string;
-        };
-        CreateStep: {
-            /** @enum {string} */
-            kind: "action" | "assertion";
-            text: string;
-            /** @default null */
-            expectedResult: string | null;
-            /** @default null */
-            postState: string | null;
-            deviceLabel: string;
-            /** @default [] */
-            marks: string[];
-        };
-        BundleStep: components["schemas"]["CreateStep"] & {
-            /** @default [] */
-            marks: string[];
-        };
-        CreateFlow: {
-            name: string;
-            /** @default  */
-            precondition: string;
-            /** @default null */
-            estimatedMinutes: number | null;
-            /** @default false */
-            archived: boolean;
-            /** @default [] */
-            steps: components["schemas"]["CreateStep"][];
-        };
-        BundleFlow: components["schemas"]["CreateFlow"] & {
-            /** @default [] */
-            steps: components["schemas"]["BundleStep"][];
-        };
-        CreateTemplate: {
-            name: string;
-            /** @default  */
-            description: string;
-            /**
-             * @default active
-             * @enum {string}
-             */
-            status: "active" | "archived";
-            /** @default [] */
-            flows: components["schemas"]["CreateFlow"][];
-        };
-        BundleTemplate: components["schemas"]["CreateTemplate"] & {
-            /** @default [] */
-            flows: components["schemas"]["BundleFlow"][];
-        };
-        ExportBundle: {
-            product: {
-                /** Format: uuid */
-                id: string;
-                name: string;
-                description: string;
-            };
-            tests: components["schemas"]["BundleTest"][];
-            templates: components["schemas"]["BundleTemplate"][];
         };
         TestVersion: {
             /** Format: uuid */
@@ -3446,6 +3381,8 @@ export interface components {
             id: string;
             /** Format: uuid */
             productId: string;
+            /** @example sign-in-rejects-a-wrong-password */
+            key: string;
             archived: boolean;
             current: components["schemas"]["TestVersion"];
         };
@@ -3464,6 +3401,18 @@ export interface components {
             uncovered: number;
             tests: components["schemas"]["TestCoverage"][];
         };
+        CreateTest: {
+            /** @example sign-in-rejects-a-wrong-password */
+            key?: string;
+            title: string;
+            expectedResult: string;
+            /** @default {} */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** @default false */
+            archived: boolean;
+        };
         CreateTests: {
             tests: components["schemas"]["CreateTest"][];
         };
@@ -3479,6 +3428,8 @@ export interface components {
             id: string;
             /** Format: uuid */
             productId: string;
+            /** @example sign-in-rejects-a-wrong-password */
+            key: string;
             name: string;
             description: string;
             /** @enum {string} */
@@ -3503,6 +3454,8 @@ export interface components {
             id: string;
             /** Format: uuid */
             templateId: string;
+            /** @example sign-in-rejects-a-wrong-password */
+            key: string;
             name: string;
             precondition: string;
             estimatedMinutes: number | null;
@@ -3515,11 +3468,52 @@ export interface components {
             id: string;
             /** Format: uuid */
             productId: string;
+            /** @example sign-in-rejects-a-wrong-password */
+            key: string;
             name: string;
             description: string;
             /** @enum {string} */
             status: "active" | "archived";
             flows: components["schemas"]["Flow"][];
+        };
+        CreateStep: {
+            /** @enum {string} */
+            kind: "action" | "assertion";
+            text: string;
+            /** @default null */
+            expectedResult: string | null;
+            /** @default null */
+            postState: string | null;
+            deviceLabel: string;
+            /** @default [] */
+            marks: string[];
+        };
+        CreateFlow: {
+            name: string;
+            /** @example sign-in-rejects-a-wrong-password */
+            key?: string;
+            /** @default  */
+            precondition: string;
+            /** @default null */
+            estimatedMinutes: number | null;
+            /** @default false */
+            archived: boolean;
+            /** @default [] */
+            steps: components["schemas"]["CreateStep"][];
+        };
+        CreateTemplate: {
+            name: string;
+            /** @example sign-in-rejects-a-wrong-password */
+            key?: string;
+            /** @default  */
+            description: string;
+            /**
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "archived";
+            /** @default [] */
+            flows: components["schemas"]["CreateFlow"][];
         };
         CreateTemplates: {
             templates: components["schemas"]["CreateTemplate"][];
@@ -3752,6 +3746,7 @@ export interface components {
             test: {
                 /** Format: uuid */
                 id: string;
+                key: string | null;
                 /** Format: uuid */
                 versionId: string;
                 version: number;
@@ -3761,6 +3756,7 @@ export interface components {
             context: {
                 /** Format: uuid */
                 flowId: string;
+                flowKey: string | null;
                 flow: string;
                 /** Format: uuid */
                 stepId: string;
@@ -3779,6 +3775,7 @@ export interface components {
             context: {
                 /** Format: uuid */
                 flowId: string;
+                flowKey: string | null;
                 flow: string;
                 /** Format: uuid */
                 stepId: string;
@@ -3807,6 +3804,7 @@ export interface components {
                 template: string;
                 /** Format: uuid */
                 templateId: string;
+                templateKey: string | null;
             };
             issues: components["schemas"]["Issue"][];
             stepProblems: components["schemas"]["StepProblemIssue"][];
@@ -3829,32 +3827,89 @@ export interface components {
             /** Format: date-time */
             recordedAt: string;
         };
-        ImportResult: {
-            keys: {
-                [key: string]: string;
+        SuiteTest: {
+            /** @example sign-in-rejects-a-wrong-password */
+            key: string;
+            title: string;
+            expect: string;
+            tags?: string[];
+            metadata?: {
+                [key: string]: unknown;
             };
-            tests: components["schemas"]["Test"][];
-            templates: components["schemas"]["Template"][];
+            archived?: boolean;
         };
-        ImportBundle: {
-            /** @default [] */
-            tests: components["schemas"]["BundleTest"][];
-            /** @default [] */
-            templates: components["schemas"]["BundleTemplate"][];
+        SuiteStep: {
+            /** @enum {string} */
+            kind: "action" | "check";
+            text: string;
+            device: string;
+            expect?: string | null;
+            after?: string | null;
+            verifies?: string[];
         };
-        ImportProductResult: components["schemas"]["ImportResult"] & {
-            product: components["schemas"]["Product"];
+        SuiteFlow: {
+            /** @example sign-in-rejects-a-wrong-password */
+            key: string;
+            name: string;
+            precondition?: string;
+            estimateMinutes?: number | null;
+            archived?: boolean;
+            steps: components["schemas"]["SuiteStep"][];
         };
-        ImportProduct: {
+        SuiteTemplate: {
+            /** @example sign-in-rejects-a-wrong-password */
+            key: string;
+            name: string;
+            description?: string;
+            archived?: boolean;
+            flows: components["schemas"]["SuiteFlow"][];
+        };
+        Suite: {
             product: {
                 name: string;
-                /** @default  */
-                description: string;
+                description?: string;
             };
-            /** @default [] */
-            tests: components["schemas"]["BundleTest"][];
-            /** @default [] */
-            templates: components["schemas"]["BundleTemplate"][];
+            tests: components["schemas"]["SuiteTest"][];
+            templates: components["schemas"]["SuiteTemplate"][];
+        };
+        SuiteDocument: {
+            revision: string;
+            suite: components["schemas"]["Suite"];
+        };
+        SuiteChange: {
+            /** @enum {string} */
+            op: "update-product" | "create-test" | "update-test" | "archive-test" | "restore-test" | "create-template" | "update-template" | "archive-template" | "restore-template" | "reorder-flows" | "create-flow" | "update-flow" | "archive-flow" | "restore-flow";
+            test?: string;
+            template?: string;
+            flow?: string;
+            fields?: string[];
+            steps?: {
+                added: number;
+                removed: number;
+                edited: number;
+                moved: number;
+            };
+        };
+        SuiteProblem: {
+            /** @enum {string} */
+            level: "error" | "warning";
+            path: (string | number)[];
+            message: string;
+        };
+        SuitePlan: {
+            revision: string;
+            changes: components["schemas"]["SuiteChange"][];
+            summary: string[];
+            problems: components["schemas"]["SuiteProblem"][];
+        };
+        PushResult: components["schemas"]["SuitePlan"] & {
+            previousRevision: string;
+        };
+        PushSuite: {
+            baseRevision?: string;
+            /** @default false */
+            force: boolean;
+            suite: components["schemas"]["Suite"];
         };
         SuiteStoreStatus: {
             available: boolean;
@@ -3871,8 +3926,11 @@ export interface components {
             tests: number;
             templates: number;
         };
-        ImportSuite: {
-            into: string | "new";
+        RestoreResult: components["schemas"]["PushResult"] & {
+            product: components["schemas"]["Product"];
+        };
+        RestoreSuite: {
+            into: "new" | string;
             name?: string;
         };
     };

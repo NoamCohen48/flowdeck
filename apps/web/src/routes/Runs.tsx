@@ -1,6 +1,6 @@
 /**
  * Every testing day for a product, open ones first, then the closed ones with
- * their final counts (04 §Run reporting).
+ * their final counts.
  *
  * Only days opened this week stream live. Every other card reads the tally the
  * runs list already carries: a closed day never changes, and two live shapes per
@@ -16,7 +16,7 @@ import { useTitle } from "../lib/title.ts";
 
 export function Runs() {
   const { productId } = useParams({ strict: false }) as { productId: string };
-  const product = useQuery({ queryKey: ["product", productId], queryFn: () => unwrap(api.GET("/products/{productId}", { params: { path: { productId } } })) });
+  const product = useQuery({ queryKey: ["product", productId], queryFn: () => unwrap(api.GET("/products/{product}", { params: { path: { product: productId } } })) });
   const runs = useQuery({ queryKey: ["runs", productId], queryFn: () => unwrap(api.GET("/products/{productId}/runs", { params: { path: { productId } } })) });
   useTitle(product.data ? `Runs · ${product.data.name} — Flowdeck` : "Flowdeck");
 

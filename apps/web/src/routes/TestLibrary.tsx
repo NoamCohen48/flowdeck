@@ -1,5 +1,5 @@
 /**
- * The test library (`02-authoring.md`): a flat searchable list of assertions.
+ * The test library: a flat searchable list of assertions.
  * Coverage chips are live — mark a test in the editor in another tab and the
  * red row here turns quiet without a reload (product.marks / product.tests).
  */
@@ -20,7 +20,7 @@ export function TestLibrary() {
   const { productId } = useParams({ strict: false }) as { productId: string };
   const search = useSearch({ strict: false }) as { test?: string };
   const qc = useQueryClient();
-  const product = useQuery({ queryKey: ["product", productId], queryFn: () => unwrap(api.GET("/products/{productId}", { params: { path: { productId } } })) });
+  const product = useQuery({ queryKey: ["product", productId], queryFn: () => unwrap(api.GET("/products/{product}", { params: { path: { product: productId } } })) });
   const { tests, ready } = useTestIndex(productId);
   const coverage = useLiveCoverage(productId);
   const templates = useQuery({ queryKey: ["templates", productId], queryFn: () => unwrap(api.GET("/products/{productId}/templates", { params: { path: { productId } } })) });

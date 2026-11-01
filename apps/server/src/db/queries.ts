@@ -15,6 +15,7 @@ import {
   testVersion,
 } from "./schema.ts";
 import type { CreateTemplateInput, CreateTestInput } from "../http/schemas.ts";
+import { assignKey } from "./keys.ts";
 
 /* ── Tests ───────────────────────────────────────────────────────────── */
 
@@ -22,6 +23,7 @@ import type { CreateTemplateInput, CreateTestInput } from "../http/schemas.ts";
 export const testWithCurrentVersion = {
   id: test.id,
   productId: test.productId,
+  key: test.key,
   archived: test.archived,
   current: {
     id: testVersion.id,
@@ -63,7 +65,7 @@ export async function listTestVersions(testId: string) {
 
 /**
  * Bulk create in one transaction, returning tests in request order so an importing
- * script can hold the mapping from its source rows to Flowdeck IDs (D29).
+ * script can hold the mapping from its source rows to Flowdeck IDs.
  *
  * Import is knowingly not idempotent: running a parser twice creates everything
  * twice and Flowdeck cannot tell. The accepted answer during migration is
@@ -88,7 +90,8 @@ export async function createTestsIn(
 ) {
   const created: { id: string; versionId: string }[] = [];
   for (const input of inputs) {
-    const [t] = await tx.insert(test).values({ productId, archived: input.archived ?? false }).returning();
+    const key = await assignKey(tx, { table: "test", productId }, input.title, input.key);
+    const [t] = await tx.insert(test).values({ productId, key, archived: input.archived ?? false }).returning();
     const [v] = await tx
       .insert(testVersion)
       .values({
@@ -110,8 +113,8 @@ export async function createTestsIn(
 }
 
 /**
- * Editing creates a new version; the old one is never modified and never deleted
- * (D6). Flows reference the test ID, so nothing needs repointing — the reason the
+ * Editing creates a new version; the old one is never modified and never deleted.
+ * Flows reference the test ID, so nothing needs repointing — the reason the
  * two-level split exists rather than "an edit makes a new test".
  */
 export async function createTestVersion(
@@ -251,6 +254,7 @@ export async function createTemplatesIn(
       .insert(template)
       .values({
         productId,
+        key: await assignKey(tx, { table: "template", productId }, input.name, input.key),
         name: input.name,
         description: input.description,
         status: input.status,
@@ -262,6 +266,7 @@ export async function createTemplatesIn(
         .insert(flow)
         .values({
           templateId: tpl!.id,
+          key: await assignKey(tx, { table: "flow", templateId: tpl!.id }, f.name, f.key),
           name: f.name,
           precondition: f.precondition,
           estimatedMinutes: f.estimatedMinutes,
@@ -313,6 +318,7 @@ export async function existingTestIds(productId: string, ids: string[]) {
 export type TemplateSummaryRow = {
   id: string;
   product_id: string;
+  key: string;
   name: string;
   description: string;
   status: "active" | "archived";
@@ -320,11 +326,11 @@ export type TemplateSummaryRow = {
   marks_test_count: number;
 };
 
-/** Summary counts for the template list. Scope is reported, never declared (D1). */
+/** Summary counts for the template list. Scope is reported, never declared. */
 export async function listTemplateSummaries(productId: string) {
   return query<TemplateSummaryRow>(raw`
     select
-      t.id, t.product_id, t.name, t.description, t.status,
+      t.id, t.product_id, t.key, t.name, t.description, t.status,
       count(distinct f.id) filter (where not f.archived)::int as flow_count,
       count(distinct sm.test_id)::int as marks_test_count
     from template t
@@ -339,8 +345,9 @@ export async function listTemplateSummaries(productId: string) {
 
 /* ── Products ────────────────────────────────────────────────────────── */
 
-export async function createProduct(input: { name: string; description: string }) {
-  const [row] = await db.insert(product).values(input).returning();
+export async function createProduct(input: { name: string; description: string; slug?: string }) {
+  const slug = await assignKey(db, { table: "product" }, input.name, input.slug);
+  const [row] = await db.insert(product).values({ ...input, slug }).returning();
   return row!;
 }
 
@@ -358,8 +365,16 @@ export async function getProduct(productId: string) {
   return row;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A product by id or by slug — `relay` and its UUID name the same thing. */
+export async function findProduct(ref: string) {
+  const [row] = await db.select().from(product).where(UUID.test(ref) ? eq(product.id, ref) : eq(product.slug, ref));
+  return row;
+}
+
 /**
- * Archiving names the consequence before it happens (D24): a test referenced by
+ * Archiving names the consequence before it happens: a test referenced by
  * six steps across two templates is not something to remove by accident, and the
  * confirmation is only honest if it can say how many.
  */

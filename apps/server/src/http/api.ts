@@ -1,14 +1,15 @@
 /**
  * The public REST API.
  *
- * `.docs/08-api-and-integration.md` treats this as a product surface: adapters and
+ * This is a product surface: adapters, the CLI and
  * import scripts code against it. The OpenAPI document is derived from the same Zod
  * schemas that validate requests, so it cannot drift from the behaviour — and the
  * web app consumes a client generated from that document rather than a second,
- * private API (D35).
+ * private API.
  */
 import { ZodError } from "zod";
 import { ActorRequiredError } from "./actor.ts";
+import { BadKeyError, KeyTakenError } from "../db/keys.ts";
 import { createRouter } from "./router.ts";
 import { products } from "./routes/products.ts";
 import { tests } from "./routes/tests.ts";
@@ -17,7 +18,7 @@ import { runs } from "./routes/runs.ts";
 import { attachments } from "./routes/attachments.ts";
 import { authoring } from "./routes/authoring.ts";
 import { reports } from "./routes/reports.ts";
-import { bundle } from "./routes/import.ts";
+import { suite } from "./routes/suite.ts";
 import { suites } from "./routes/suites.ts";
 
 /** Validation failures name the field; see `router.ts` for why that is shared. */
@@ -30,12 +31,19 @@ api.route("/", runs);
 api.route("/", attachments);
 api.route("/", authoring);
 api.route("/", reports);
-api.route("/", bundle);
+api.route("/", suite);
 api.route("/", suites);
 
 api.onError((error, c) => {
   if (error instanceof ActorRequiredError) {
     return c.json({ error: error.message }, 401);
+  }
+  if (error instanceof BadKeyError) {
+    return c.json({ error: error.message }, 400);
+  }
+  // A unique key or slug: asked for explicitly, or set by a PATCH.
+  if (error instanceof KeyTakenError || (error as { code?: string }).code === "23505") {
+    return c.json({ error: error instanceof KeyTakenError ? error.message : "that key or slug is already taken" }, 409);
   }
   if (error instanceof ZodError) {
     return c.json({ error: "invalid data", details: error.issues }, 400);
@@ -45,7 +53,7 @@ api.onError((error, c) => {
 });
 
 /**
- * How a caller identifies itself (D38): the signed cookie `PUT /api/me` sets, or —
+ * How a caller identifies itself: the signed cookie `PUT /api/me` sets, or —
  * for scripts with no cookie jar — the `X-Flowdeck-Actor` header on every request.
  * Both are a name picker, not authentication; the document says so rather than
  * implying a secret exists.
@@ -55,7 +63,7 @@ api.openAPIRegistry.registerComponent("securitySchemes", "actorHeader", {
   in: "header",
   name: "X-Flowdeck-Actor",
   description:
-    "The name every write is attributed to. Not a secret and not authentication — Flowdeck is a name picker (D38). Required on every write; ignored on reads.",
+    "The name every write is attributed to. Not a secret and not authentication — Flowdeck is a name picker. Required on every write; ignored on reads.",
 });
 api.openAPIRegistry.registerComponent("securitySchemes", "actorCookie", {
   type: "apiKey",
@@ -80,10 +88,10 @@ export const openApiConfig = {
   security: [{ actorHeader: [] }, { actorCookie: [] }] as Record<string, string[]>[],
   servers: [{ url: "/api", description: "Relative to the Flowdeck origin" }],
   tags: [
-    { name: "Products", description: "Independent systems under test (D23)" },
+    { name: "Products", description: "Independent systems under test" },
     { name: "Tests", description: "Assertions, versioned and never hard-deleted" },
     { name: "Templates", description: "Reusable testing days, one per setup" },
-    { name: "Import", description: "A whole suite in one request: tests keyed by the caller, templates marking by key" },
+    { name: "Suite", description: "A whole product as one document, by key: read it, plan a change, push it. How agents and the CLI author" },
     { name: "Suites", description: "Suite snapshots saved as plain JSON in the backup bucket, and brought back" },
     { name: "Coverage", description: "Is every test reachable by some flow?" },
     { name: "Runs", description: "Testing days: claiming, verdicts, blocking" },
@@ -112,10 +120,11 @@ api.get("/", (c) =>
     start: {
       products: "GET /api/products",
       createProduct: "POST /api/products { name, description? }",
-      export: "GET /api/products/{productId}/export — the whole suite, in the shape the import takes (?download=true for a file)",
-      importAsNewProduct: "POST /api/products/import — an export bundle (with its `product`) lands in a new product",
-      backupBucket: "GET /api/suites — snapshots saved to the S3 backup bucket; POST /api/products/{productId}/suites saves one; POST /api/suites/{id}/import brings one back",
-      import: "POST /api/products/{productId}/import { tests: [{ key, title, expectedResult, metadata? }], templates: [{ name, flows: [{ name, steps: [{ kind, text, deviceLabel, expectedResult?, marks: [key] }] }] }] }",
+      cli: "The `flowdeck` CLI wraps the suite routes below: pull a product to files, edit, `flowdeck push --plan`, push. `flowdeck guide` explains how to write tests and flows.",
+      suite: "GET /api/products/{product}/suite — the whole suite by key, plus its revision. {product} is the id or the slug",
+      plan: "POST /api/products/{product}/suite/plan <suite> — what a push would change, and the lint warnings; changes nothing",
+      push: "PUT /api/products/{product}/suite { baseRevision, suite } — replaces the suite; what it leaves out is archived, never deleted",
+      backupBucket: "GET /api/suites — snapshots saved to the S3 backup bucket; POST /api/products/{productId}/suites saves one; POST /api/suites/{id}/restore brings one back",
       coverage: "GET /api/products/{productId}/coverage",
       startRun: "POST /api/templates/{templateId}/runs",
       issues: "GET /api/runs/{runId}/issues — every failure, self-contained",

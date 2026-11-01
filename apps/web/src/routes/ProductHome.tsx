@@ -1,5 +1,5 @@
 /**
- * Product overview (04 §Dashboards): library size, covered vs uncovered, template
+ * Product overview: library size, covered vs uncovered, template
  * count, today's run progress, and a "needs attention" list combining uncovered
  * tests, today's failures and today's skipped tests. Laid out as a board — what is
  * happening now on the left, what to start from and what happened before on the right.
@@ -17,7 +17,7 @@ import { useState } from "react";
 
 export function ProductHome() {
   const { productId } = useParams({ strict: false }) as { productId: string };
-  const product = useQuery({ queryKey: ["product", productId], queryFn: () => unwrap(api.GET("/products/{productId}", { params: { path: { productId } } })) });
+  const product = useQuery({ queryKey: ["product", productId], queryFn: () => unwrap(api.GET("/products/{product}", { params: { path: { product: productId } } })) });
   const templates = useQuery({ queryKey: ["templates", productId], queryFn: () => unwrap(api.GET("/products/{productId}/templates", { params: { path: { productId } } })) });
   const runs = useQuery({ queryKey: ["runs", productId], queryFn: () => unwrap(api.GET("/products/{productId}/runs", { params: { path: { productId } } })) });
   const coverage = useQuery({ queryKey: ["coverage", productId], queryFn: () => unwrap(api.GET("/products/{productId}/coverage", { params: { path: { productId } } })) });
@@ -311,7 +311,7 @@ function SuitePanel({ productId, productName }: { productId: string; productName
   }
 
   async function restore(suiteId: string) {
-    const r = await unwrap(api.POST("/suites/{suiteId}/import", { params: { path: { suiteId } }, body: { into: "new", name: `${productName} (restored)` } }));
+    const r = await unwrap(api.POST("/suites/{suiteId}/restore", { params: { path: { suiteId } }, body: { into: "new", name: `${productName} (restored)` } }));
     await qc.invalidateQueries({ queryKey: ["products"] });
     void navigate({ to: "/products/$productId", params: { productId: r.product.id } });
   }
@@ -326,8 +326,8 @@ function SuitePanel({ productId, productName }: { productId: string; productName
       <div className="panel">
         <div className="suiteacts">
           {bucket ? <button className="btn sm soft" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save to backup"}</button> : null}
-          <a className="btn sm" href={`/api/products/${productId}/export?download=true`} download>Download as a file</a>
-          <button className="btn sm" onClick={() => setImporting(true)}>Import into this product</button>
+          <a className="btn sm" href={`/api/products/${productId}/suite?download=true`} download>Download as a file</a>
+          <button className="btn sm" onClick={() => setImporting(true)}>Replace from a file…</button>
           {saved ? <span className="meta" role="status" style={{ alignSelf: "center" }}>Saved {when(saved)}</span> : null}
         </div>
         {error ? <p className="note" style={{ margin: "10px 14px" }}>{error}</p> : null}

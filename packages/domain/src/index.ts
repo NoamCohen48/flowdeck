@@ -5,3 +5,5 @@ export * from "./devices.ts";
 export * from "./blocking.ts";
 export * from "./coverage.ts";
 export * from "./progress.ts";
+export * from "./suite.ts";
+export * from "./suite-plan.ts";

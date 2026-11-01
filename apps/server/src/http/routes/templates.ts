@@ -2,7 +2,7 @@
  * Templates and flows.
  *
  * A template is a reusable definition of a testing day for one particular setup,
- * and its test scope is implicit — whatever its flows mark (D1). There is no field
+ * and its test scope is implicit — whatever its flows mark. There is no field
  * in which to declare scope, deliberately: a second list is a second thing to
  * maintain and a second way to be wrong.
  */
@@ -36,7 +36,7 @@ templates.openapi(
     tags: ["Templates"],
     summary: "List a product's templates",
     description:
-      "Several templates per product is the norm — one per setup. Archived templates are included, because they stop appearing in the run picker but keep counting toward coverage (D3).",
+      "Several templates per product is the norm — one per setup. Archived templates are included, because they stop appearing in the run picker but keep counting toward coverage.",
     request: { params: z.object({ productId: Uuid }) },
     responses: {
       200: {
@@ -51,6 +51,7 @@ templates.openapi(
       rows.map((r) => ({
         id: r.id,
         productId: r.product_id,
+        key: r.key,
         name: r.name,
         description: r.description,
         status: r.status,
@@ -89,8 +90,8 @@ templates.openapi(
 );
 
 /**
- * What a template's flows add up to. Reported as information, never as a warning
- * (D1): a template targeting one setup can only reach the tests performable in that
+ * What a template's flows add up to. Reported as information, never as a warning:
+ * a template targeting one setup can only reach the tests performable in that
  * setup, so warning per template would fire constantly and be ignored. The warning
  * lives at the product level, where it means something.
  */
@@ -148,7 +149,7 @@ templates.openapi(
 /**
  * The device list a tester reads before starting, so they know what hardware to
  * collect. Derived from the steps — never stored — which is also the agreed
- * fallback position for D17 if mid-flow introduction proves disruptive.
+ * fallback if mid-flow introduction proves disruptive.
  */
 const FlowDevicesSchema = z.object({
   flowId: Uuid,
@@ -208,7 +209,7 @@ templates.openapi(
     tags: ["Templates"],
     summary: "Bulk-create templates with their flows and steps",
     description:
-      "Phase two of an import (D29). Steps reference tests by the IDs returned from phase one, so the importing script holds the mapping rather than Flowdeck knowing anything about the source.",
+      "Phase two of an import. Steps reference tests by the IDs returned from phase one, so the importing script holds the mapping rather than Flowdeck knowing anything about the source.",
     request: {
       params: z.object({ productId: Uuid }),
       body: { content: { "application/json": { schema: CreateTemplatesSchema } } },
