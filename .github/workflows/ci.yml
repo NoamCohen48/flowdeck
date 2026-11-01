@@ -105,6 +105,7 @@ jobs:
 
     env:
       FLOWDECK_VERSION: ci
+      DOCKER_BUILD_RECORD_UPLOAD: false
 
     steps:
       - uses: actions/checkout@v4
