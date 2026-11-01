@@ -1,24 +1,31 @@
-# Weekly, grouped, so updates arrive as one reviewable PR per ecosystem rather
-# than a stream. Each runs through CI like any other change.
+# Monthly, grouped, so updates arrive as one reviewable PR per ecosystem rather
+# than a stream. Major versions are upgraded by hand; security fixes still come
+# as soon as they are published (they do not follow this schedule).
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
     groups:
-      actions: { patterns: ["*"] }
+      actions: { patterns: ["*"], update-types: [minor, patch] }
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: bun
     directory: /
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
     open-pull-requests-limit: 5
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: docker
     directories: [/, /backup]
-    schedule: { interval: weekly }
+    schedule: { interval: monthly }
     ignore:
       # The backup image's pg_dump must match the database's major version, and a
       # major Postgres upgrade needs a dump and restore, so both move together, by hand.
