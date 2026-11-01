@@ -11,6 +11,7 @@
   },
   "scripts": {
     "test": "bun test",
+    "test:setup": "bun apps/server/src/db/test-setup.ts",
     "typecheck": "bun run --cwd packages/domain typecheck && bun run --cwd apps/server typecheck && bun run --cwd packages/api-client typecheck && bun run --cwd apps/web typecheck",
     "db:up": "docker compose up -d postgres electric",
     "db:down": "docker compose down",

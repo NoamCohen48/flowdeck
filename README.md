@@ -45,7 +45,8 @@ docker compose up -d --wait postgres electric
 bun run db:migrate && bun run db:seed -- --reset   # add --volume for the 300-test product
 bun run dev        # API on :8787
 bun run dev:web    # Vite on :5173, proxies /api
-bun test           # needs the two containers
+bun run test:setup # once: a flowdeck_test database and its own Electric, so tests never touch dev data
+bun test
 bun run typecheck
 bun run docs:api       # after changing any route: regenerates packages/api-client and docs/openapi.json
 ```

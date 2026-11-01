@@ -3,9 +3,17 @@ import type { SQL } from "drizzle-orm";
 import postgres from "postgres";
 import * as schema from "./schema.ts";
 
+/**
+ * `bun test` sets NODE_ENV=test. The API tests write real runs and results, so
+ * by default they get a database of their own (`bun run test:setup` creates it)
+ * rather than filling the development one with a testing day per test. An
+ * explicit DATABASE_URL — CI's, for one — always wins.
+ */
+export const IS_TEST = process.env.NODE_ENV === "test";
+
 export const DATABASE_URL =
   process.env.DATABASE_URL ??
-  "postgresql://flowdeck:flowdeck-dev@localhost:54321/flowdeck";
+  `postgresql://flowdeck:flowdeck-dev@localhost:54321/${IS_TEST ? "flowdeck_test" : "flowdeck"}`;
 
 /** One pool for the process. Migrations open their own single connection. */
 export const sql = postgres(DATABASE_URL, { max: 10 });

@@ -56,6 +56,28 @@ services:
       timeout: 3s
       retries: 20
 
+  # The API tests' own Electric, following the flowdeck_test database so a test
+  # run never writes into the development data. Only with `--profile test`;
+  # `bun run test:setup` starts it. A replication stream id of its own, because
+  # replication slot names are per Postgres server, not per database.
+  electric-test:
+    image: electricsql/electric:latest
+    profiles: ["test"]
+    environment:
+      DATABASE_URL: postgresql://flowdeck:${POSTGRES_PASSWORD:-flowdeck-dev}@postgres:5432/flowdeck_test?sslmode=disable
+      ELECTRIC_REPLICATION_STREAM_ID: test
+      ELECTRIC_INSECURE: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${ELECTRIC_TEST_PORT:-3011}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/v1/health || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   app:
     build: .
     restart: unless-stopped
