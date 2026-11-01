@@ -15,14 +15,14 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { computeHandoffs, type DeviceAssignment, type StepKind } from "@flowdeck/domain";
+import { computeHandoffs, matchDeviceLabel, namesSeveralDevices, otherDevicesMentioned, type DeviceAssignment, type StepKind } from "@flowdeck/domain";
 import { api, unwrap, type SnapshotStep, type Test } from "../lib/api.ts";
 import { ORDER } from "../lib/collections.ts";
 import { useEditorSteps, useLiveCoverage, useTestIndex } from "../lib/editor-model.ts";
 import { useMe } from "../lib/identity.tsx";
 import { usePeers, usePresence } from "../lib/presence.ts";
 import { useTitle } from "../lib/title.ts";
-import { DeviceChip, Pickup, deviceStyle } from "../components/Device.tsx";
+import { DeviceChip, Pickup, deviceStyle, templateSlots } from "../components/Device.tsx";
 import { StepMap } from "../components/StepMap.tsx";
 import { KindBadge, PostState, TestsIcon } from "../components/Step.tsx";
 import { TestPicker } from "../components/TestPicker.tsx";
@@ -47,7 +47,13 @@ export function FlowEditor() {
 
   useTitle(flow ? `Editing ${flow.name} — Flowdeck` : "Flowdeck");
 
-  const handoffs = useMemo(() => computeHandoffs(steps), [steps]);
+  // Colours and letters across the whole template (D41), with this flow's live steps
+  // standing in for its saved ones so a device typed a moment ago is placed right.
+  const slots = useMemo(
+    () => templateSlots((template.data?.flows ?? []).map((f) => (f.id === flowId ? { ...f, steps } : f))),
+    [template.data, flowId, steps],
+  );
+  const handoffs = useMemo(() => computeHandoffs(steps, slots), [steps, slots]);
   const knownLabels = useMemo(() => {
     const labels = new Set<string>();
     for (const f of template.data?.flows ?? []) for (const s of f.steps) labels.add(s.deviceLabel);
@@ -57,7 +63,7 @@ export function FlowEditor() {
 
   const [current, setCurrent] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{ index: number; kind: StepKind } | null>(null);
+  const [draft, setDraft] = useState<{ index: number; kind: StepKind; device?: string } | null>(null);
   const [picking, setPicking] = useState<string | null>(null);
   const stepRefs = useRef<Map<string, HTMLLIElement>>(new Map());
 
@@ -104,6 +110,12 @@ export function FlowEditor() {
     );
     setDraft(null);
     setCurrent(index);
+  }
+
+  /** A step names a second device (D41): save it, and open a new step on that device right after. */
+  function saveAndSplit(step: SnapshotStep, d: Draft, device: string) {
+    save(step, d);
+    setDraft({ index: steps.indexOf(step) + 1, kind: d.kind, device });
   }
 
   function save(step: SnapshotStep, d: Draft) {
@@ -191,7 +203,7 @@ export function FlowEditor() {
                         <DraftCard
                           kind={draft.kind}
                           index={i}
-                          initialDevice={steps[i - 1]?.deviceLabel ?? knownLabels[0] ?? ""}
+                          initialDevice={draft.device ?? steps[i - 1]?.deviceLabel ?? knownLabels[0] ?? ""}
                           labels={knownLabels}
                           onSave={(d) => insert(i, d)}
                           onCancel={() => setDraft(null)}
@@ -208,6 +220,7 @@ export function FlowEditor() {
                           device={device}
                           labels={knownLabels}
                           onSave={(d) => save(step, d)}
+                          onSplit={(d, device) => saveAndSplit(step, d, device)}
                           onCancel={() => setEditing(null)}
                           onDelete={() => remove(step)}
                           onMove={{ up: i > 0 ? () => reorder(i, i - 1) : null, down: i < steps.length - 1 ? () => reorder(i, i + 1) : null }}
@@ -220,8 +233,9 @@ export function FlowEditor() {
                           isCurrent={i === current}
                           byId={byId}
                           productId={productId}
+                          multiDevice={multiDeviceWarning(`${step.text} ${step.expectedResult ?? ""}`, step.deviceLabel, knownLabels)}
                           onFocus={() => setCurrent(i)}
-                          onEdit={() => { setDraft(null); setEditing(step.id); }}
+                          onEdit={() => { setDraft(null); setEditing(step.id); setCurrent(i); }}
                           onUnmark={(testId) => toggleMark(step.id, testId, false)}
                           onPick={() => setPicking(step.id)}
                         />
@@ -237,7 +251,7 @@ export function FlowEditor() {
             <DraftCard
               kind={draft.kind}
               index={steps.length}
-              initialDevice={steps[steps.length - 1]?.deviceLabel ?? knownLabels[0] ?? ""}
+              initialDevice={draft.device ?? steps[steps.length - 1]?.deviceLabel ?? knownLabels[0] ?? ""}
               labels={knownLabels}
               onSave={(d) => insert(steps.length, d)}
               onCancel={() => setDraft(null)}
@@ -281,6 +295,14 @@ export function FlowEditor() {
 
 /* ── Pieces ──────────────────────────────────────────────────────────── */
 
+/** The badge on a saved step that reads as happening on more than one device (D41), or null. */
+function multiDeviceWarning(text: string, own: string, labels: string[]): string | null {
+  const others = otherDevicesMentioned(text, own, labels);
+  if (others.length) return `Also names ${others.join(", ")}`;
+  const several = namesSeveralDevices(text);
+  return several ? `Says “${several}”` : null;
+}
+
 function SortableStep({ id, refCb, style, children }: { id: string; refCb: (el: HTMLLIElement | null) => void; style: React.CSSProperties; children: React.ReactNode }) {
   const { setNodeRef, transform, transition, isDragging } = useSortable({ id });
   return (
@@ -323,19 +345,26 @@ function Between({ onAdd }: { onAdd: (kind: StepKind) => void }) {
 }
 
 function StepView({
-  step, index, device, isCurrent, byId, productId, onFocus, onEdit, onUnmark, onPick,
+  step, index, device, isCurrent, byId, productId, multiDevice, onFocus, onEdit, onUnmark, onPick,
 }: {
   step: SnapshotStep; index: number; device: DeviceAssignment; isCurrent: boolean; productId: string;
-  byId: Map<string, Test>; onFocus: () => void; onEdit: () => void; onUnmark: (testId: string) => void; onPick: () => void;
+  byId: Map<string, Test>; multiDevice: string | null;
+  onFocus: () => void; onEdit: () => void; onUnmark: (testId: string) => void; onPick: () => void;
 }) {
   const isCheck = step.kind === "assertion";
+  // An action that verifies nothing is normal; a check that verifies nothing is worth a box saying so.
+  const quietMarks = !isCheck && !step.marks.length;
   return (
     <div className={`step${isCurrent ? " now" : ""}`} id={`step-${step.id}`} onClick={onFocus} aria-current={isCurrent ? "step" : undefined}>
       <div className="sline">
         <span className="snum">{index + 1}</span>
         <DeviceChip device={device} />
         <KindBadge kind={step.kind} />
+        {multiDevice ? (
+          <span className="tag warn" title="A step happens on one device. Edit it to split it.">{multiDevice}</span>
+        ) : null}
         <span style={{ flex: 1 }} />
+        {quietMarks ? <button className="btn sm ghost" onClick={(e) => { e.stopPropagation(); onPick(); }}>＋ Mark a test</button> : null}
         <button className="btn sm" onClick={(e) => { e.stopPropagation(); onEdit(); }}>Edit</button>
       </div>
       <div className="stop">
@@ -343,8 +372,8 @@ function StepView({
       </div>
       {isCheck && step.expectedResult ? <div className="expect" dir="auto"><b>Expected:</b> {step.expectedResult}</div> : null}
       <PostState text={step.postState} />
-      <div className={`tests${step.marks.length ? "" : " none"}`}>
-        <div className="cap"><TestsIcon />{step.marks.length ? `Verifies ${step.marks.length === 1 ? "1 test" : `${step.marks.length} tests`}` : "Verifies nothing yet"}</div>
+      {quietMarks ? null : <div className={`tests${step.marks.length ? "" : " none"}`}>
+        <div className="cap"><TestsIcon />{step.marks.length ? `Verifies ${step.marks.length === 1 ? "1 test" : `${step.marks.length} tests`}` : "This check verifies no test yet"}</div>
         {step.marks.map((testId) => {
           const t = byId.get(testId);
           return (
@@ -362,16 +391,18 @@ function StepView({
           );
         })}
         <button className={`btn sm${step.marks.length ? "" : " soft"}`} style={{ marginTop: 8 }} onClick={(e) => { e.stopPropagation(); onPick(); }}>＋ Mark a test</button>
-      </div>
+      </div>}
     </div>
   );
 }
 
 function StepForm({
-  initial, index, labels, submitLabel, onSave, onCancel, onDelete, onMove,
+  initial, index, labels, submitLabel, onSave, onSplit, onCancel, onDelete, onMove,
 }: {
   initial: Draft; index: number; labels: string[]; submitLabel: string;
   onSave: (d: Draft) => void; onCancel: () => void; onDelete?: () => void;
+  /** Save, then start a new step on `device` straight after this one (D41). */
+  onSplit?: (d: Draft, device: string) => void;
   /** Pointer-free reorder (WCAG 2.2 dragging movements): drag is never the only way. */
   onMove?: { up: (() => void) | null; down: (() => void) | null };
 }) {
@@ -380,7 +411,18 @@ function StepForm({
   useEffect(() => { textRef.current?.focus(); }, []);
   const isCheck = d.kind === "assertion";
   const canSave = d.text.trim().length > 0 && d.deviceLabel.trim().length > 0;
-  const submit = () => canSave && onSave({ ...d, text: d.text.trim(), deviceLabel: d.deviceLabel.trim(), expectedResult: d.expectedResult.trim(), postState: d.postState.trim() });
+  // Free-text devices (D16), minus the accidents: "pixel  8" is the Pixel 8 the
+  // template already has, not a new device with its own colour and banner.
+  const known = matchDeviceLabel(d.deviceLabel, labels);
+  const device = known ?? d.deviceLabel.trim();
+  const isNew = !known && device.length > 0 && labels.length > 0;
+  const said = `${d.text} ${isCheck ? d.expectedResult : ""}`;
+  const mentions = otherDevicesMentioned(said, device, labels);
+  const several = namesSeveralDevices(said);
+  // Where the rest of the step could go: the devices it names, else every other one the template knows.
+  const splitTo = mentions.length ? mentions : several ? labels.filter((l) => l !== device).slice(0, 3) : [];
+  const clean = (): Draft => ({ ...d, text: d.text.trim(), deviceLabel: device, expectedResult: d.expectedResult.trim(), postState: d.postState.trim() });
+  const submit = () => canSave && onSave(clean());
   return (
     <div className="step now editform" onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submit(); }}>
       <div className="row">
@@ -391,10 +433,29 @@ function StepForm({
         </span>
         <input className="devin" type="text" list="device-labels" value={d.deviceLabel} onChange={(e) => setD({ ...d, deviceLabel: e.target.value })} placeholder="Device (e.g. Pixel 8)" dir="auto" aria-label="Device label" />
         <datalist id="device-labels">{labels.map((l) => <option key={l} value={l} />)}</datalist>
+        {known && known !== d.deviceLabel.trim() ? <span className="meta devhint">Saves as <b dir="auto">{known}</b></span> : null}
+        {isNew ? <span className="meta devhint">New device: it gets its own colour and a hand-off banner</span> : null}
       </div>
       <textarea ref={textRef} value={d.text} onChange={(e) => setD({ ...d, text: e.target.value })} dir="auto" placeholder={isCheck ? "Compare the reaction on both screens." : 'Long-press "ping 1" and add a 👍 reaction.'} aria-label="Step text" />
       {isCheck ? (
-        <textarea value={d.expectedResult} onChange={(e) => setD({ ...d, expectedResult: e.target.value })} dir="auto" placeholder="Expected: same emoji and count on both." aria-label="Expected result" />
+        <div className="afterfield">
+          <label htmlFor={`expected-${index}`}>Expected</label>
+          <textarea id={`expected-${index}`} value={d.expectedResult} onChange={(e) => setD({ ...d, expectedResult: e.target.value })} dir="auto" placeholder="The reaction shows on this screen with the right count." />
+        </div>
+      ) : null}
+      {splitTo.length || several ? (
+        <div className="note min splitnote" role="note">
+          <b>{mentions.length ? `This step also names ${mentions.join(" and ")}.` : `This step says “${several}”.`}</b>{" "}
+          A step happens on one device, so the tester always knows which screen to look at.
+          Keep this one on <b dir="auto">{device || "its device"}</b> and put the rest in a step of its own.
+          {onSplit && canSave && splitTo.length ? (
+            <span className="splitbtns">
+              {splitTo.map((m) => (
+                <button key={m} type="button" className="btn sm" onClick={() => onSplit(clean(), m)}>Save and add a step on <span dir="auto">{m}</span></button>
+              ))}
+            </span>
+          ) : null}
+        </div>
       ) : null}
       <div className="afterfield">
         <label htmlFor={`after-${index}`}>Afterwards <span className="meta">optional — where the tester should be once this is done. It is what they improvise toward if the step goes stale.</span></label>
@@ -421,12 +482,12 @@ function DraftCard({ kind, index, initialDevice, labels, onSave, onCancel }: { k
   return <StepForm initial={{ kind, text: "", expectedResult: "", postState: "", deviceLabel: initialDevice }} index={index} labels={labels} submitLabel="Add step" onSave={onSave} onCancel={onCancel} />;
 }
 
-function EditCard({ step, index, device, labels, onSave, onCancel, onDelete, onMove }: { step: SnapshotStep; index: number; device: DeviceAssignment; labels: string[]; onSave: (d: Draft) => void; onCancel: () => void; onDelete: () => void; onMove: { up: (() => void) | null; down: (() => void) | null } }) {
+function EditCard({ step, index, device, labels, onSave, onSplit, onCancel, onDelete, onMove }: { step: SnapshotStep; index: number; device: DeviceAssignment; labels: string[]; onSave: (d: Draft) => void; onSplit: (d: Draft, device: string) => void; onCancel: () => void; onDelete: () => void; onMove: { up: (() => void) | null; down: (() => void) | null } }) {
   return (
     <div style={deviceStyle(device.slot)}>
       <StepForm
         initial={{ kind: step.kind, text: step.text, expectedResult: step.expectedResult ?? "", postState: step.postState ?? "", deviceLabel: step.deviceLabel }}
-        index={index} labels={labels} submitLabel="Save" onSave={onSave} onCancel={onCancel} onDelete={onDelete} onMove={onMove}
+        index={index} labels={labels} submitLabel="Save" onSave={onSave} onSplit={onSplit} onCancel={onCancel} onDelete={onDelete} onMove={onMove}
       />
     </div>
   );

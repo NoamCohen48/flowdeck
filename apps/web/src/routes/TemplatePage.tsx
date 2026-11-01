@@ -9,7 +9,7 @@ import { computeHandoffs } from "@flowdeck/domain";
 import { api, ApiError, unwrap } from "../lib/api.ts";
 import { useTestIndex } from "../lib/editor-model.ts";
 import { useTitle } from "../lib/title.ts";
-import { DeviceChip } from "../components/Device.tsx";
+import { DeviceChip, templateSlots } from "../components/Device.tsx";
 import { FilterBar } from "../components/Filters.tsx";
 
 export function TemplatePage() {
@@ -37,7 +37,10 @@ export function TemplatePage() {
   // flow or by the device it needs. Devices come from the live flows only.
   const flows = template.data?.flows ?? [];
   const archivedTotal = flows.filter((f) => f.archived).length;
-  const withDevices = useMemo(() => flows.map((f) => ({ flow: f, devices: computeHandoffs(f.steps).devices })), [flows]);
+  const withDevices = useMemo(() => {
+    const slots = templateSlots(flows);
+    return flows.map((f) => ({ flow: f, devices: computeHandoffs(f.steps, slots).devices }));
+  }, [flows]);
   const allDevices = useMemo(() => [...new Set(withDevices.filter((x) => !x.flow.archived).flatMap((x) => x.devices.map((d) => d.label)))], [withDevices]);
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();

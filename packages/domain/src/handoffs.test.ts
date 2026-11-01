@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
-import { computeHandoffs, devicesInPlayAt, slotLetter } from "./handoffs.ts";
+import { computeHandoffs, deviceSlots, devicesInPlayAt, matchDeviceLabel, namesSeveralDevices, otherDevicesMentioned, slotLetter } from "./handoffs.ts";
 import type { StepLike } from "./types.ts";
 
 const step = (id: string, deviceLabel: string): StepLike => ({
@@ -149,5 +149,61 @@ describe("slotLetter", () => {
     expect(slotLetter(26)).toBe("A2");
     expect(slotLetter(51)).toBe("Z2");
     expect(slotLetter(52)).toBe("A3");
+  });
+});
+
+describe("template-wide device slots (D41)", () => {
+  const flowA = [step("a1", "Pixel 8"), step("a2", "iPhone 13"), step("a3", "Second laptop")];
+  const flowB = [step("b1", "Pixel 8"), step("b2", "Second laptop")];
+
+  test("a device keeps its slot and letter in every flow of the template", () => {
+    const slots = deviceSlots([{ steps: flowA }, { steps: flowB }]);
+    const laptopA = computeHandoffs(flowA, slots).byLabel.get("Second laptop")!;
+    const laptopB = computeHandoffs(flowB, slots).byLabel.get("Second laptop")!;
+    expect(laptopB.slot).toBe(laptopA.slot);
+    expect(laptopB.letter).toBe("C");
+  });
+
+  test("no two labels in a template share a slot", () => {
+    fc.assert(
+      fc.property(fc.array(arbSteps, { maxLength: 6 }), (flows) => {
+        const slots = deviceSlots(flows.map((steps) => ({ steps })));
+        expect(new Set(slots.values()).size).toBe(slots.size);
+        for (const steps of flows) {
+          const h = computeHandoffs(steps, slots);
+          expect(new Set(h.devices.map((d) => d.slot)).size).toBe(h.devices.length);
+        }
+      }),
+    );
+  });
+
+  test("a label the template does not know yet takes the next free slot", () => {
+    const slots = deviceSlots([{ steps: flowA }]);
+    const h = computeHandoffs([step("n1", "Tablet"), step("n2", "Pixel 8")], slots);
+    expect(h.byLabel.get("Tablet")!.slot).toBe(3);
+    expect(h.byLabel.get("Pixel 8")!.slot).toBe(0);
+  });
+
+  test("without slots, a flow letters its own devices A, B, C", () => {
+    expect(computeHandoffs(flowB).devices.map((d) => d.letter)).toEqual(["A", "B"]);
+  });
+});
+
+describe("device label hygiene", () => {
+  test("matches a typed label to a known one, ignoring case and spacing", () => {
+    expect(matchDeviceLabel("  pixel   8 ", ["Pixel 8", "iPhone 13"])).toBe("Pixel 8");
+    expect(matchDeviceLabel("Pixel 9", ["Pixel 8"])).toBeUndefined();
+  });
+
+  test("finds other known devices a step's text names, by whole words", () => {
+    const known = ["Pixel 8", "iPhone 13", "Second laptop"];
+    expect(otherDevicesMentioned("Check the iPhone 13 and the second laptop.", "iPhone 13", known)).toEqual(["Second laptop"]);
+    expect(otherDevicesMentioned("Watch the Pixel 80 boot", "iPhone 13", known)).toEqual([]);
+  });
+
+  test("notices a step written for several devices without naming them", () => {
+    expect(namesSeveralDevices("Compare the reaction on both screens.")).toBe("both screens");
+    expect(namesSeveralDevices("Check each of the devices")).toBe("each of the devices");
+    expect(namesSeveralDevices("Both messages arrive")).toBeUndefined();
   });
 });
