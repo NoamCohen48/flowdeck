@@ -74,6 +74,14 @@ The author sets a device label per step. Labels are free text and reused across 
 first step to use a new label is automatically the introduction point, and the system renders a
 hand-off banner there.
 
+**A step happens on one device (D41).** "Check the iPhone and the second laptop" is two steps: the
+tester must always know which screen to look at. The editor flags a step whose text names another
+device or says "both screens", and offers to split it. A test that needs both screens is marked on
+both steps. A comparison is a check on one device against what the tester saw on the other.
+
+A typed label that differs from a known one only in case or spacing is saved as the known one, so
+"pixel  8" does not become a new device with its own colour and banner.
+
 The flow header also lists every device the flow will use, so a tester reading before starting knows
 what hardware to collect. This doubles as the fallback position if mid-flow introduction turns out
 to be disruptive.

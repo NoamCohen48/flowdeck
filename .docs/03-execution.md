@@ -167,6 +167,15 @@ dimmed, and their tests report as not verified rather than as failures.
 
 ## Progress
 
+### What the board sees while a flow is running (D42)
+
+Verdicts and flags are a draft on the tester's device until Finish. The board is not blind meanwhile:
+the runner publishes a summary of the draft as the tester goes — the step they are on, a tally, where
+they are blocked, and every failure, minor, skip and flagged step with its note. The board shows it
+under the flow as a dashed *running now* row, and lists anything failed or flagged in a running flow
+at the top, under *Going wrong right now*. It is provisional: never in the day's numbers, and gone
+when the flow is finished (the recorded results replace it) or abandoned.
+
 A footer tracks the flow live: passed, failed, minor, skipped, and how many tests remain. The
 testing day page aggregates the same across all flows, including how many tests were never reached.
 
