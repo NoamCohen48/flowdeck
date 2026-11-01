@@ -1,6 +1,6 @@
 # Design and UX
 
-*Every visual decision in the demo, and the reason for it.*
+*Every visual decision, and the reason for it.*
 
 ---
 
@@ -155,5 +155,17 @@ Interface copy is plain and instructional:
 - Action/check differ by fill and shape, not hue.
 - Visible keyboard focus rings; `prefers-reduced-motion` respected.
 - Responsive to phone width — a tester may well be marking results on a phone.
-- The demo is a single self-contained file with no external dependencies for CSS or logic, so it
-  works opened from disk, emailed, or shared.
+- No external hosts at runtime: IBM Plex Sans is self-hosted, so a closed network renders the same
+  metrics as the open one.
+- Verdict buttons grow to a touch-target size at narrow widths.
+- `dir="auto"` on every user-authored string, so Hebrew content renders correctly inside an English
+  interface.
+- Focus has its own neutral token, never a device colour.
+- Failure photos are downscaled to ~1600px before upload; attachments have a disk budget with a
+  warning as it is approached, and nothing is deleted automatically.
+
+## Beyond the original design
+
+A dark theme for a long day in a dim lab; a keyboard-driven runner (`j`/`k`, `p` pass-all, `f` fail,
+`?` help); the editor's step map reused in the runner with jump-to-current-step; and a seven-colour
+device palette (D39).

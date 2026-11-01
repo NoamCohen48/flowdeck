@@ -1,6 +1,7 @@
 # Decision Log
 
-*Every decision taken during the design conversation, what was rejected, and why.*
+*Every decision taken, what was rejected, and why. D1–D31 and D40–D43 are the product; D32–D39 and
+D44 are how it is built and run.*
 
 ---
 
@@ -325,18 +326,10 @@ adjusting what gets filed never requires touching Flowdeck.
 
 ---
 
-### D29 — Import is a two-phase API using returned IDs
+### D29 — Import is a two-phase API using returned IDs *(superseded by D43)*
 
-**Chosen:** Bulk-create tests, take the returned IDs, then create templates whose steps mark those
-IDs. Migration from Confluence — or Jira, or anywhere — is an external script against this API.
-Flowdeck has no source-specific knowledge.
-
-**Rejected:** Caller-supplied `externalId` making import idempotent and re-runnable.
-
-**Why:** The two-phase flow is simple and the script holds the mapping. **Accepted tradeoff:** import
-is not idempotent — running the parser twice duplicates everything, with no way for Flowdeck to
-detect it. The practical answer during migration is wipe-and-reimport. `externalId` remains addable
-later as an optional field without breaking callers.
+Bulk-create tests, then templates marking the returned IDs; not idempotent, so a re-run duplicated
+everything. Replaced by keys and the suite document, which make a push idempotent.
 
 ---
 
@@ -439,3 +432,216 @@ count?". The draft answers the first; only Finish should answer the second.
 
 **Accepted tradeoff:** One stored derivation (`flow_run.progress`), against the schema's "nothing derived
 is stored" rule — its source lives only in a browser, so there is nothing to derive it from server-side.
+
+---
+
+### D43 — Agents and people author a suite as files, pushed as one document by key
+
+**Chosen:** Every product, test, template and flow has a readable **key** (`sign-in-rejects-a-wrong-password`;
+a product's is its slug), unique in its scope, assigned from the name at creation and never changed by
+a rename. A product's whole suite is one **document** addressed by those keys —
+`GET /products/{product}/suite`, `POST …/suite/plan`, `PUT …/suite` — and the `flowdeck` CLI maps it
+one-for-one onto a folder: a file per test, a folder per template, a file per flow, the file name being
+the key. Steps say `do:` or `check:`, name one `device:`, and `verifies:` tests by key.
+
+A push replaces the suite, matched by key: new keys are created, an edited test gets a new version,
+and whatever the document leaves out is **archived, never deleted** (D7), so pushing it back restores
+it. Steps have no keys; they are matched by content, so a surviving step keeps its id. A push names
+the **revision** it was edited from and is refused if the suite has moved on; the CLI's `pull` then
+merges per test and per flow, keeping both sides' edits and naming what both changed. The same rules
+are linted offline and on the server: errors (bad keys, unknown tests) refuse the push; warnings
+(a step on two devices, a step doing two things, a check with nothing to see, an uncovered test) are
+said and allowed (D2). `flowdeck guide` explains the rules, and a pull writes them as `AGENTS.md`.
+
+**Rejected:** (a) Agents driving the granular REST routes — dozens of calls holding UUIDs, no preview,
+no way to review the change as a whole, and a half-applied change on any failure. (b) An MCP server as
+the primary surface — tied to one kind of client; files plus a CLI serve agents, people, git and code
+review at once. (c) Keeping the bundle import/export (D29) beside it — two formats for one thing; the
+bundle created rather than merged, so it could not round-trip. (d) Hard-deleting what a push leaves out.
+
+**Why:** Writing a manual-test suite is mostly writing — dozens of tests and long flows — which is what
+agents and text editors are good at and what a form-per-row UI is slow at. Files give review (`push
+--plan`, git diffs), bulk edits and an agent's whole toolbox; keys make the round trip exact and the
+push idempotent; the revision check means nobody's app edit is silently overwritten.
+
+**Accepted tradeoff:** Renaming a file is a new key — the old thing is archived with its history and a
+new one starts. That is said in the guide and visible in the plan (`-` and `+`), rather than guessed at.
+The web app's editor stays the live, one-step-at-a-time surface; the two meet through the revision
+check.
+
+---
+
+## Building it: stack and platform
+
+*Seven users, realtime that only flows one way (one tester owns a flow), self-hosted possibly on a
+closed network, and a public REST contract that scripts code against. Those four facts drove these.*
+
+Bun · Hono + `@hono/zod-openapi` · PostgreSQL 17 (logical replication) · Drizzle · ElectricSQL ·
+React 19 + Vite + TanStack Router/Query/DB · Tailwind v4 · Radix · dnd-kit · Zod · bun test +
+fast-check + Playwright · docker compose with Caddy for TLS and HTTP/2.
+
+---
+
+### D32 — ElectricSQL for the realtime read path
+
+**Chosen:** ElectricSQL syncs Postgres queries to the browser. Writes continue to go through our own
+REST API.
+
+**Rejected:** (a) hand-rolled SSE with an event log and sequence numbers; (b) Socket.IO;
+(c) Rocicorp Zero.
+
+**Why:** Realtime plumbing that is *almost* correct is worse than none — a flow board showing a
+stale claim causes two people to unknowingly run the same flow. Reconnection, offsets, resume after
+a gap, and initial-snapshot-then-delta are exactly the parts that are easy to get subtly wrong, and
+Electric is a component whose entire job is getting them right. Zero is nicer to write against but
+is pre-1.0, and this is a system the team will depend on.
+
+**How it actually splits.** This is the part that shapes the codebase:
+
+- **Reads that must be live** are *shapes* — a table plus a `where` clause, streamed over HTTP with
+  Electric handling offsets and resume. The client subscribes; rows arrive and keep arriving.
+- **Writes are ordinary `POST`/`PATCH`** against the Hono API, which validates, applies business
+  rules, and writes to Postgres. Electric notices the change through logical replication and pushes
+  it to every subscriber, including the writer.
+- The writer does not wait for that round trip: the mutation is optimistic locally, and the echoed
+  row reconciles it.
+
+So Electric replaces the *push* half of the system and nothing else. The REST contract survives untouched.
+
+**Consequences accepted:** Postgres with logical replication is now required, so the single-binary
+idea is dead and deployment is compose. Electric is a second service to run and upgrade. Shape
+queries are per-table with a `where` clause, so anything aggregate is either a database view synced
+as its own shape or computed client-side.
+
+---
+
+### D33 — Electric on the live surfaces only; REST everywhere else
+
+**Chosen:** Shapes for the testing-day board, the flow runner, coverage state, and editor presence.
+Plain REST + TanStack Query for authoring, the test library, run reports and dashboards.
+
+**Rejected:** Syncing every read through Electric.
+
+**Why:** Two mechanisms, each used where it is obviously right. Report and dashboard queries are
+aggregates over joins — pushing those through per-table shapes means reassembling them in the
+browser, which is more code and slower than one SQL query. Nothing on a report needs to update while
+you watch it.
+
+| Surface | Mechanism |
+|---|---|
+| Testing-day board — claims, progress, counts | Electric |
+| Flow runner — results, blocked steps, presence | Electric |
+| Coverage state in the library | Electric |
+| Flow editor — presence and other authors' edits | Electric |
+| Test library list, test detail, version history | REST |
+| Run reports, issue feed, dashboards | REST |
+| Everything under `/api/*` for external adapters | REST |
+
+**Authorization:** shape requests are proxied through the Hono API rather than exposing Electric
+directly, so there is one origin, one place that decides what a client may subscribe to, and no
+second service on the network edge.
+
+---
+
+### D34 — Bun
+
+**Chosen:** Bun as runtime, package manager and test runner.
+
+**Why:** Fast installs and test runs, native workspaces, and a good dev loop. It was originally
+chosen to get a single executable; that reason went with D32, and it stays on its own merits.
+
+**Accepted tradeoff:** a younger runtime than Node. The blast radius is small — Hono, Drizzle, Zod,
+React and Electric's client all run unmodified on Node, so the escape hatch is changing a base image.
+
+---
+
+### D35 — Hono, and REST only
+
+**Chosen:** Hono with `@hono/zod-openapi`; the web app consumes the same public REST API that
+external adapters do, through a client generated from the OpenAPI document.
+
+**Rejected:** tRPC for the UI alongside REST for integrations.
+
+**Why:** Two API styles means two contracts, and the second is always the one that rots. Making the
+UI the heaviest consumer of the public API means it is exercised constantly and its breakages are
+noticed immediately. `@hono/zod-openapi` derives the document from the same Zod schemas that
+validate requests, so it cannot drift.
+
+---
+
+### D36 — Verdict writes are idempotent
+
+**Chosen:** Every result write carries a client-generated idempotency key; the server upserts on it.
+
+**Why:** A tired tester on a laggy connection taps the tick twice. Without a key that is two rows, a
+double-counted verdict, and a corrupted progress number. Costs one column and one unique index.
+
+---
+
+### D37 — Concurrent authoring: presence plus last-write-wins per step
+
+**Chosen:** The flow editor shows who else is in it. Edits are scoped per step, so two authors
+touching different steps never conflict; two on the same step resolve last-write-wins.
+
+**Rejected:** (a) an advisory lock like flow claiming; (b) a hard read-only second author.
+
+**Why:** With seven people this collides approximately never, and Electric already delivers the other
+author's changes live, so the second author watches the flow update rather than discovering a
+conflict on save. A hard lock reproduces exactly the problem D26 rejected for flows — somebody leaves
+the editor open and nobody else can work.
+
+---
+
+### D38 — Identity is a name picker
+
+**Chosen:** First visit asks who you are and offers the names already seen on this instance. Stored
+in a signed cookie, written to every `recorded_by` and `claimed_by`.
+
+**Why:** The self-serve spirit of D30 and D24 — seven people in one room, no roles, every change
+attributed. Real authentication would add password resets, session security and an IdP dependency to
+counter a threat that does not exist inside this team.
+
+Trivially spoofable, and that is understood. It sits behind an `Actor` interface, so dropping in OIDC
+later touches one module and changes no call sites.
+
+---
+
+### D39 — A palette of seven device colours
+
+**Chosen:** Seven device slots, assigned by order of first appearance (since D41, across the
+template rather than per flow).
+
+**Rejected:** Hashing labels to colours — two labels can hash to the same slot, and two adjacent
+steps in indistinguishable colours is exactly the confusion this product exists to remove. An eighth
+slot — red, amber, green and slate-blue are spoken for by the verdicts, and every candidate sat within
+about 20° of something it would be confused with.
+
+**Why:** Device labels are free text and unbounded (D16), so the original four colours left a fifth
+device undefined. `devices.test.ts` enforces the hue separation, so an eighth can be added the day
+someone finds one that passes.
+
+**Known, not fixed:** the inherited ochre device colour sits close to the minor-verdict amber, and the
+magenta near the fail red; a test pins both so a change is deliberate.
+
+---
+
+### D44 — Backups go to the network's own S3, as a dump plus the data volume
+
+**Chosen:** A `backup` sidecar in the compose stack runs `pg_dump` on an interval and ships
+the dump together with the `data` volume (attachments, cookie secret) to an S3 bucket inside
+the team's network, using restic: encrypted before leaving the host, deduplicated, with a
+retention policy. Restore is one script that works on a fresh machine or over a running one.
+
+**Rejected:** (a) snapshotting the Postgres volume directly — a copy taken under writes is
+torn and may not start; (b) public cloud object storage — the attachments are screenshots of
+the product under test, and self-hosting rules out data leaving the boundary; (c)
+continuous WAL archiving (pgBackRest, WAL-G) — point-in-time recovery, but real operational
+weight for a system where losing part of one testing day is the acceptable worst case.
+
+**Why both halves together:** attachment rows in the database reference files on disk by
+hash. A database-only backup restores failures whose screenshots are gone; a files-only
+backup restores screenshots nothing points at. One snapshot holds both, taken seconds apart.
+
+**Consequence to know about:** a restore drops Electric's replication slot, because the
+restored database has a different history than the one Electric was following. Electric is
+recreated afterwards so it forgets the shapes it cached. `docs/backup.md` has the steps.

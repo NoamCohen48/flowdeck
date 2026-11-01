@@ -184,8 +184,8 @@ device and pick up a second halfway through. The step that introduces a device i
 prominent hand-off banner.
 
 *Fallback:* if introducing devices mid-flow proves confusing in practice, the fallback is declaring
-all devices up front on the flow so the tester gathers hardware before starting. The demo shows both
-— an up-front device list on the flow header and the mid-flow banners — so the fallback is already
+all devices up front on the flow so the tester gathers hardware before starting. The flow header
+already lists every device and the mid-flow banners show the hand-offs, so the fallback is
 half-built.
 
 **Multi-device flows are single-tester.** One person, several devices on the desk. The device label
