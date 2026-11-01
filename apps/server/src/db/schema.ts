@@ -29,6 +29,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type {
   FlowRunState,
+  LiveProgress,
   StepKind,
   TemplateStatus,
   Verdict,
@@ -234,6 +235,12 @@ export const flowRun = pgTable(
     state: text("state").$type<FlowRunState>().notNull().default("open"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
+    /**
+     * The tester's draft, summarised, while the flow is claimed (D42). Provisional:
+     * never counted, and cleared on finish and abandon. The one stored copy of
+     * something derived, because its source lives only in the tester's browser.
+     */
+    progress: jsonb("progress").$type<LiveProgress>(),
   },
   (t) => [
     index("flow_run_run_idx").on(t.runId),

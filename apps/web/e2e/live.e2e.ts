@@ -5,7 +5,7 @@
  */
 import { test, expect, type Browser, type Page } from "@playwright/test";
 
-const API = `http://localhost:${process.env.API_PORT ?? 8787}/api`;
+const API = `http://localhost:${process.env.API_PORT ?? 8788}/api`;
 
 async function signIn(browser: Browser, name: string): Promise<Page> {
   const ctx = await browser.newContext();
@@ -55,13 +55,16 @@ test("a claim and a verdict in one browser land on the other's board without a r
   await expect(noa.locator(".trow .v.on.pass")).toHaveCount(1);
   await noa.waitForTimeout(1500);
   expect(await dana.locator(".kpi").innerText()).toBe(passedBefore);
+  // …but Dana does see it as in flight under the flow (D42): provisional, not counted.
+  await expect(danaCard.locator(".resultrow.live")).toContainText(/1 of \d+ tests checked/, { timeout: 15_000 });
 
   // Finishing records it; Dana's board counts it without a reload.
   noa.once("dialog", (d) => void d.accept());
   await noa.getByRole("button", { name: "Finish flow" }).click();
   await noa.waitForURL(new RegExp(`${run.id}$`));
   await expect.poll(async () => dana.locator(".kpi").innerText(), { timeout: 15_000 }).not.toBe(passedBefore);
-  await expect(danaCard.locator(".resultrow")).toContainText("1 of");
+  await expect(danaCard.locator(".resultrow:not(.live)")).toContainText("1 of");
+  await expect(danaCard.locator(".resultrow.live")).toHaveCount(0);
 });
 
 test("claiming a flow someone holds asks first, and nothing moves until the server agrees", async ({ browser }) => {
@@ -107,7 +110,9 @@ test("pass the rest and finish records every remaining test, then takes the next
   await noa.waitForURL(/flows\//);
 
   await noa.getByRole("radio", { name: `Take the next flow: ${second!.name}` }).click();
-  await noa.getByRole("button", { name: /Pass the .* and finish/ }).click();
+  // It asks first: a pass nobody looked at is worse than "not reached".
+  noa.on("dialog", (d) => void d.accept());
+  await noa.getByRole("button", { name: /I checked the rest .* and finish/ }).click();
 
   // Straight into the next flow, and the first one is finished with every test passed.
   await expect(noa.getByRole("heading", { name: second!.name })).toBeVisible({ timeout: 15_000 });

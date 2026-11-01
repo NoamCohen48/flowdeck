@@ -97,7 +97,7 @@ Plain JSON objects under `suites/` in the bucket `BACKUP_REPOSITORY` points at. 
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/products/{productId}/runs` | A product's runs, newest first |
+| `GET` | `/products/{productId}/runs` | A product's runs, newest first, each with `total`, `counts` (worst result per test) and `notReached` |
 | `POST` | `/templates/{templateId}/runs` | Start a testing day (snapshots the template). `409` if one is open; `?force=true` |
 | `GET` | `/runs/{runId}` | Snapshot, flow runs, every result |
 | `POST` | `/runs/{runId}/close` | Close; `?reopen=true` undoes it |
@@ -108,6 +108,7 @@ Plain JSON objects under `suites/` in the bucket `BACKUP_REPOSITORY` points at. 
 | `POST` | `/flow-runs/{flowRunId}/step-problems` | `{ stepId, note, workaround?, blocking? }` — flag a step as wrong; one per step per flow run, replaces |
 | `DELETE` | `/flow-runs/{flowRunId}/step-problems/{stepId}` | Withdraw that report |
 | `DELETE` | `/results/{resultId}` | Retract a verdict (attachments go with it). To *change* one, just record it again |
+| `PUT` | `/flow-runs/{flowRunId}/progress` | `{ step, total, counts, blockedFrom, issues[], updatedAt }` — the claimer's draft, summarised for the board. Provisional: never counted, cleared on finish/abandon. `409` unless you hold the claimed flow run |
 | `POST` | `/flow-runs/{flowRunId}/finish` | Finish |
 | `POST` | `/flow-runs/{flowRunId}/abandon` | Abandon — the next person starts from step 1 |
 

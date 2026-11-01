@@ -7,7 +7,7 @@
 import { and, asc, desc, eq, sql as raw } from "drizzle-orm";
 import { db, query } from "./client.ts";
 import { attachment, flowRun, run, stepProblem, testResult } from "./schema.ts";
-import type { FlowRunState, StepKind, Verdict } from "@flowdeck/domain";
+import type { FlowRunState, LiveProgress, StepKind, Verdict } from "@flowdeck/domain";
 
 /* ── The snapshot ────────────────────────────────────────────────────── */
 
@@ -171,6 +171,13 @@ export async function getRun(runId: string) {
   };
 }
 
+/**
+ * Every testing day of a product, with its tally: tests in scope, and each one's
+ * worst result across every flow run (D19, same `verdict_rank` as the board).
+ * A closed day never changes, so the runs list reads this once over REST rather
+ * than holding two live shapes open per day — hundreds of long-polls, which
+ * starve every other request the browser makes to this origin.
+ */
 export async function listRuns(productId: string) {
   return query<{
     id: string;
@@ -179,10 +186,37 @@ export async function listRuns(productId: string) {
     date: string;
     started_by: string;
     closed_at: string | null;
+    total: number;
+    pass: number;
+    fail: number;
+    minor: number;
+    skipped: number;
   }>(raw`
-    select r.id, r.template_id, t.name as template_name, r.date, r.started_by, r.closed_at
+    select r.id, r.template_id, t.name as template_name, r.date, r.started_by, r.closed_at,
+      (
+        select count(distinct m)::int
+        from jsonb_array_elements(r.template_snapshot->'flows') f,
+             jsonb_array_elements(f->'steps') s,
+             jsonb_array_elements_text(s->'marks') m
+      ) as total,
+      coalesce(w.pass, 0) as pass, coalesce(w.fail, 0) as fail,
+      coalesce(w.minor, 0) as minor, coalesce(w.skipped, 0) as skipped
     from run r
     join template t on t.id = r.template_id
+    left join lateral (
+      select
+        (count(*) filter (where rank = 0))::int as pass,
+        (count(*) filter (where rank = 1))::int as minor,
+        (count(*) filter (where rank = 2))::int as skipped,
+        (count(*) filter (where rank = 3))::int as fail
+      from (
+        select tr.test_id, max(verdict_rank(tr.verdict)) as rank
+        from test_result tr
+        join flow_run fr on fr.id = tr.flow_run_id
+        where fr.run_id = r.id
+        group by tr.test_id
+      ) worst
+    ) w on true
     where t.product_id = ${productId}
     order by r.date desc
   `);
@@ -272,10 +306,33 @@ export async function setFlowRunState(flowRunId: string, state: FlowRunState) {
       .set({
         state,
         finishedAt: state === "finished" || state === "abandoned" ? new Date() : null,
+        // Live progress describes a draft; once the flow is over there is no draft (D42).
+        progress: null,
       })
       .where(eq(flowRun.id, flowRunId))
       .returning();
     return fr ? { row: fr, txid: await currentTxid(tx) } : undefined;
+  });
+}
+
+/**
+ * Publishes a claimed flow run's draft, summarised (D42). Only while it is claimed,
+ * and only by the person who claimed it: anything else is a stale tab talking.
+ *
+ * Two updates can cross on the wire, so the newer `updatedAt` wins: an older one
+ * arriving late is acknowledged and dropped rather than rolling the board back.
+ */
+export async function setFlowRunProgress(flowRunId: string, actor: string, progress: LiveProgress) {
+  return db.transaction(async (tx) => {
+    const mine = and(eq(flowRun.id, flowRunId), eq(flowRun.state, "claimed"), eq(flowRun.claimedBy, actor));
+    const [fr] = await tx
+      .update(flowRun)
+      .set({ progress })
+      .where(and(mine, raw`(${flowRun.progress} is null or ${flowRun.progress}->>'updatedAt' <= ${progress.updatedAt})`))
+      .returning();
+    if (fr) return { row: fr, txid: await currentTxid(tx) };
+    const [current] = await tx.select().from(flowRun).where(mine);
+    return current ? { row: current, txid: 0 } : undefined;
   });
 }
 

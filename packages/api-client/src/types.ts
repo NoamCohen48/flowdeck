@@ -1476,6 +1476,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/flow-runs/{flowRunId}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Publish where you are in a flow you are running
+         * @description Verdicts stay a draft on the tester's device until Finish, so an abandoned flow leaves nothing behind. This is the board's view of that draft while it lasts (D42): the step the tester is on, a tally, and every non-pass with its note. Provisional — never counted in the day's numbers, and cleared on finish and abandon. Only the person who claimed the flow run can publish, and only while it is claimed.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    flowRunId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        step: number;
+                        total: number;
+                        counts: {
+                            pass: number;
+                            fail: number;
+                            minor: number;
+                            skipped: number;
+                        };
+                        blockedFrom: number | null;
+                        issues: {
+                            step: number;
+                            /** Format: uuid */
+                            testId: string | null;
+                            /** @enum {string} */
+                            kind: "fail" | "minor" | "skipped" | "flag";
+                            note: string;
+                            blocking: boolean;
+                        }[];
+                        updatedAt: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Published */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FlowRun"];
+                    };
+                };
+                /** @description No identity */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Not a flow run you are running */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/flow-runs/{flowRunId}/results": {
         parameters: {
             query?: never;
@@ -3456,6 +3539,14 @@ export interface components {
             date: string;
             startedBy: string;
             closedAt: string | null;
+            total: number;
+            counts: {
+                pass: number;
+                fail: number;
+                minor: number;
+                skipped: number;
+            };
+            notReached: number;
         };
         TemplateSnapshot: {
             /** Format: uuid */
@@ -3494,6 +3585,27 @@ export interface components {
             state: "open" | "claimed" | "finished" | "abandoned" | "released";
             startedAt: string;
             finishedAt: string | null;
+            progress: {
+                step: number;
+                total: number;
+                counts: {
+                    pass: number;
+                    fail: number;
+                    minor: number;
+                    skipped: number;
+                };
+                blockedFrom: number | null;
+                issues: {
+                    step: number;
+                    /** Format: uuid */
+                    testId: string | null;
+                    /** @enum {string} */
+                    kind: "fail" | "minor" | "skipped" | "flag";
+                    note: string;
+                    blocking: boolean;
+                }[];
+                updatedAt: string;
+            } | null;
         };
         TestResult: {
             /** Format: uuid */

@@ -796,6 +796,35 @@
           "closedAt": {
             "type": "string",
             "nullable": true
+          },
+          "total": {
+            "type": "integer"
+          },
+          "counts": {
+            "type": "object",
+            "properties": {
+              "pass": {
+                "type": "integer"
+              },
+              "fail": {
+                "type": "integer"
+              },
+              "minor": {
+                "type": "integer"
+              },
+              "skipped": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "pass",
+              "fail",
+              "minor",
+              "skipped"
+            ]
+          },
+          "notReached": {
+            "type": "integer"
           }
         },
         "required": [
@@ -804,7 +833,10 @@
           "templateName",
           "date",
           "startedBy",
-          "closedAt"
+          "closedAt",
+          "total",
+          "counts",
+          "notReached"
         ]
       },
       "TemplateSnapshot": {
@@ -938,6 +970,104 @@
           "finishedAt": {
             "type": "string",
             "nullable": true
+          },
+          "progress": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "step": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "counts": {
+                "type": "object",
+                "properties": {
+                  "pass": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "fail": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "minor": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "skipped": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "pass",
+                  "fail",
+                  "minor",
+                  "skipped"
+                ]
+              },
+              "blockedFrom": {
+                "type": "integer",
+                "nullable": true,
+                "minimum": 0
+              },
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "step": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "testId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "fail",
+                        "minor",
+                        "skipped",
+                        "flag"
+                      ]
+                    },
+                    "note": {
+                      "type": "string",
+                      "maxLength": 4000
+                    },
+                    "blocking": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "step",
+                    "testId",
+                    "kind",
+                    "note",
+                    "blocking"
+                  ]
+                },
+                "maxItems": 500
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "step",
+              "total",
+              "counts",
+              "blockedFrom",
+              "issues",
+              "updatedAt"
+            ]
           }
         },
         "required": [
@@ -947,7 +1077,8 @@
           "claimedBy",
           "state",
           "startedAt",
-          "finishedAt"
+          "finishedAt",
+          "progress"
         ]
       },
       "TestResult": {
@@ -3496,6 +3627,161 @@
           },
           "404": {
             "description": "No such flow run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flow-runs/{flowRunId}/progress": {
+      "put": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Publish where you are in a flow you are running",
+        "description": "Verdicts stay a draft on the tester's device until Finish, so an abandoned flow leaves nothing behind. This is the board's view of that draft while it lasts (D42): the step the tester is on, a tally, and every non-pass with its note. Provisional — never counted in the day's numbers, and cleared on finish and abandon. Only the person who claimed the flow run can publish, and only while it is claimed.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "flowRunId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "total": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "counts": {
+                    "type": "object",
+                    "properties": {
+                      "pass": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "fail": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "minor": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "skipped": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "pass",
+                      "fail",
+                      "minor",
+                      "skipped"
+                    ]
+                  },
+                  "blockedFrom": {
+                    "type": "integer",
+                    "nullable": true,
+                    "minimum": 0
+                  },
+                  "issues": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "step": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "testId": {
+                          "type": "string",
+                          "nullable": true,
+                          "format": "uuid"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "fail",
+                            "minor",
+                            "skipped",
+                            "flag"
+                          ]
+                        },
+                        "note": {
+                          "type": "string",
+                          "maxLength": 4000
+                        },
+                        "blocking": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "step",
+                        "testId",
+                        "kind",
+                        "note",
+                        "blocking"
+                      ]
+                    },
+                    "maxItems": 500
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "step",
+                  "total",
+                  "counts",
+                  "blockedFrom",
+                  "issues",
+                  "updatedAt"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Published",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowRun"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not a flow run you are running",
             "content": {
               "application/json": {
                 "schema": {

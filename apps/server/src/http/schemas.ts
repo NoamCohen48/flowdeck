@@ -488,6 +488,35 @@ export const TemplateSnapshotSchema = z
   })
   .openapi("TemplateSnapshot");
 
+const LiveIssueSchema = z.object({
+  step: z.number().int().min(0),
+  testId: Uuid.nullable(),
+  kind: z.enum(["fail", "minor", "skipped", "flag"]),
+  note: z.string().max(4000),
+  blocking: z.boolean(),
+});
+
+/**
+ * A claimed flow's draft, summarised for the board (D42). Provisional: shown as
+ * in flight, never counted, cleared on finish and abandon.
+ */
+export const LiveProgressSchema = z
+  .object({
+    step: z.number().int().min(0),
+    total: z.number().int().min(0),
+    counts: z.object({
+      pass: z.number().int().min(0),
+      fail: z.number().int().min(0),
+      minor: z.number().int().min(0),
+      skipped: z.number().int().min(0),
+    }),
+    blockedFrom: z.number().int().min(0).nullable(),
+    issues: z.array(LiveIssueSchema).max(500),
+    updatedAt: z.string(),
+  });
+// Not registered as a named component: zod-openapi would put the FlowRun field's
+// `nullable` on the shared component, making the PUT body nullable too.
+
 export const FlowRunSchema = z
   .object({
     id: Uuid,
@@ -498,6 +527,7 @@ export const FlowRunSchema = z
     state: FlowRunStateSchema,
     startedAt: z.string(),
     finishedAt: z.string().nullable(),
+    progress: LiveProgressSchema.nullable(),
   })
   .openapi("FlowRun");
 
@@ -578,6 +608,11 @@ export const RunSummarySchema = z
     date: z.string(),
     startedBy: z.string(),
     closedAt: z.string().nullable(),
+    /** Tests the day's flows mark. */
+    total: z.number().int(),
+    /** Each test's worst result across the day (D19). Recorded results only — never live progress. */
+    counts: z.object({ pass: z.number().int(), fail: z.number().int(), minor: z.number().int(), skipped: z.number().int() }),
+    notReached: z.number().int(),
   })
   .openapi("RunSummary");
 

@@ -7,6 +7,8 @@
  * Drizzle hands back `Date`, and the contract says ISO 8601 string.
  */
 
+import type { LiveProgress } from "@flowdeck/domain";
+
 export function iso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : value;
 }
@@ -127,6 +129,7 @@ export function flowRunDto(row: {
   state: "open" | "claimed" | "finished" | "abandoned" | "released";
   startedAt: Date | string;
   finishedAt: Date | string | null;
+  progress?: LiveProgress | null;
 }) {
   return {
     id: row.id,
@@ -136,6 +139,7 @@ export function flowRunDto(row: {
     state: row.state,
     startedAt: iso(row.startedAt),
     finishedAt: row.finishedAt ? iso(row.finishedAt) : null,
+    progress: row.progress ?? null,
   };
 }
 

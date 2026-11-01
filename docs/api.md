@@ -272,6 +272,7 @@ POST /api/runs/{runId}/flows/{flowId}/claim       claim a flow (409 lists who el
 POST /api/flow-runs/{flowRunId}/results           one verdict for one test on one step
 POST /api/flow-runs/{flowRunId}/pass-all          pass every test a step marks
 POST /api/flow-runs/{flowRunId}/step-problems     flag a step as wrong (the flow, not the product)
+PUT  /api/flow-runs/{flowRunId}/progress          where you are, for the board — provisional, never counted
 POST /api/flow-runs/{flowRunId}/finish | abandon
 POST /api/runs/{runId}/close                      bookkeeping; ?reopen=true undoes it
 DELETE /api/results/{resultId}                    retract a verdict that should not have been recorded

@@ -37,3 +37,17 @@ export function Legend() {
     </div>
   );
 }
+
+/** The four verdict counts as pills; a zero is shown, dimmed, so the columns line up. */
+export function Tally({ counts }: { counts: Counts }) {
+  return (
+    <span className="tally">
+      <span className="pill pass" title="Passed"><span className="dot" />{counts.pass}</span>
+      <span className={`pill fail${counts.fail ? "" : " off"}`} title="Failed"><span className="dot" />{counts.fail}</span>
+      <span className={`pill minor${counts.minor ? "" : " off"}`} title="Minor"><span className="dot" />{counts.minor}</span>
+      <span className={`pill skip${counts.skipped ? "" : " off"}`} title="Skipped"><span className="dot" />{counts.skipped}</span>
+    </span>
+  );
+}
+
+export const emptyCounts = (): Counts => ({ pass: 0, fail: 0, minor: 0, skipped: 0 });
