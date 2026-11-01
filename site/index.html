@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flowdeck: manual testing, as people actually do it</title>
+  <meta name="description" content="Flowdeck runs your team's manual testing day: long flows on real devices, every test accounted for, results live on one board. Self-hosted.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#10172f">
+  <meta property="og:title" content="Flowdeck">
+  <meta property="og:description" content="A test says what must be true. A flow says what a person does. Manual testing days, self-hosted.">
+  <meta property="og:image" content="img/board-light.webp">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="demo.css">
+</head>
+<body>
+  <a class="skiplink" href="#main">Skip to content</a>
+
+  <header class="nav">
+    <div class="wrap nav-row">
+      <a class="brand" href="./" aria-label="Flowdeck home">
+        <img src="icon.svg" alt="" width="28" height="28">
+        <span>Flowdeck</span>
+      </a>
+      <nav aria-label="Sections">
+        <a href="#day">Testing day</a>
+        <a href="#files">Files and agents</a>
+        <a href="#install">Install</a>
+        <a class="gh" href="https://github.com/NoamCohen48/flowdeck">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <h1>
+            <span class="line">A test says what must be true.</span>
+            <span class="line">A flow says what a person does.</span>
+          </h1>
+          <p class="lede">Flowdeck runs your team's testing day: long flows on real devices, every test accounted for, results live on one board.</p>
+          <div class="ctas">
+            <a class="btn primary" href="#install">Install</a>
+            <a class="btn" href="https://github.com/NoamCohen48/flowdeck">Source on GitHub</a>
+          </div>
+        </div>
+        <figure class="hero-shot">
+          <div class="phone app" data-demo="runner" aria-label="A working runner: record a verdict for each test and the flow moves on, handing over to the next device."></div>
+          <figcaption>Try it: record a verdict.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="day" class="day">
+      <div class="wrap">
+        <h2>The whole team on one board</h2>
+        <p class="body">Each tester claims a flow and walks it to the end. Claims, verdicts and progress reach every screen as they happen, without a refresh.</p>
+      </div>
+      <div class="wrap wide">
+        <div class="board app" data-demo="board" aria-label="A testing day board updating live as testers record results."></div>
+      </div>
+    </section>
+
+    <section class="devices">
+      <div class="wrap split">
+        <div>
+          <h2>Every step names one device</h2>
+          <p class="body">A device keeps one colour across the template, on the board, in the editor and in the runner. When a flow moves to another phone, the tester is told before the step that needs it.</p>
+          <ul class="device-key" aria-label="Device colours in the example flow">
+            <li><span class="chip" style="--dev:#5B45C7">A</span>Pixel 8</li>
+            <li><span class="chip" style="--dev:#0C7F80">B</span>iPhone 13</li>
+            <li><span class="chip" style="--dev:#A85C10">C</span>Second laptop</li>
+          </ul>
+        </div>
+        <dl class="rules">
+          <div>
+            <dt>One device per step</dt>
+            <dd>Anything that touches two screens is two steps. "Both phones" is never an instruction.</dd>
+          </div>
+          <div>
+            <dt>One thing per step</dt>
+            <dd>No "and", no "then". When a step fails, the report points at one action.</dd>
+          </div>
+          <div>
+            <dt>A check says what to see</dt>
+            <dd>Every check carries its expected result, written where the tester reads it.</dd>
+          </div>
+          <div>
+            <dt>Tests are statements</dt>
+            <dd>"Sign-in rejects a wrong password", verified by whichever flows reach it.</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="results">
+      <div class="wrap">
+        <h2>Results you can act on the next morning</h2>
+      </div>
+      <div class="wrap results-grid">
+        <div>
+          <div class="worst app" data-demo="worst"></div>
+        </div>
+        <dl class="facts">
+          <div>
+            <dt>Worst result wins</dt>
+            <dd>A test checked in three flows shows its worst verdict, so one failure is never averaged away.</dd>
+          </div>
+          <div>
+            <dt>Failures carry their context</dt>
+            <dd>The note, the photos, the step and the device, exported as a JSON feed your own script turns into tickets.</dd>
+          </div>
+          <div>
+            <dt>A wrong step is a finding too</dt>
+            <dd>Testers flag steps that no longer match the product, and the report says which flow to fix.</dd>
+          </div>
+          <div>
+            <dt>Nothing silently uncovered</dt>
+            <dd>A test that no flow reaches is flagged in the library, before the testing day, not after.</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <section id="files" class="files">
+      <div class="wrap split files-grid">
+        <div>
+          <h2>Write the suite as files, or let an agent write it</h2>
+          <p class="body">Pull a product into YAML, edit it in any editor, and push it back as one reviewed change. Lint runs offline with the same rules as the server. Every command speaks <code>--json</code>.</p>
+          <p class="body">A pull leaves an <code>AGENTS.md</code> beside the files, and <code>flowdeck guide</code> teaches the rules to whoever is writing.</p>
+          <p class="links"><a href="https://github.com/NoamCohen48/flowdeck/blob/main/docs/cli.md">Read the CLI guide</a></p>
+        </div>
+        <div class="code-stack">
+          <figure class="code">
+            <figcaption>templates/monthly-regression/messaging-across-two-devices.flow.yaml</figcaption>
+<pre><code><span class="k">name</span>: Messaging across two devices
+<span class="k">precondition</span>: Signed in as qa-1 (Pixel 8) and qa-2 (iPhone 13).
+<span class="k">steps</span>:
+  - <span class="k">do</span>: Send the message "hello".
+    <span class="k">device</span>: <span class="d" style="--dev:#7c6ae0">Pixel 8</span>
+  - <span class="k">check</span>: Watch the message as it sends.
+    <span class="k">device</span>: <span class="d" style="--dev:#7c6ae0">Pixel 8</span>
+    <span class="k">expect</span>: It appears at once with a pending clock, then a single check.
+    <span class="k">verifies</span>: [sending-a-message-shows-it-optimistically]
+  - <span class="k">do</span>: Open the chat with qa-1.
+    <span class="k">device</span>: <span class="d" style="--dev:#2aa3a4">iPhone 13</span></code></pre>
+          </figure>
+          <figure class="code term">
+            <figcaption>Terminal</figcaption>
+<pre><code><span class="p">$</span> flowdeck pull relay
+Relay → ./relay (revision 5a240e2b2c99)
+36 written, 0 removed.
+<span class="p">$</span> flowdeck new test "Reactions show who reacted" \
+    --expect "Long-pressing a reaction lists everyone who added it."
+tests/reactions-show-who-reacted.yaml
+<span class="p">$</span> flowdeck lint
+<span class="w">warning</span>  templates/monthly-regression/messaging-across-two-devices.flow.yaml step 8:
+         "and send…": one thing per step — split it into two
+<span class="p">$</span> flowdeck push --plan
+<span class="a">+ test reactions-show-who-reacted</span></code></pre>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="install" class="install">
+      <div class="wrap split">
+        <div>
+          <h2>Runs on your machine, on your network</h2>
+          <p class="body">Everything Flowdeck needs comes bundled together. Unpack it on a server, start it, and your team is testing. It never reaches outside your network, so it runs just as well on a closed one.</p>
+          <ul class="plain">
+            <li>Backups are encrypted and stay inside your network.</li>
+            <li>No internet on the server? Download the offline bundle: one file with everything inside, the CLI included.</li>
+            <li>No accounts to set up. People pick their name, and every change is attributed.</li>
+          </ul>
+        </div>
+        <ol class="steps">
+          <li>
+            <p>Download the latest release.</p>
+            <div class="cmd"><code>curl -fsSL https://github.com/NoamCohen48/flowdeck/releases/latest/download/flowdeck.tar.gz | tar -xz</code><button type="button" class="copy" aria-label="Copy the download command">Copy</button></div>
+          </li>
+          <li>
+            <p>Start it. The first run sets everything up.</p>
+            <div class="cmd"><code>cd flowdeck &amp;&amp; ./start.sh</code><button type="button" class="copy" aria-label="Copy the start command">Copy</button></div>
+          </li>
+          <li>
+            <p>Open the address it prints, and pick your name.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-row">
+      <span class="brand small"><img src="icon.svg" alt="" width="20" height="20">Flowdeck</span>
+      <nav aria-label="Project">
+        <a href="https://github.com/NoamCohen48/flowdeck">Source</a>
+        <a href="https://github.com/NoamCohen48/flowdeck/releases">Releases</a>
+        <a href="https://github.com/NoamCohen48/flowdeck/tree/main/docs">Docs</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="demo.js" defer></script>
+  <script>
+    // Copy buttons: say what happened, then go back.
+    for (const button of document.querySelectorAll(".copy")) {
+      button.addEventListener("click", async () => {
+        const text = button.previousElementSibling.textContent;
+        try {
+          await navigator.clipboard.writeText(text);
+          button.textContent = "Copied";
+        } catch {
+          button.textContent = "Select and copy";
+        }
+        setTimeout(() => { button.textContent = "Copy"; }, 1600);
+      });
+    }
+  </script>
+</body>
+</html>
