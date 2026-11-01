@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Flowdeck: a flow is a sequence of steps a person walks through; the last one is checked. -->
+  <rect width="128" height="128" rx="28" fill="#2f55d4"/>
+  <path d="M44 34 V94" stroke="#ffffff" stroke-opacity="0.45" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="44" cy="34" r="9" fill="#ffffff"/>
+  <circle cx="44" cy="64" r="9" fill="#ffffff"/>
+  <rect x="62" y="28" width="38" height="12" rx="6" fill="#ffffff" fill-opacity="0.9"/>
+  <rect x="62" y="58" width="38" height="12" rx="6" fill="#ffffff" fill-opacity="0.9"/>
+  <circle cx="44" cy="94" r="15" fill="#ffffff"/>
+  <path d="M36 94 l6 6 l11 -12" fill="none" stroke="#2f55d4" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="62" y="88" width="30" height="12" rx="6" fill="#ffffff" fill-opacity="0.9"/>
+</svg>
