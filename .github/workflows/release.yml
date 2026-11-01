@@ -21,7 +21,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: v
         name: The tag names the version in package.json
         run: |
@@ -49,26 +49,26 @@ jobs:
           - { name: flowdeck, context: . }
           - { name: flowdeck-backup, context: backup }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Image name
         run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.name }}" >> "$GITHUB_ENV"
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       # A prerelease (v1.2.0-rc.1) gets only its own tag, never :latest or :1.2.
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
           flavor: latest=${{ needs.version.outputs.prerelease == 'false' }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           platforms: linux/amd64,linux/arm64
@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
@@ -103,7 +103,7 @@ jobs:
               --outfile "release/flowdeck-$target$ext"
           done
           ./release/flowdeck-linux-x64 --version | grep -qx "flowdeck ${{ needs.version.outputs.version }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cli
           path: apps/cli/release/*
@@ -113,9 +113,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The offline bundles carry the CLI too: a closed network cannot fetch it from here.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: cli
           path: apps/cli/release
@@ -127,7 +127,7 @@ jobs:
           cp "dist/flowdeck-${{ needs.version.outputs.version }}.tar.gz" dist/flowdeck.tar.gz
           scripts/bundle.sh --offline "${{ needs.version.outputs.version }}"
           PLATFORM=linux/arm64 scripts/bundle.sh --offline "${{ needs.version.outputs.version }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bundles
           path: dist/*.tar.gz
@@ -139,11 +139,11 @@ jobs:
       contents: write
     steps:
       # Only what the release ships: the image builds leave build-record artifacts too.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: cli
           path: out
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: bundles
           path: out
