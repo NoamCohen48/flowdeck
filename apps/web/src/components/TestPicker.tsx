@@ -1,7 +1,7 @@
 /**
- * The test picker (`02-authoring.md`): attach tests to a step. It shows coverage
+ * The test picker: attach tests to a step. It shows coverage
  * state so an author can prioritise what nothing covers yet — the number an
- * author is looking for is zero (D2).
+ * author is looking for is zero.
  */
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useMemo, useRef, useState } from "react";

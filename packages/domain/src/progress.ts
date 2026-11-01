@@ -1,7 +1,7 @@
 import type { Verdict } from "./types.ts";
 
 /**
- * Where a tester is in a flow they are still running, for the coordinator (D42).
+ * Where a tester is in a flow they are still running, for the coordinator.
  *
  * Verdicts stay a draft on the tester's device until Finish, so an abandoned flow
  * leaves nothing behind. Until this existed, the board was therefore blind for
@@ -28,7 +28,7 @@ export interface LiveProgress {
 export interface LiveIssue {
   /** Zero-based step index. */
   readonly step: number;
-  /** Null for a flagged step (D40), which is about the step rather than a test. */
+  /** Null for a flagged step, which is about the step rather than a test. */
   readonly testId: string | null;
   readonly kind: Exclude<Verdict, "pass"> | "flag";
   readonly note: string;

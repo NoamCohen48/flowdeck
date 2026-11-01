@@ -20,7 +20,7 @@ export function useRun(runId: string) {
   return useQuery({
     queryKey: ["run", runId],
     queryFn: () => unwrap(api.GET("/runs/{runId}", { params: { path: { runId } } })),
-    // The snapshot never changes (D21). Flow runs and results come live.
+    // The snapshot never changes. Flow runs and results come live.
     staleTime: Infinity,
     select: (r: Run) => r,
   });
@@ -112,8 +112,8 @@ export function useRunBoard(runId: string) {
 }
 
 /**
- * One tester's view of one flow: their results, the steps they flagged as wrong
- * (D40), and what a blocking failure or a step they could not get past closed.
+ * One tester's view of one flow: their results, the steps they flagged as wrong,
+ * and what a blocking failure or a step they could not get past closed.
  */
 export function flowRunView(flow: SnapshotFlow, flowRunId: string, results: TestResultRow[], problems: StepProblemRow[] = []) {
   const mine = results.filter((r) => r.flow_run_id === flowRunId);

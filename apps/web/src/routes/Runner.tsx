@@ -1,11 +1,11 @@
 /**
- * The flow runner (`.docs/03-execution.md`). One long list; no pagination, no
+ * The flow runner. One long list; no pagination, no
  * wizard, no collapsing. The tester's mental model is "I am walking down a list".
  *
  * Verdicts are a local draft until Finish: only then are they recorded, so an
  * abandoned flow leaves nothing behind and the board never counts half a run.
  * What the board does get, as the tester goes, is a provisional summary of the
- * draft (D42, live-progress.ts) — so a coordinator is not blind for four hours.
+ * draft (live-progress.ts) — so a coordinator is not blind for four hours.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
@@ -121,7 +121,7 @@ function RunnerBody({
   const me = useMe();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  // Slots across the whole template, so the iPhone is teal on the board and here alike (D41).
+  // Slots across the whole template, so the iPhone is teal on the board and here alike.
   const slots = useMemo(() => deviceSlots(snapshot.flows), [snapshot.flows]);
   const handoffs = useMemo(() => computeHandoffs(flow.steps, slots), [flow.steps, slots]);
   const readOnly = state !== "claimed";
@@ -183,7 +183,7 @@ function RunnerBody({
     setDialog(null);
   }
 
-  // "This step is wrong" (D40): a draft like any verdict, recorded on Finish.
+  // "This step is wrong": a draft like any verdict, recorded on Finish.
   function flagStep(step: SnapshotStep) {
     if (!editable || view.blocked.blockedStepIds.has(step.id) || view.problemByStep.has(step.id)) return;
     setFlagging(step);
@@ -226,7 +226,7 @@ function RunnerBody({
    * recorded as passed first — the one-click ending for a flow that went fine.
    */
   async function finish(passRest = false) {
-    // A blocking fail recorded after later steps were passed: those verdicts are void (D11).
+    // A blocking fail recorded after later steps were passed: those verdicts are void.
     const entries = Object.values(draft.draft).filter((r) => !view.blocked.blockedStepIds.has(r.stepId));
     if (passRest) {
       for (const { step, testId } of pending) {
@@ -301,7 +301,7 @@ function RunnerBody({
     stepRefs.current[i]?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, []);
 
-  // Keyboard-driven runner (I2). Four hours and several hundred steps on a laptop.
+  // Keyboard-driven runner. Four hours and several hundred steps on a laptop.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const t = e.target as HTMLElement;

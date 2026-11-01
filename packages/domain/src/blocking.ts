@@ -1,7 +1,7 @@
 import type { StepLike } from "./types.ts";
 
 /**
- * Blocking failures (D11).
+ * Blocking failures.
  *
  * The tester decides, at the moment of maximum context, whether a failure wedges the
  * rest of the flow. Both naive alternatives lose information: hard-stopping on every
@@ -44,8 +44,8 @@ export function computeBlocked(
 }
 
 /**
- * Where a flow stops. Two things can wedge it: a failure the tester said blocks
- * (D11), and a step the tester flagged as wrong and could not get past (D40).
+ * Where a flow stops. Two things can wedge it: a failure the tester said blocks,
+ * and a step the tester flagged as wrong and could not get past.
  * Both feed `computeBlocked` the same way — the earliest one wins, and nothing
  * after it is verifiable.
  */

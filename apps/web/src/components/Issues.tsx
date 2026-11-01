@@ -1,7 +1,7 @@
 /**
- * The day's problems, from the issue feed (08): every failure with its note,
+ * The day's problems, from the issue feed: every failure with its note,
  * screenshots and whether it blocked; every skipped test — the to-do list for
- * maintaining the suite. "Copy as ticket" is the one-bug-by-hand path (D27).
+ * maintaining the suite. "Copy as ticket" is the one-bug-by-hand path.
  */
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -79,7 +79,7 @@ export function IssueCard({ feed, issue, productId, runId }: { feed: IssueFeed; 
 }
 
 /**
- * A step a tester flagged as wrong (D40). Not a bug: the to-do for whoever
+ * A step a tester flagged as wrong. Not a bug: the to-do for whoever
  * maintains the flow, so the card leads to the editor rather than the library.
  */
 export function StepProblemCard({ feed, problem, productId, templateId }: { feed: IssueFeed; problem: StepProblemIssue; productId: string; templateId: string }) {

@@ -1,12 +1,12 @@
 /**
- * Core domain types. These mirror `.docs/01-domain-model.md` and are deliberately
+ * Core domain types. They are deliberately
  * structural — the domain package never imports a database or a framework.
  */
 
-/** `.docs/03-execution.md` — four result states, D13. */
+/** Four result states. */
 export type Verdict = "pass" | "fail" | "minor" | "skipped";
 
-/** `.docs/01-domain-model.md` — a step is work or judgment, D14. */
+/** A step is work or judgment. */
 export type StepKind = "action" | "assertion";
 
 export type FlowRunState =
@@ -24,7 +24,7 @@ export type TemplateStatus = "active" | "archived";
  */
 export interface StepLike {
   readonly id: string;
-  /** Free text (D16). Abstract ("Device A") or concrete ("Pixel 8"). */
+  /** Free text. Abstract ("Device A") or concrete ("Pixel 8"). */
   readonly deviceLabel: string;
   readonly kind: StepKind;
   /** Test IDs this step marks. Zero is normal. */

@@ -1,7 +1,7 @@
 /**
- * "This step is wrong" (D40). The step, not the product: the button moved, the
+ * "This step is wrong". The step, not the product: the button moved, the
  * wording is stale, the screen is gone. The tester says what is wrong and — the
- * same primitive as a failure's "Can you keep going?" (D11) — whether they got
+ * same primitive as a failure's "Can you keep going?" — whether they got
  * past it. If they did, how, because that is what fixes the step.
  */
 import * as Dialog from "@radix-ui/react-dialog";

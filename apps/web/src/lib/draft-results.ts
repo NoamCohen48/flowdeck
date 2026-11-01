@@ -25,7 +25,7 @@ export interface DraftResult {
 
 export type Draft = Record<string, DraftResult>;
 
-/** "This step is wrong" (D40), keyed by step. Travels with the verdicts: recorded on Finish, discarded on Abandon. */
+/** "This step is wrong", keyed by step. Travels with the verdicts: recorded on Finish, discarded on Abandon. */
 export interface DraftProblem {
   stepId: string;
   note: string;

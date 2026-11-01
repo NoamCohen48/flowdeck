@@ -3,7 +3,7 @@ import type { ActorEnv } from "./actor.ts";
 import { IS_TEST } from "../db/client.ts";
 
 /**
- * The Electric shape proxy (D32, D33).
+ * The Electric shape proxy.
  *
  * Electric is never exposed to the browser directly. Every shape request comes
  * through here, so there is one origin, one place that decides what a client may
@@ -50,14 +50,14 @@ const SHAPES: Record<string, ShapeDefinition> = {
     where: (p) =>
       `flow_run_id in (select id from flow_run where run_id = '${p.runId}')`,
   },
-  /** Steps flagged as wrong (D40), beside the verdicts they sit among. */
+  /** Steps flagged as wrong, beside the verdicts they sit among. */
   "run.step_problems": {
     table: "step_problem",
     required: ["runId"],
     where: (p) =>
       `flow_run_id in (select id from flow_run where run_id = '${p.runId}')`,
   },
-  /** "Dana is editing this flow", "Ori is on this run" (D37). */
+  /** "Dana is editing this flow", "Ori is on this run". */
   presence: {
     table: "presence",
     required: ["scope"],
@@ -84,7 +84,7 @@ const SHAPES: Record<string, ShapeDefinition> = {
     required: ["productId"],
     where: (p) => `product_id = '${p.productId}'`,
   },
-  /** A second author watching a flow change under them (D37). */
+  /** A second author watching a flow change under them. */
   "flow.steps": {
     table: "step",
     required: ["flowId"],

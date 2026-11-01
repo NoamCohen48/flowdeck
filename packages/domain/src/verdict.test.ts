@@ -14,7 +14,7 @@ import type { Verdict } from "./types.ts";
 
 const arbVerdict = fc.constantFrom<Verdict>("pass", "fail", "minor", "skipped");
 
-describe("worstResult (D19)", () => {
+describe("worstResult", () => {
   test("the documented precedence: fail > skipped > minor > pass", () => {
     expect(VERDICTS_WORST_FIRST).toEqual(["fail", "skipped", "minor", "pass"]);
     expect(worstResult(["pass", "fail"])).toBe("fail");
@@ -83,7 +83,7 @@ describe("worstResultByTest", () => {
   });
 });
 
-describe("verdict semantics (D13)", () => {
+describe("verdict semantics", () => {
   test("fail and skipped require a note; pass and minor do not", () => {
     expect(verdictRequiresNote("fail")).toBe(true);
     expect(verdictRequiresNote("skipped")).toBe(true);
@@ -98,7 +98,7 @@ describe("verdict semantics (D13)", () => {
     expect(verdictCountsAsVerified("fail")).toBe(false);
   });
 
-  test("the issue feed exports everything except pass (D28)", () => {
+  test("the issue feed exports everything except pass", () => {
     expect(isIssue("pass")).toBe(false);
     for (const v of ["fail", "minor", "skipped"] as const) {
       expect(isIssue(v)).toBe(true);

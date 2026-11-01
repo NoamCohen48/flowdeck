@@ -3,7 +3,7 @@ import { useLiveQuery } from "@tanstack/react-db";
 import { api } from "./api.ts";
 import { presenceOf, type PresenceRow } from "./collections.ts";
 
-/** Heartbeat every 20s while the scope is open; leave on unmount (D37). */
+/** Heartbeat every 20s while the scope is open; leave on unmount. */
 export function usePresence(scope: string) {
   useEffect(() => {
     const beat = () => void api.PUT("/presence", { body: { scope } });

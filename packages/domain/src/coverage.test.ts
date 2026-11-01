@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { coverageOf, summarizeCoverage } from "./coverage.ts";
 
-describe("coverage (D1, D2, D3, D7)", () => {
+describe("coverage", () => {
   test("a test marked anywhere is covered", () => {
     const state = coverageOf({
       testId: "t1",
@@ -12,7 +12,7 @@ describe("coverage (D1, D2, D3, D7)", () => {
     expect(state.needsAttention).toBe(false);
   });
 
-  test("an archived template still covers — coverage asks 'reachable', not 'recent' (D3)", () => {
+  test("an archived template still covers — coverage asks 'reachable', not 'recent'", () => {
     // The caller passes archived templates in; there is no filtering here by design.
     expect(
       coverageOf({ testId: "t1", archived: false, markedByTemplateIds: ["archived-tpl"] })
@@ -20,13 +20,13 @@ describe("coverage (D1, D2, D3, D7)", () => {
     ).toBe(true);
   });
 
-  test("a live test marked by nothing is the error state (D2)", () => {
+  test("a live test marked by nothing is the error state", () => {
     const state = coverageOf({ testId: "t1", archived: false, markedByTemplateIds: [] });
     expect(state.covered).toBe(false);
     expect(state.needsAttention).toBe(true);
   });
 
-  test("an archived test stops counting, and stops warning (D7)", () => {
+  test("an archived test stops counting, and stops warning", () => {
     const state = coverageOf({ testId: "t1", archived: true, markedByTemplateIds: [] });
     expect(state.covered).toBe(false);
     expect(state.needsAttention).toBe(false);

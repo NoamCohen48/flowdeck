@@ -1,5 +1,5 @@
 /**
- * The issue feed (08, D27/D28), closing a day, and per-test history — checked
+ * The issue feed, closing a day, and per-test history — checked
  * against the seeded testing day, which the seed left half-run with a failure,
  * a minor and a skipped in it.
  */

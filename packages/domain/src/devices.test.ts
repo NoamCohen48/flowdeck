@@ -9,12 +9,12 @@ import {
   RESULT_COLORS,
 } from "./devices.ts";
 
-/** The four slots the demo defined, which are matched rather than redesigned. */
+/** The four slots of the original design, kept rather than redesigned. */
 const INHERITED = DEVICE_PALETTE.slice(0, 4);
-/** The slots added by I4, which are held to the full standard. */
+/** The extra slots, which are held to the full standard. */
 const ADDED = DEVICE_PALETTE.slice(4);
 
-describe("device palette (I4)", () => {
+describe("device palette", () => {
   test("white text on every device colour reaches WCAG AA", () => {
     for (const color of DEVICE_PALETTE) {
       expect(contrastRatio(color, "#FFFFFF")).toBeGreaterThanOrEqual(4.5);
@@ -37,13 +37,13 @@ describe("device palette (I4)", () => {
     }
   });
 
-  test("the first four slots are the demo's colours, unchanged", () => {
+  test("the first four slots are the original colours, unchanged", () => {
     expect(INHERITED).toEqual(["#5B45C7", "#0C7F80", "#A85C10", "#B23A72"]);
   });
 
   /**
    * Documents a real defect in the inherited palette rather than hiding it: ochre is
-   * 8° from the minor amber and magenta is 28° from the fail red. Matching the demo
+   * 8° from the minor amber and magenta is 28° from the fail red. Keeping the originals
    * was the instruction, so this test pins the current state — if someone later fixes
    * `--dev-c`, this test fails and tells them to delete it.
    */

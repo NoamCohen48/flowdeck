@@ -52,7 +52,7 @@ export function useTestIndex(productId: string) {
 
 /**
  * Live coverage for the picker: how many steps mark each test right now, across
- * the whole product. Zero is the number an author is looking for (D2).
+ * the whole product. Zero is the number an author is looking for.
  */
 export function useLiveCoverage(productId: string) {
   const marks = marksOf(productId);

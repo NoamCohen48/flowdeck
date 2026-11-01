@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 export type Theme = "system" | "light" | "dark";
 const KEY = "flowdeck.theme";
 
-/** Dark theme (I1): explicit choice stamps data-theme; "system" stamps nothing. */
+/** Dark theme: explicit choice stamps data-theme; "system" stamps nothing. */
 export function useTheme(): [Theme, (t: Theme) => void] {
   const [theme, setTheme] = useState<Theme>(() => {
     try { return (localStorage.getItem(KEY) as Theme) || "system"; } catch { return "system"; }

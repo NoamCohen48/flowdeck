@@ -1,5 +1,5 @@
 /**
- * The testing day (`.docs/03-execution.md`). Starting a run, claiming flows,
+ * The testing day. Starting a run, claiming flows,
  * recording verdicts, finishing or abandoning. The most important surface in
  * the product is the one that reads from these.
  */
@@ -47,7 +47,7 @@ import { sql as raw } from "drizzle-orm";
 
 export const runs = createRouter();
 
-/* ── Identity (D38) ──────────────────────────────────────────────────── */
+/* ── Identity ──────────────────────────────────────────────────── */
 
 runs.openapi(
   createRoute({
@@ -69,7 +69,7 @@ runs.openapi(
     tags: ["Identity"],
     summary: "Pick a name",
     description:
-      "A name picker, not authentication. Seven people in one room, no roles, every change attributed (D24, D38).",
+      "A name picker, not authentication. Seven people in one room, no roles, every change attributed.",
     request: {
       body: {
         content: { "application/json": { schema: z.object({ name: z.string().trim().min(1).max(60) }) } },
@@ -112,7 +112,7 @@ runs.openapi(
   },
 );
 
-/* ── Presence (D37) ──────────────────────────────────────────────────── */
+/* ── Presence ──────────────────────────────────────────────────── */
 
 runs.openapi(
   createRoute({
@@ -202,7 +202,7 @@ runs.openapi(
     tags: ["Runs"],
     summary: "Start a testing day",
     description:
-      "Takes a frozen snapshot of the template (D21). Edits made during the day apply to the next run, never this one. Warns, via 409, if a run is already open for this template unless `force=true` (D24).",
+      "Takes a frozen snapshot of the template. Edits made during the day apply to the next run, never this one. Warns, via 409, if a run is already open for this template unless `force=true`.",
     request: {
       params: z.object({ templateId: Uuid }),
       query: z.object({ force: z.enum(["true", "false"]).default("false") }),
@@ -257,7 +257,7 @@ runs.openapi(
   },
 );
 
-/* ── Claiming (D9, D26) ──────────────────────────────────────────────── */
+/* ── Claiming ──────────────────────────────────────────────── */
 
 runs.openapi(
   createRoute({
@@ -266,7 +266,7 @@ runs.openapi(
     tags: ["Runs"],
     summary: "Claim a flow",
     description:
-      "Advisory, not exclusive (D26). If someone already holds it, you get your own FlowRun alongside theirs and the response lists them, so the UI can ask 'Dana is on step 12 of 34 — run it anyway?' before this is called with confirm=true.",
+      "Advisory, not exclusive. If someone already holds it, you get your own FlowRun alongside theirs and the response lists them, so the UI can ask 'Dana is on step 12 of 34 — run it anyway?' before this is called with confirm=true.",
     request: {
       params: z.object({ runId: Uuid, flowId: Uuid }),
       query: z.object({ confirm: z.enum(["true", "false"]).default("false") }),
@@ -304,7 +304,7 @@ runs.openapi(
 
 for (const [action, state, summary] of [
   ["finish", "finished", "Finish a flow"],
-  ["abandon", "abandoned", "Abandon a flow — the next person starts from step 1 (D10)"],
+  ["abandon", "abandoned", "Abandon a flow — the next person starts from step 1"],
 ] as const) {
   runs.openapi(
     createRoute({
@@ -336,7 +336,7 @@ runs.openapi(
     tags: ["Runs"],
     summary: "Publish where you are in a flow you are running",
     description:
-      "Verdicts stay a draft on the tester's device until Finish, so an abandoned flow leaves nothing behind. This is the board's view of that draft while it lasts (D42): the step the tester is on, a tally, and every non-pass with its note. Provisional — never counted in the day's numbers, and cleared on finish and abandon. Only the person who claimed the flow run can publish, and only while it is claimed.",
+      "Verdicts stay a draft on the tester's device until Finish, so an abandoned flow leaves nothing behind. This is the board's view of that draft while it lasts: the step the tester is on, a tally, and every non-pass with its note. Provisional — never counted in the day's numbers, and cleared on finish and abandon. Only the person who claimed the flow run can publish, and only while it is claimed.",
     request: {
       params: z.object({ flowRunId: Uuid }),
       body: { content: { "application/json": { schema: LiveProgressSchema } } },
@@ -356,7 +356,7 @@ runs.openapi(
   },
 );
 
-/* ── Results (D11, D12, D13, D36) ────────────────────────────────────── */
+/* ── Results ────────────────────────────────────── */
 
 function findStep(snapshot: TemplateSnapshot, flowId: string, stepId: string) {
   const flow = snapshot.flows.find((f) => f.id === flowId);
@@ -366,7 +366,7 @@ function findStep(snapshot: TemplateSnapshot, flowId: string, stepId: string) {
 
 /**
  * What one tester's flow run has already put out of reach: everything after a
- * blocking failure (D11) or a flagged step they could not get past (D40).
+ * blocking failure or a flagged step they could not get past.
  */
 function blockedIn(r: NonNullable<Awaited<ReturnType<typeof getRun>>>, flowRunId: string, flow: TemplateSnapshot["flows"][number]) {
   const blockers = [
@@ -383,7 +383,7 @@ runs.openapi(
     tags: ["Runs"],
     summary: "Record a verdict for one test on one step",
     description:
-      "Per test, not per step (D12). Fail and skipped require a note (D13). Idempotent on the client key (D36). A blocking failure marks every later step in the flow as blocked; their tests report as not verified, never as failures (D11).",
+      "Per test, not per step. Fail and skipped require a note. Idempotent on the client key. A blocking failure marks every later step in the flow as blocked; their tests report as not verified, never as failures.",
     request: {
       params: z.object({ flowRunId: Uuid }),
       body: { content: { "application/json": { schema: RecordResultSchema } } },
@@ -413,7 +413,7 @@ runs.openapi(
     if (!snapshotTest) return c.json({ error: "test not in this run's snapshot" }, 404);
 
     // Refuse to record anything on a step a blocking failure has already put out
-    // of reach. Recording a pass for a wedged step would be a lie (D11).
+    // of reach. Recording a pass for a wedged step would be a lie.
     if (blockedIn(r, flowRunId, found.flow).blockedStepIds.has(body.stepId)) {
       return c.json({ error: "this step is blocked by an earlier failure" }, 409);
     }
@@ -487,7 +487,7 @@ runs.openapi(
     path: "/flow-runs/{flowRunId}/pass-all",
     tags: ["Runs"],
     summary: "Pass every test a step marks, in one click",
-    description: "The common case stays as fast as the old per-step checkbox (D12).",
+    description: "The common case stays as fast as the old per-step checkbox.",
     request: {
       params: z.object({ flowRunId: Uuid }),
       body: { content: { "application/json": { schema: PassAllSchema } } },
@@ -536,7 +536,7 @@ runs.openapi(
 );
 
 
-/* ── Step problems (D40) ─────────────────────────────────────────────── */
+/* ── Step problems ─────────────────────────────────────────────── */
 
 runs.openapi(
   createRoute({
@@ -545,7 +545,7 @@ runs.openapi(
     tags: ["Runs"],
     summary: "Flag a step as wrong",
     description:
-      "\"The step, not the product\": the button moved, the wording is stale, the screen is gone (D40). Not a verdict — the tests the step marks can still be recorded. Either the tester got past it and `workaround` says how, or `blocking=true` closes the rest of the flow exactly as a blocking failure does (D11). One report per step per flow run; flagging again replaces it.",
+      "\"The step, not the product\": the button moved, the wording is stale, the screen is gone. Not a verdict — the tests the step marks can still be recorded. Either the tester got past it and `workaround` says how, or `blocking=true` closes the rest of the flow exactly as a blocking failure does. One report per step per flow run; flagging again replaces it.",
     request: {
       params: z.object({ flowRunId: Uuid }),
       body: { content: { "application/json": { schema: RecordStepProblemSchema } } },

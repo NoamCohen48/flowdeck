@@ -33,14 +33,14 @@ app.get("/health", async (c) => {
   });
 });
 
-/** Live reads (D33). Everything else is REST. */
+/** Live reads. Everything else is REST. */
 app.route("/api/shapes", shapes);
 
-/** The public contract, and the only API the web app uses (D35). */
+/** The public contract, and the only API the web app uses. */
 app.route("/api", api);
 
 /**
- * In production the built frontend is served from the same origin (D32: one
+ * In production the built frontend is served from the same origin (one
  * binary, one origin). Anything that is not an API path falls back to the SPA
  * shell so deep links into a run survive a reload.
  */

@@ -68,7 +68,7 @@ async function freshRun(): Promise<Run> {
   return body;
 }
 
-describe("starting a run (D8, D21, D24)", () => {
+describe("starting a run", () => {
   test("warns when one is already open, and proceeds with force", async () => {
     await freshRun();
     const warned = await call<{ openRunId: string }>(`/api/templates/${templateId}/runs`, {
@@ -107,7 +107,7 @@ describe("starting a run (D8, D21, D24)", () => {
   });
 });
 
-describe("claiming (D9, D26)", () => {
+describe("claiming", () => {
   test("requires an identity", async () => {
     const run = await freshRun();
     const flowId = run.snapshot.flows[0]!.id;
@@ -148,7 +148,7 @@ describe("claiming (D9, D26)", () => {
     expect(onThisFlow.map((f) => f.claimedBy).sort()).toEqual(["Dana", "Noa"]);
   });
 
-  test("two people claiming in the same instant: exactly one is warned (D26)", async () => {
+  test("two people claiming in the same instant: exactly one is warned", async () => {
     // The check and the write share a per-flow lock, so the second claim waits
     // for the first to commit and then sees it — never two silent 200s.
     for (let round = 0; round < 5; round++) {
@@ -179,7 +179,7 @@ describe("claiming (D9, D26)", () => {
   });
 });
 
-describe("recording verdicts (D12, D13, D36)", () => {
+describe("recording verdicts", () => {
   async function claimed() {
     const run = await freshRun();
     const flow = run.snapshot.flows.find((f) => f.name.startsWith("Messaging across"))!;
@@ -270,7 +270,7 @@ describe("recording verdicts (D12, D13, D36)", () => {
   });
 });
 
-describe("blocking failures (D11)", () => {
+describe("blocking failures", () => {
   test("a blocking fail closes every later step; earlier steps still accept verdicts", async () => {
     const run = await freshRun();
     const flow = run.snapshot.flows.find((f) => f.name.startsWith("Messaging across"))!;
@@ -326,7 +326,7 @@ describe("blocking failures (D11)", () => {
     expect(later.status).toBe(201);
   });
 
-  test("two testers on the same flow block independently (D26)", async () => {
+  test("two testers on the same flow block independently", async () => {
     const run = await freshRun();
     const flow = run.snapshot.flows.find((f) => f.name.startsWith("Messaging across"))!;
     const n = (await call<{ flowRun: { id: string } }>(`/api/runs/${run.id}/flows/${flow.id}/claim`, { method: "POST", headers: { cookie: noa } })).body.flowRun.id;
@@ -340,7 +340,7 @@ describe("blocking failures (D11)", () => {
   });
 });
 
-describe("finishing and abandoning (D10, D25)", () => {
+describe("finishing and abandoning", () => {
   test("state transitions are recorded with a timestamp", async () => {
     const run = await freshRun();
     const flowId = run.snapshot.flows[0]!.id;
@@ -351,7 +351,7 @@ describe("finishing and abandoning (D10, D25)", () => {
   });
 });
 
-describe("identity and presence (D37, D38)", () => {
+describe("identity and presence", () => {
   test("picking a name sets the cookie and lists the actor", async () => {
     const res = await app.request("/api/me", {
       method: "PUT",
@@ -402,7 +402,7 @@ describe("transaction ids for optimistic reconciliation", () => {
 
 process.on("beforeExit", () => void sql.end());
 
-describe("flagging a step as wrong (D40)", () => {
+describe("flagging a step as wrong", () => {
   async function claimed() {
     const run = await freshRun();
     const flow = run.snapshot.flows.find((f) => f.name.startsWith("Messaging across"))!;
@@ -442,7 +442,7 @@ describe("flagging a step as wrong (D40)", () => {
     expect(mine[0]!.note).toBe("second wording");
   });
 
-  test("a step the tester could not get past blocks what follows, like a blocking failure (D11)", async () => {
+  test("a step the tester could not get past blocks what follows, like a blocking failure", async () => {
     const { flow, flowRunId, run } = await claimed();
     const at = flow.steps.findIndex((s) => s.marks.length > 0);
     const stuck = flow.steps[at]!;
@@ -487,7 +487,7 @@ describe("flagging a step as wrong (D40)", () => {
   });
 });
 
-describe("live progress for the coordinator (D42)", () => {
+describe("live progress for the coordinator", () => {
   const progress = (step: number) => ({
     step,
     total: 8,
@@ -540,7 +540,7 @@ describe("live progress for the coordinator (D42)", () => {
 });
 
 describe("the runs list carries each day's tally", () => {
-  test("worst result per test, the same rule the board uses (D19)", async () => {
+  test("worst result per test, the same rule the board uses", async () => {
     const run = await freshRun();
     const flow = run.snapshot.flows.find((f) => f.name.startsWith("Messaging across"))!;
     const { body } = await call<{ flowRun: { id: string } }>(`/api/runs/${run.id}/flows/${flow.id}/claim`, { method: "POST", headers: { cookie: noa } });
@@ -561,7 +561,7 @@ describe("the runs list carries each day's tally", () => {
   });
 });
 
-describe("live progress arriving out of order (D42)", () => {
+describe("live progress arriving out of order", () => {
   test("an older update landing late does not roll the board back", async () => {
     const run = await freshRun();
     const flowId = run.snapshot.flows[0]!.id;

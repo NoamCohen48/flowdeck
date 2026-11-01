@@ -88,7 +88,7 @@ afterAll(async () => {
   if (template) await sql`delete from template where id = ${template.id}`;
 });
 
-describe("insert anywhere (07 §1)", () => {
+describe("insert anywhere", () => {
   test("a step inserted between two others takes the slot and shifts the rest", async () => {
     const res = await call<{ step: Step; txid: number }>(`/api/flows/${flow.id}/steps`, req("POST", stepInput("Dismiss the tour", "Pixel 8", 1)));
     expect(res.status).toBe(201);
@@ -133,7 +133,7 @@ describe("reorder and derived hand-offs", () => {
     expect((await steps()).map((s) => s.id)).toEqual(reordered);
     const after = await devices();
     expect(after.find((d) => d.label === "Galaxy Tab")!.introducedAtIndex).toBe(0);
-    // Slots follow order of appearance (D40): the tablet is now device A.
+    // Slots follow order of appearance: the tablet is now device A.
     expect(after.find((d) => d.label === "Galaxy Tab")!.letter).toBe("A");
   });
 
@@ -157,7 +157,7 @@ describe("reorder and derived hand-offs", () => {
   });
 });
 
-describe("editing one step (D37)", () => {
+describe("editing one step", () => {
   test("a patch changes only what it names and stamps the write", async () => {
     const target = (await steps())[1]!;
     const res = await call<{ step: Step }>(`/api/steps/${target.id}`, req("PATCH", { text: "Sign in with the QA account" }));
@@ -230,7 +230,7 @@ describe("flows and templates", () => {
     const archived = await call<{ archived: boolean }>(`/api/flows/${created.body.id}`, req("PATCH", { archived: true }));
     expect(archived.body.archived).toBe(true);
 
-    // Still in the template (with its flag) and still counting toward coverage (D3).
+    // Still in the template (with its flag) and still counting toward coverage.
     const tpl = (await call<Template & { flows: (Flow & { archived: boolean })[] }>(`/api/templates/${template.id}`)).body;
     expect(tpl.flows.find((f) => f.id === created.body.id)?.archived).toBe(true);
     const after = (await call<{ covered: number }>(`/api/products/${productId}/coverage`)).body;

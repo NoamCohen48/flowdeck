@@ -1,7 +1,7 @@
 -- Derived state, defined once in SQL so it cannot drift from the copy in
 -- @flowdeck/domain. `derived.test.ts` runs both against the same inputs.
 
--- Worst result wins (D19): fail > skipped > minor > pass.
+-- Worst result wins: fail > skipped > minor > pass.
 -- Mirrors VERDICT_RANK in packages/domain/src/verdict.ts.
 create or replace function verdict_rank(v text) returns integer
   language sql immutable parallel safe as $$
@@ -13,12 +13,12 @@ create or replace function verdict_rank(v text) returns integer
   end
 $$;
 
--- Coverage (.docs/04-coverage-and-reporting.md).
+-- Coverage.
 --
 --   A test is covered if at least one step, in at least one flow, in at least
 --   one template of its product, marks it.
 --
--- Deliberately broad: archived and never-run templates count (D3), because the
+-- Deliberately broad: archived and never-run templates count, because the
 -- question is "is this reachable by some flow somewhere", not "was it executed
 -- recently". Computed rather than stored, so it cannot go stale.
 create or replace view test_coverage as
@@ -29,7 +29,7 @@ select
   coalesce(m.template_ids, '{}')                   as template_ids,
   coalesce(array_length(m.template_ids, 1), 0) > 0 as covered,
   -- The red row and the "needs attention" entry. An archived test stops
-  -- counting toward coverage and stops warning (D7) — flagging it would be noise.
+  -- counting toward coverage and stops warning — flagging it would be noise.
   (coalesce(array_length(m.template_ids, 1), 0) = 0 and not t.archived)
                                                    as needs_attention
 from test t

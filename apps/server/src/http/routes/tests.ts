@@ -1,8 +1,8 @@
 /**
  * The test library.
  *
- * A test is an assertion with no steps (D4), immutable at the version level and
- * stable at the identity level (D6). Every route here follows from those two facts:
+ * A test is an assertion with no steps, immutable at the version level and
+ * stable at the identity level. Every route here follows from those two facts:
  * an edit is a POST of a new version in disguise, and a delete is an archive.
  */
 import { createRoute, z } from "@hono/zod-openapi";
@@ -96,7 +96,7 @@ tests.openapi(
     tags: ["Tests"],
     summary: "Every version of a test, oldest first",
     description:
-      "The old version is never modified and never deleted, so a result recorded in March stays readable against March's wording after six edits (D6).",
+      "The old version is never modified and never deleted, so a result recorded in March stays readable against March's wording after six edits.",
     request: { params: z.object({ testId: Uuid }) },
     responses: {
       200: {
@@ -112,7 +112,7 @@ tests.openapi(
 );
 
 /* ── Coverage ────────────────────────────────────────────────────────────
-   Computed across every template of the product, not per template (D1): a
+   Computed across every template of the product, not per template: a
    template targeting one setup can only reach a slice of the library, so a
    per-template warning would fire constantly and mean nothing. */
 
@@ -178,7 +178,7 @@ tests.openapi(
     tags: ["Tests"],
     summary: "Bulk-create tests",
     description:
-      "Returns the created tests in request order, which is what lets an importing script hold the mapping from its source rows to Flowdeck IDs (D29). Import is knowingly not idempotent: running a parser twice creates everything twice.",
+      "Returns the created tests in request order, which is what lets an importing script hold the mapping from its source rows to Flowdeck IDs. Import is knowingly not idempotent: running a parser twice creates everything twice.",
     request: {
       params: z.object({ productId: Uuid }),
       body: { content: { "application/json": { schema: CreateTestsSchema } } },
@@ -225,7 +225,7 @@ tests.openapi(
     tags: ["Tests"],
     summary: "Edit a test — creates a new version",
     description:
-      "The old version is never modified. Flows reference the test ID, so nothing needs repointing; that is the whole reason identity and versioning are separate (D6).",
+      "The old version is never modified. Flows reference the test ID, so nothing needs repointing; that is the whole reason identity and versioning are separate.",
     request: {
       params: z.object({ testId: Uuid }),
       body: { content: { "application/json": { schema: UpdateTestSchema } } },
@@ -256,7 +256,7 @@ tests.openapi(
 
 const ArchiveResponseSchema = z.object({
   test: TestSchema,
-  /** What the confirmation dialog needs in order to state the consequence (D24). */
+  /** What the confirmation dialog needs in order to state the consequence. */
   marks: z.object({
     steps: z.number().int(),
     flows: z.number().int(),
@@ -271,7 +271,7 @@ tests.openapi(
     tags: ["Tests"],
     summary: "Archive a test",
     description:
-      "Archiving stops the test counting toward coverage; existing marks render as 'archived test' and historical runs stay intact. Hard deletion is never offered — a test referenced in six flows and three runs cannot be safely erased (D7).",
+      "Archiving stops the test counting toward coverage; existing marks render as 'archived test' and historical runs stay intact. Hard deletion is never offered — a test referenced in six flows and three runs cannot be safely erased.",
     request: {
       params: z.object({ testId: Uuid }),
       query: z.object({ undo: z.enum(["true", "false"]).default("false") }),
