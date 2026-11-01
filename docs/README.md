@@ -21,6 +21,3 @@ bun run docs:api
 
 CI fails if the checked-in copy is stale, the same way it does for the generated client in
 `packages/api-client`.
-
-Product design and the reasoning behind the model live in [`.docs/`](../.docs/00-product-overview.md);
-this folder is the how-to.

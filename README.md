@@ -4,7 +4,6 @@
 
 Manual testing as human flows. Tests are assertions; flows are what a person does; a
 testing day is a run of a template that seven people work through together, live.
-The design lives in [`.docs/`](.docs/00-product-overview.md).
 
 ## Run it
 
