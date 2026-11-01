@@ -46,6 +46,10 @@ flowdeck login https://flowdeck.example.com --as "Your name"
 flowdeck guide
 ```
 
+On `localhost`, or with your own internal certificate authority, the CLI needs to trust it:
+`docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .` and then
+`export NODE_EXTRA_CA_CERTS=$PWD/root.crt`.
+
 ## Everyday
 
 | To | Run |
