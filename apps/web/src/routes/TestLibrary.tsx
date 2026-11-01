@@ -38,6 +38,9 @@ export function TestLibrary() {
   const [tplFilter, setTplFilter] = useState<string>("");
   const [selected, setSelected] = useState<string | null>(search.test ?? null);
   const [dialog, setDialog] = useState<"new" | "edit" | null>(null);
+  // One line per test, for a library in the hundreds. Remembered per browser.
+  const [compact, setCompact] = useState(() => { try { return localStorage.getItem("flowdeck.library.compact") === "1"; } catch { return false; } });
+  const toggleCompact = () => setCompact((c) => { try { localStorage.setItem("flowdeck.library.compact", c ? "0" : "1"); } catch { /* fine */ } return !c; });
   useTitle(product.data ? `Tests · ${product.data.name} — Flowdeck` : "Flowdeck");
   useEffect(() => {
     if (!search.test) return;
@@ -110,6 +113,7 @@ export function TestLibrary() {
             <option value="">Any template</option>
             {(templates.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}{t.status === "archived" ? " (archived)" : ""}</option>)}
           </select>
+          <button className={`btn sm${compact ? " on" : ""}`} aria-pressed={compact} onClick={toggleCompact} title="One line per test">Compact rows</button>
         </div>
       </FilterBar>
       {allTags.length ? (
@@ -123,7 +127,7 @@ export function TestLibrary() {
       ) : null}
 
       <div className="tbl" style={{ overflowX: "auto" }}>
-        <table>
+        <table className={compact ? "compact" : undefined}>
           <thead><tr><th>Test</th><th style={{ width: 260 }}>Covered by</th><th style={{ width: 130 }}>Today</th></tr></thead>
           <tbody>
             {rows.map((t) => {
@@ -133,8 +137,12 @@ export function TestLibrary() {
               return (
                 <Fragment key={t.id}>
                   <tr id={`test-${t.id}`} style={{ scrollMarginTop: 72 }} className={`pick${!t.archived && n === 0 ? " uncov" : ""}${isSel ? " sel" : ""}`} onClick={() => setSelected(isSel ? null : t.id)} aria-expanded={isSel}>
-                    <td><b dir="auto">{t.current.title}</b><br /><span className="meta" dir="auto">{t.current.expectedResult}</span>
+                    <td>{compact ? (
+                      <span className="oneline" title={t.current.expectedResult}><b dir="auto">{t.current.title}</b> <span className="meta" dir="auto">— {t.current.expectedResult}</span></span>
+                    ) : (<>
+                      <b dir="auto">{t.current.title}</b><br /><span className="meta" dir="auto">{t.current.expectedResult}</span>
                       {tagsOf(t).length ? <div className="mt-1 flex gap-1 flex-wrap">{tagsOf(t).map((g) => <span key={g} className="tag">{g}</span>)}</div> : null}
+                    </>)}
                     </td>
                     <td>
                       {t.archived ? <span className="tag">archived</span>
