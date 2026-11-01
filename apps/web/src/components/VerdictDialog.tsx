@@ -116,12 +116,14 @@ export function VerdictDialog({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 dir="auto"
+                // What a useful note contains, not a sample answer from some other
+                // test — an example about reactions on a test about sign-in reads as noise.
                 placeholder={
                   verdict === "fail"
-                    ? "Reaction count showed 2 on the iPhone and 1 on the Pixel…"
+                    ? "What you saw, on which device, and what you did just before…"
                     : verdict === "skipped"
-                      ? "The settings screen was redesigned — there is no Appearance section any more…"
-                      : "Took about 5s on first load, fine after that…"
+                      ? "What no longer matches — the screen, the wording, the feature…"
+                      : "What was off, and whether it happened every time…"
                 }
               />
 
