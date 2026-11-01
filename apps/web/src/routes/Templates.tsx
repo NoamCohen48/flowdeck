@@ -12,7 +12,7 @@ import { FilterBar } from "../components/Filters.tsx";
 
 export function Templates() {
   const { productId } = useParams({ strict: false }) as { productId: string };
-  const product = useQuery({ queryKey: ["product", productId], queryFn: () => unwrap(api.GET("/products/{productId}", { params: { path: { productId } } })) });
+  const product = useQuery({ queryKey: ["product", productId], queryFn: () => unwrap(api.GET("/products/{product}", { params: { path: { product: productId } } })) });
   const templates = useQuery({ queryKey: ["templates", productId], queryFn: () => unwrap(api.GET("/products/{productId}/templates", { params: { path: { productId } } })) });
   const navigate = useNavigate();
   const qc = useQueryClient();

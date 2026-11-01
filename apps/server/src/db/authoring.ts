@@ -1,9 +1,9 @@
 /**
  * Structural editing of templates, flows and steps — the writes behind the
- * flow editor (`02-authoring.md`, `07-open-items.md` §1).
+ * flow editor.
  *
  * Every step write is scoped to one row and stamps `updated_at`, which is all
- * last-write-wins needs (D37). Positions are dense integers rewritten inside
+ * last-write-wins needs. Positions are dense integers rewritten inside
  * the same transaction as the change, so a reader never sees a gap that is not
  * about to close. Each write returns the transaction id so the editor's
  * optimistic state drops exactly when Electric delivers the real rows.
@@ -12,6 +12,7 @@ import { and, asc, eq, gte, notInArray, sql as raw } from "drizzle-orm";
 import { db } from "./client.ts";
 import { flow, step, stepMark, template } from "./schema.ts";
 import { currentTxid } from "./runs.ts";
+import { assignKey } from "./keys.ts";
 import type { StepKind } from "@flowdeck/domain";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -43,15 +44,16 @@ export async function updateTemplate(
 
 export async function createFlow(
   templateId: string,
-  input: { name: string; precondition: string; estimatedMinutes: number | null; archived?: boolean },
+  input: { name: string; key?: string; precondition: string; estimatedMinutes: number | null; archived?: boolean },
 ) {
   return db.transaction(async (tx) => {
+    const key = await assignKey(tx, { table: "flow", templateId }, input.name, input.key);
     const [nextRow] = (await tx.execute(
       raw`select coalesce(max(position) + 1, 0)::int as next from flow where template_id = ${templateId}`,
     )) as unknown as { next: number }[];
     const [row] = await tx
       .insert(flow)
-      .values({ templateId, ...input, position: nextRow!.next })
+      .values({ templateId, ...input, key, position: nextRow!.next })
       .returning();
     return row!;
   });
@@ -135,7 +137,7 @@ export async function insertStep(flowId: string, position: number, input: StepIn
   });
 }
 
-/** One step, last write wins (D37). Marks are replaced when given. */
+/** One step, last write wins. Marks are replaced when given. */
 export async function updateStep(stepId: string, patch: Partial<StepInput>) {
   return db.transaction(async (tx) => {
     const { marks, ...fields } = patch;

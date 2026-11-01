@@ -1,13 +1,14 @@
 /**
  * The API contract.
  *
- * `.docs/08-api-and-integration.md` commits to these endpoints as a *product*
- * surface: external import scripts and issue-tracker adapters code against them.
+ * These endpoints are a *product* surface: the CLI, agents and issue-tracker
+ * adapters code against them.
  * They are therefore defined once, in Zod, and both the request validation and the
  * OpenAPI document are derived from that — the document cannot drift from the
  * behaviour because it is not written separately.
  */
 import { z } from "@hono/zod-openapi";
+import { KEY_PATTERN } from "@flowdeck/domain";
 
 export const Uuid = z.string().uuid();
 
@@ -20,7 +21,7 @@ export const Txid = z.number().int();
 
 
 /**
- * The metadata bag (D5). Deliberately open: priority, tags, category and a
+ * The metadata bag. Deliberately open: priority, tags, category and a
  * reference screenshot all land here, and adding one is a configuration change
  * rather than a migration. Typing it narrowly would defeat the point.
  */
@@ -37,11 +38,24 @@ export const FlowRunStateSchema = z.enum([
   "released",
 ]);
 
+/**
+ * A readable handle, unique in its scope: lowercase words joined by
+ * hyphens. Assigned from the name when a create leaves it out; never changed by a
+ * rename, so files and scripts that name it keep working.
+ */
+export const KeySchema = z
+  .string()
+  .max(64)
+  .regex(KEY_PATTERN, "lowercase letters, digits and single hyphens")
+  .openapi({ example: "sign-in-rejects-a-wrong-password" });
+
 /* ── Product ─────────────────────────────────────────────────────────── */
 
 export const ProductSchema = z
   .object({
     id: Uuid,
+    /** `relay`: what the CLI and the suite routes accept in place of the id. */
+    slug: KeySchema,
     name: z.string(),
     description: z.string(),
   })
@@ -50,6 +64,8 @@ export const ProductSchema = z
 export const CreateProductSchema = z
   .object({
     name: z.string().min(1),
+    /** Made from the name when left out. */
+    slug: KeySchema.optional(),
     description: z.string().default(""),
   })
   .openapi("CreateProduct");
@@ -57,13 +73,14 @@ export const CreateProductSchema = z
 export const UpdateProductSchema = z
   .object({
     name: z.string().min(1).optional(),
+    slug: KeySchema.optional(),
     description: z.string().optional(),
   })
   .openapi("UpdateProduct");
 
 /* ── Test ────────────────────────────────────────────────────────────────
-   A test is an assertion, not a procedure (D4). Only title and expectedResult
-   are structural; everything else lives in the metadata bag (D5) so adding
+   A test is an assertion, not a procedure. Only title and expectedResult
+   are structural; everything else lives in the metadata bag so adding
    priority or tags later is a configuration change rather than a migration. */
 
 export const TestVersionSchema = z
@@ -83,6 +100,7 @@ export const TestSchema = z
   .object({
     id: Uuid,
     productId: Uuid,
+    key: KeySchema,
     archived: z.boolean(),
     current: TestVersionSchema,
   })
@@ -90,6 +108,8 @@ export const TestSchema = z
 
 export const CreateTestSchema = z
   .object({
+    /** Made from the title when left out. */
+    key: KeySchema.optional(),
     title: z.string().min(1),
     expectedResult: z.string().min(1),
     metadata: MetadataSchema.default({}),
@@ -99,7 +119,7 @@ export const CreateTestSchema = z
   .openapi("CreateTest");
 
 /**
- * Bulk create, because importing a suite is the first thing anyone does (D29).
+ * Bulk create, because importing a suite is the first thing anyone does.
  * The response returns the created tests in request order, which is what lets an
  * importing script hold the mapping from its source rows to Flowdeck test IDs.
  */
@@ -107,7 +127,7 @@ export const CreateTestsSchema = z
   .object({ tests: z.array(CreateTestSchema).min(1).max(1000) })
   .openapi("CreateTests");
 
-/** An edit creates a new version; the old one is never modified (D6). */
+/** An edit creates a new version; the old one is never modified. */
 export const UpdateTestSchema = z
   .object({
     title: z.string().min(1).optional(),
@@ -120,14 +140,14 @@ export const UpdateTestSchema = z
   .openapi("UpdateTest");
 
 /* ── Coverage ────────────────────────────────────────────────────────────
-   Reported, never declared (D1). During a migration this endpoint is the
+   Reported, never declared. During a migration this endpoint is the
    progress bar: start with everything uncovered, finish when nothing is. */
 
 export const TestCoverageSchema = z
   .object({
     testId: Uuid,
     covered: z.boolean(),
-    /** A live test marked by nothing anywhere — the red row (D2). */
+    /** A live test marked by nothing anywhere — the red row. */
     needsAttention: z.boolean(),
     templateIds: z.array(Uuid),
   })
@@ -144,7 +164,7 @@ export const CoverageReportSchema = z
   .openapi("CoverageReport");
 
 /* ── Template, flow, step ────────────────────────────────────────────────
-   A template's scope is implicit — whatever its flows mark (D1). There is
+   A template's scope is implicit — whatever its flows mark. There is
    deliberately no field in which to declare it. */
 
 export const StepSchema = z
@@ -154,7 +174,7 @@ export const StepSchema = z
     kind: StepKindSchema,
     text: z.string(),
     expectedResult: z.string().nullable(),
-    /** Where the tester should be once the step is done (D40). Optional, either kind. */
+    /** Where the tester should be once the step is done. Optional, either kind. */
     postState: z.string().nullable(),
     deviceLabel: z.string(),
     marks: z.array(Uuid),
@@ -167,7 +187,7 @@ export const CreateStepSchema = z
     text: z.string().min(1),
     expectedResult: z.string().nullable().default(null),
     postState: z.string().nullable().default(null),
-    /** Free text (D16). The first step to use a label introduces that device. */
+    /** Free text. The first step to use a label introduces that device. */
     deviceLabel: z.string().min(1),
     marks: z.array(Uuid).default([]),
   })
@@ -177,6 +197,7 @@ export const FlowSchema = z
   .object({
     id: Uuid,
     templateId: Uuid,
+    key: KeySchema,
     name: z.string(),
     precondition: z.string(),
     estimatedMinutes: z.number().int().positive().nullable(),
@@ -190,9 +211,11 @@ export const FlowSchema = z
 export const CreateFlowSchema = z
   .object({
     name: z.string().min(1),
-    /** The lightweight answer to dependencies (D22): state, not ordering. */
+    /** Made from the name when left out; unique in the template. */
+    key: KeySchema.optional(),
+    /** The lightweight answer to dependencies: state, not ordering. */
     precondition: z.string().default(""),
-    /** Hand-typed, never derived from run history (D31). */
+    /** Hand-typed, never derived from run history. */
     estimatedMinutes: z.number().int().positive().nullable().default(null),
     archived: z.boolean().default(false),
     steps: z.array(CreateStepSchema).default([]),
@@ -203,6 +226,7 @@ export const TemplateSchema = z
   .object({
     id: Uuid,
     productId: Uuid,
+    key: KeySchema,
     name: z.string(),
     description: z.string(),
     status: TemplateStatusSchema,
@@ -214,7 +238,7 @@ export const TemplateSummarySchema = TemplateSchema.omit({ flows: true })
   .extend({
     flowCount: z.number().int(),
     /** Reported as information, never as a warning — a template covering a slice
-        of the library is not deficient, that is why several exist (D1). */
+        of the library is not deficient, that is why several exist. */
     marksTestCount: z.number().int(),
   })
   .openapi("TemplateSummary");
@@ -222,15 +246,17 @@ export const TemplateSummarySchema = TemplateSchema.omit({ flows: true })
 export const CreateTemplateSchema = z
   .object({
     name: z.string().min(1),
+    /** Made from the name when left out. */
+    key: KeySchema.optional(),
     description: z.string().default(""),
     status: TemplateStatusSchema.default("active"),
     flows: z.array(CreateFlowSchema).default([]),
   })
   .openapi("CreateTemplate");
 
-/* ── Structural editing (07 §1) ────────────────────────────────────────── */
+/* ── Structural editing ────────────────────────────────────────── */
 
-/* ── The issue feed (08, D27, D28) ──────────────────────────────────────
+/* ── The issue feed ──────────────────────────────────────────────────
    Every non-pass result, self-contained: enough context to become a ticket
    without a second lookup. Flowdeck labels; the adapter decides. */
 
@@ -241,6 +267,8 @@ export const IssueSchema = z
     type: IssueTypeSchema,
     test: z.object({
       id: Uuid,
+      /** The test's key: its file in a pulled suite. Null if the test is gone. */
+      key: z.string().nullable(),
       versionId: Uuid,
       version: z.number().int(),
       title: z.string(),
@@ -248,6 +276,8 @@ export const IssueSchema = z
     }),
     context: z.object({
       flowId: Uuid,
+      /** Null if the flow has since been deleted. */
+      flowKey: z.string().nullable(),
       flow: z.string(),
       stepId: Uuid,
       stepNumber: z.number().int().positive(),
@@ -262,11 +292,13 @@ export const IssueSchema = z
   })
   .openapi("Issue");
 
-/** A flagged step in the feed: the suite-maintenance side of the day (D40). */
+/** A flagged step in the feed: the suite-maintenance side of the day. */
 export const StepProblemIssueSchema = z
   .object({
     context: z.object({
       flowId: Uuid,
+      /** Null if the flow has since been deleted. */
+      flowKey: z.string().nullable(),
       flow: z.string(),
       stepId: Uuid,
       stepNumber: z.number().int().positive(),
@@ -291,6 +323,7 @@ export const IssueFeedSchema = z
       productId: Uuid,
       template: z.string(),
       templateId: Uuid,
+      templateKey: z.string().nullable(),
     }),
     issues: z.array(IssueSchema),
     /** Steps testers flagged as wrong. Not verdicts on the product; the to-do list for whoever maintains the flows. */
@@ -328,7 +361,7 @@ export const UpdateFlowSchema = z
     name: z.string().min(1).optional(),
     precondition: z.string().optional(),
     estimatedMinutes: z.number().int().positive().nullable().optional(),
-    /** `true` archives, `false` restores. Testing days already open are unaffected (D21). */
+    /** `true` archives, `false` restores. Testing days already open are unaffected. */
     archived: z.boolean().optional(),
   })
   .openapi("UpdateFlow");
@@ -378,73 +411,128 @@ export const CreateTemplatesSchema = z
   .object({ templates: z.array(CreateTemplateSchema).min(1).max(200) })
   .openapi("CreateTemplates");
 
-/* ── Bundle import ───────────────────────────────────────────────────────
-   The two-phase import (tests, then templates marking the returned IDs) is the
-   contract; this is the one-request form of it for a script that has the whole
-   suite in hand. Tests carry a caller-chosen `key`, steps mark by that key, and
-   the mapping the script would otherwise have to hold is resolved server-side,
-   inside one transaction — either everything lands or nothing does. */
+/* ── The suite document ────────────────────────────────────────────
+   A whole product as one document, addressed by keys rather than ids: what the
+   CLI's folder of files maps to, and the one way to create or change many things
+   at once. A push replaces the suite: whatever it leaves out is archived, never
+   deleted, and pushing it back restores it. */
 
-/** A caller-chosen handle for a test within one bundle: a spreadsheet row, a Jira key. */
-export const BundleKey = z.string().min(1).max(200);
-
-export const BundleTestSchema = CreateTestSchema.extend({
-  key: BundleKey,
-}).openapi("BundleTest");
-
-export const BundleStepSchema = CreateStepSchema.extend({
-  /** Keys of tests in this bundle, or ids of tests that already exist in the product. */
-  marks: z.array(z.string().min(1)).default([]),
-}).openapi("BundleStep");
-
-export const BundleFlowSchema = CreateFlowSchema.extend({
-  steps: z.array(BundleStepSchema).default([]),
-}).openapi("BundleFlow");
-
-export const BundleTemplateSchema = CreateTemplateSchema.extend({
-  flows: z.array(BundleFlowSchema).default([]),
-}).openapi("BundleTemplate");
-
-export const ImportBundleSchema = z
+export const SuiteTestSchema = z
   .object({
-    tests: z.array(BundleTestSchema).max(1000).default([]),
-    templates: z.array(BundleTemplateSchema).max(200).default([]),
+    key: KeySchema,
+    title: z.string().min(1),
+    /** What must be true. A test is an assertion, not a procedure. */
+    expect: z.string().min(1),
+    tags: z.array(z.string().min(1)).optional(),
+    /** Everything else in the generic bag. */
+    metadata: MetadataSchema.optional(),
+    archived: z.boolean().optional(),
   })
-  .refine((b) => b.tests.length > 0 || b.templates.length > 0, {
-    message: "a bundle must contain at least one test or template",
-  })
-  .openapi("ImportBundle");
+  .openapi("SuiteTest");
 
-/** `POST /products/import`: an export bundle landing in a new product. */
-export const ImportProductSchema = z
+export const SuiteStepSchema = z
   .object({
-    product: z.object({ name: z.string().min(1), description: z.string().default("") }),
-    tests: z.array(BundleTestSchema).max(1000).default([]),
-    templates: z.array(BundleTemplateSchema).max(200).default([]),
+    /** An action is something to do; a check is something to look at, with an `expect`. */
+    kind: z.enum(["action", "check"]),
+    text: z.string().min(1),
+    /** One device per step. Free text; the first step that names it introduces it. */
+    device: z.string().min(1),
+    expect: z.string().nullable().optional(),
+    /** Where the step leaves the tester. */
+    after: z.string().nullable().optional(),
+    /** Test keys this step confirms. */
+    verifies: z.array(KeySchema).optional(),
   })
-  .openapi("ImportProduct");
+  .openapi("SuiteStep");
 
-/** `GET /products/{id}/export`: the same shape the import takes, plus the product itself. */
-export const ExportBundleSchema = z
+export const SuiteFlowSchema = z
   .object({
-    product: z.object({ id: Uuid, name: z.string(), description: z.string() }),
-    tests: z.array(BundleTestSchema),
-    templates: z.array(BundleTemplateSchema),
+    key: KeySchema,
+    name: z.string().min(1),
+    precondition: z.string().optional(),
+    estimateMinutes: z.number().int().positive().nullable().optional(),
+    archived: z.boolean().optional(),
+    steps: z.array(SuiteStepSchema),
   })
-  .openapi("ExportBundle");
+  .openapi("SuiteFlow");
 
-export const ImportResultSchema = z
+export const SuiteTemplateSchema = z
   .object({
-    /** Bundle key → the created test's id, for the script's own records. */
-    keys: z.record(Uuid),
-    tests: z.array(TestSchema),
-    templates: z.array(TemplateSchema),
+    key: KeySchema,
+    name: z.string().min(1),
+    description: z.string().optional(),
+    archived: z.boolean().optional(),
+    /** In the order a testing day lists them. */
+    flows: z.array(SuiteFlowSchema),
   })
-  .openapi("ImportResult");
+  .openapi("SuiteTemplate");
 
-export const ImportProductResultSchema = ImportResultSchema.extend({ product: ProductSchema }).openapi("ImportProductResult");
+export const SuiteSchema = z
+  .object({
+    product: z.object({ name: z.string().min(1), description: z.string().optional() }),
+    tests: z.array(SuiteTestSchema).max(5000),
+    templates: z.array(SuiteTemplateSchema).max(500),
+  })
+  .openapi("Suite");
 
-export type ImportBundleInput = z.infer<typeof ImportBundleSchema>;
+export const SuiteDocumentSchema = z
+  .object({
+    /** A hash of the suite. A push names it as its base, so a stale one is refused. */
+    revision: z.string(),
+    suite: SuiteSchema,
+  })
+  .openapi("SuiteDocument");
+
+export const SuiteProblemSchema = z
+  .object({
+    level: z.enum(["error", "warning"]),
+    path: z.array(z.union([z.string(), z.number()])),
+    message: z.string(),
+  })
+  .openapi("SuiteProblem");
+
+export const SuiteChangeSchema = z
+  .object({
+    op: z.enum([
+      "update-product", "create-test", "update-test", "archive-test", "restore-test",
+      "create-template", "update-template", "archive-template", "restore-template", "reorder-flows",
+      "create-flow", "update-flow", "archive-flow", "restore-flow",
+    ]),
+    test: z.string().optional(),
+    template: z.string().optional(),
+    flow: z.string().optional(),
+    fields: z.array(z.string()).optional(),
+    steps: z.object({ added: z.number().int(), removed: z.number().int(), edited: z.number().int(), moved: z.number().int() }).optional(),
+  })
+  .openapi("SuiteChange");
+
+export const SuitePlanSchema = z
+  .object({
+    /** The revision the plan was made against: send it as `baseRevision` to apply exactly this. */
+    revision: z.string(),
+    changes: z.array(SuiteChangeSchema),
+    /** The changes, one line each, as `flowdeck push --plan` prints them. */
+    summary: z.array(z.string()),
+    /** Warnings; a plan with errors is a 400 instead. */
+    problems: z.array(SuiteProblemSchema),
+  })
+  .openapi("SuitePlan");
+
+export const PushSuiteSchema = z
+  .object({
+    /** The revision this suite was edited from. Required unless `force`. */
+    baseRevision: z.string().optional(),
+    /** Apply even if the suite changed since `baseRevision` — what it changed is overwritten. */
+    force: z.boolean().default(false),
+    suite: SuiteSchema,
+  })
+  .refine((b) => b.force || b.baseRevision, { message: "name the revision you edited from (baseRevision), or set force", path: ["baseRevision"] })
+  .openapi("PushSuite");
+
+export const PushResultSchema = SuitePlanSchema.extend({
+  /** The base this push started from. */
+  previousRevision: z.string(),
+}).openapi("PushResult");
 
 /* ── Errors ──────────────────────────────────────────────────────────── */
 
@@ -460,7 +548,7 @@ export type CreateTestInput = z.infer<typeof CreateTestSchema>;
 export type CreateTemplateInput = z.infer<typeof CreateTemplateSchema>;
 
 /* ── Runs and execution ──────────────────────────────────────────────────
-   The template is the class; the run is the object (D8). */
+   The template is the class; the run is the object. */
 
 export const SnapshotStepSchema = StepSchema;
 export const SnapshotFlowSchema = z.object({
@@ -497,7 +585,7 @@ const LiveIssueSchema = z.object({
 });
 
 /**
- * A claimed flow's draft, summarised for the board (D42). Provisional: shown as
+ * A claimed flow's draft, summarised for the board. Provisional: shown as
  * in flight, never counted, cleared on finish and abandon.
  */
 export const LiveProgressSchema = z
@@ -561,7 +649,7 @@ export const TestResultSchema = z
   .openapi("TestResult");
 
 /**
- * "This step is wrong" (D40). A statement about the flow, not the product; one
+ * "This step is wrong". A statement about the flow, not the product; one
  * per step per flow run. Either the tester got past it — `workaround` says how,
  * and is required — or they did not, and `blocking` closes the rest of the flow.
  */
@@ -586,7 +674,7 @@ export const RecordStepProblemSchema = z
     note: z.string().trim().min(1),
     /** How the tester reached where the step should have left them. Required unless blocking. */
     workaround: z.string().trim().nullable().default(null),
-    /** Could not get past it: the rest of the flow is blocked, as with a blocking failure (D11). */
+    /** Could not get past it: the rest of the flow is blocked, as with a blocking failure. */
     blocking: z.boolean().default(false),
   })
   .superRefine((v, ctx) => {
@@ -610,7 +698,7 @@ export const RunSummarySchema = z
     closedAt: z.string().nullable(),
     /** Tests the day's flows mark. */
     total: z.number().int(),
-    /** Each test's worst result across the day (D19). Recorded results only — never live progress. */
+    /** Each test's worst result across the day. Recorded results only — never live progress. */
     counts: z.object({ pass: z.number().int(), fail: z.number().int(), minor: z.number().int(), skipped: z.number().int() }),
     notReached: z.number().int(),
   })
@@ -631,7 +719,7 @@ export const RunSchema = z
   .openapi("Run");
 
 /**
- * Recording a verdict (D12, D13, D36). Per test, not per step. The note rule
+ * Recording a verdict. Per test, not per step. The note rule
  * is enforced here and again by a CHECK constraint, so no path can record a
  * bug report with no description.
  */
@@ -641,7 +729,7 @@ export const RecordResultSchema = z
     testId: Uuid,
     verdict: VerdictSchema,
     note: z.string().trim().nullable().default(null),
-    /** Only meaningful with `fail`: does this wedge the rest of the flow? (D11) */
+    /** Only meaningful with `fail`: does this wedge the rest of the flow? */
     blocking: z.boolean().default(false),
     /** Client-generated. The same key twice records once. */
     idempotencyKey: z.string().min(8).max(200),
@@ -680,7 +768,7 @@ export const ClaimResponseSchema = z
   .object({
     flowRun: FlowRunSchema,
     txid: Txid,
-    /** Other testers already on this flow — what the confirmation shows (D26). */
+    /** Other testers already on this flow — what the confirmation shows. */
     alsoRunning: z.array(FlowRunSchema),
   })
   .openapi("ClaimResponse");

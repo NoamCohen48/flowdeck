@@ -4,7 +4,7 @@
  * Grown from flowdeck-demo.html. Device colour still carries the identity inside
  * a flow; around it the chrome now has one brand hue — cobalt — chosen because it
  * is the only saturated colour not already spoken for by a device (violet, teal,
- * ochre, magenta) or a verdict (green, red, amber, grey). See .docs/05-design-and-ux.md.
+ * ochre, magenta) or a verdict (green, red, amber, grey).
  *
  * The font is self-hosted (@fontsource) — no CDN, for air-gapped deployments.
  */
@@ -75,7 +75,7 @@
   color-scheme: light;
 }
 
-/* Dark (improvement I1). Same structure, inverted ground; device and result
+/* Dark. Same structure, inverted ground; device and result
    colours are unchanged because they are the only saturated things on screen
    and they must read identically in a dim lab. */
 @media (prefers-color-scheme: dark) {
@@ -345,14 +345,14 @@
   .step.now .snum { background: var(--primary-soft); border-color: var(--primary-line); color: var(--primary-ink); }
 
   .expect { margin: 10px 0 0; padding: 8px 11px; border-left: 2px solid var(--line); color: var(--ink-2); font-size: 14px; background: var(--surface-3); }
-  /* Where the step leaves you (D40). One quiet line, no box: "Expected" is a
+  /* Where the step leaves you. One quiet line, no box: "Expected" is a
      judgment and gets the rule; this is orientation, and must not compete. */
   .after { margin: 7px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
   .after .lbl { font-weight: 600; color: var(--muted); margin-inline-end: 8px; }
   .after .lbl:after { content: "→"; margin-inline-start: 5px; font-weight: 400; }
   .step.done .after, .step.blocked .after { color: var(--muted); }
 
-  /* "Step is wrong" (D40). The button waits until the tester is on the step —
+  /* "Step is wrong". The button waits until the tester is on the step —
      forty of them at once would be noise — but stays in the tab order, so the
      keyboard finds it whether or not it is showing. */
   .sline .flagbtn { margin-inline-start: auto; gap: 5px; color: var(--muted); border-color: transparent; background: transparent; opacity: 0; transition: opacity 120ms, color 120ms, border-color 120ms; }
@@ -392,7 +392,7 @@
   .tlink:after { content: " ↗"; font-size: 11px; color: var(--muted); opacity: 0; transition: opacity 120ms; }
   .tlink:hover:after { opacity: 1; }
   .verdicts { display: flex; gap: 4px; flex: none; }
-  /* 30x27 in the demo — below any touch-target minimum for a product whose testers
+  /* 30x27 in the first design — below any touch-target minimum for a product whose testers
      record on phones (design defect 2). Larger at narrow widths. */
   .v {
     border: 1px solid var(--line); background: var(--surface); border-radius: 5px;
@@ -412,7 +412,7 @@
   .note.skp { background: var(--note-skip-bg); border-color: var(--note-skip-line); color: var(--note-skip-ink); }
   .trow .note { margin-left: 0; margin-top: 7px; flex-basis: 100%; }
 
-  /* The hand-off: deliberately the loudest thing on the screen (D18). Solid device
+  /* The hand-off: deliberately the loudest thing on the screen. Solid device
      colour, the device named large — louder than a failed verdict, because picking
      up the wrong phone is the failure that quietly invalidates everything after. */
   .pickup {
@@ -497,6 +497,11 @@
 
   /* ---- Suite import / export ---- */
   .suitedlg { max-width: 520px; }
+  .suitedlg .planlist { list-style: none; margin: 12px 0 0; padding: 8px 12px; max-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-r); font: 12.5px/1.6 ui-monospace, monospace; }
+  .suitedlg .planlist li { overflow-wrap: anywhere; }
+  .suitedlg .errlist { margin: 6px 0 0; padding-left: 18px; }
+  .suitedlg .planlist li[data-op="+"] { color: var(--color-pass); }
+  .suitedlg .planlist li[data-op="-"] { color: var(--color-fail); }
   .suitedlg .preview { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-r); background: var(--primary-soft); border: 1px solid var(--primary-line); color: var(--primary-ink); }
   .suitedlg .preview b { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .snaplist { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 4px; max-height: 280px; overflow: auto; }
@@ -515,7 +520,7 @@
   .lnk { cursor: pointer; border-bottom: 1px solid var(--line); text-decoration: none; }
   .lnk:hover { border-bottom-color: var(--ink-2); }
 
-  /* ---- Step map (I3): the sidebar, in the runner and the editor ---- */
+  /* ---- Step map: the sidebar, in the runner and the editor ---- */
   .stepmap { position: sticky; top: var(--map-top, 72px); max-height: calc(100vh - var(--map-top, 72px) - 28px); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
   .stepmap .mh { padding: 10px 14px; border-bottom: 1px solid var(--line-soft); font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
   .stepmap .mh .meta { font-weight: 400; font-size: 12px; }
@@ -544,7 +549,7 @@
   .stepmap.sortable a:active { cursor: grabbing; }
   .stepmap a.dragging { opacity: 0.4; }
 
-  /* ---- Flow editor (07 §1) ---- */
+  /* ---- Flow editor ---- */
   .step.dragging { opacity: 0.35; }
   /* The between-steps affordance: a hairline through the gap that grows a
      button on hover or focus, so a step lands exactly where the author is looking. */
@@ -730,7 +735,7 @@
   .resultrow .go { grid-area: go; font-size: 13px; font-weight: 500; color: var(--primary); white-space: nowrap; }
   @media (max-width: 640px) { .resultrow { grid-template-columns: auto 1fr; grid-template-areas: "av who" "tally tally" "bar bar" "go go"; } }
 
-  /* A flow being run right now (D42): the same row as a finished one, dashed —
+  /* A flow being run right now: the same row as a finished one, dashed —
      provisional, from the tester's draft, not yet a recorded result. */
   .resultrow.live { border-style: dashed; background: var(--surface); }
   .livedot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--primary); margin: 0 4px 1px 6px; vertical-align: middle; animation: livepulse 1.6s ease-in-out infinite; }

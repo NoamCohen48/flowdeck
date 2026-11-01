@@ -1,1 +1,0 @@
-ALTER TABLE "flow_run" ADD COLUMN "progress" jsonb;

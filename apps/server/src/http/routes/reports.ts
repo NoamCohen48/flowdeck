@@ -1,5 +1,5 @@
 /**
- * Reporting: the issue feed (08, D27/D28), closing a day, and one test's
+ * Reporting: the issue feed, closing a day, and one test's
  * history across days. Everything here reads a run's frozen snapshot, so the
  * wording an issue carries is the wording the tester actually read.
  */
@@ -24,7 +24,7 @@ reports.openapi(
     tags: ["Runs", "Integration"],
     summary: "The issue feed: every non-pass result, self-contained",
     description:
-      "Typed `failure | minor | invalid_test` (D28). Flowdeck does not filter — the adapter routes failures to the bug tracker and invalid tests to suite maintenance. Pass `includePass=true` for the whole day's data.",
+      "Typed `failure | minor | invalid_test`. Flowdeck does not filter — the adapter routes failures to the bug tracker and invalid tests to suite maintenance. Pass `includePass=true` for the whole day's data.",
     request: {
       params: z.object({ runId: Uuid }),
       query: z.object({ includePass: z.enum(["true", "false"]).default("false") }),
@@ -58,6 +58,18 @@ reports.openapi(
       )).map((v) => [v.id, v.version]),
     );
 
+    // Keys are stable, so today's key names the test the snapshot recorded — and the file it lives in.
+    const testKeys = new Map(
+      (await query<{ id: string; key: string }>(raw`select id, key from test where product_id = ${tpl?.product_id ?? null}`)).map((t) => [t.id, t.key]),
+    );
+    const flowKeys = new Map(
+      (await query<{ id: string; key: string }>(raw`select id, key from flow where template_id = ${run.templateId}`)).map((f) => [f.id, f.key]),
+    );
+    const context = (flow: (typeof run.snapshot.flows)[number], stepIndex: number) => {
+      const step = flow.steps[stepIndex]!;
+      return { flowId: flow.id, flowKey: flowKeys.get(flow.id) ?? null, flow: flow.name, stepId: step.id, stepNumber: stepIndex + 1, stepText: step.text, device: step.deviceLabel };
+    };
+
     const issues = run.results
       .filter((r) => includePass || r.verdict !== "pass")
       .flatMap((r) => {
@@ -68,8 +80,8 @@ reports.openapi(
         if (!flow || !step || !test) return [];
         return [{
           type: TYPE[r.verdict],
-          test: { id: test.id, versionId: r.testVersionId, version: versions.get(r.testVersionId) ?? 0, title: test.title, expected: test.expectedResult },
-          context: { flowId: flow.id, flow: flow.name, stepId: step.id, stepNumber: stepIndex + 1, stepText: step.text, device: step.deviceLabel },
+          test: { id: test.id, key: testKeys.get(test.id) ?? null, versionId: r.testVersionId, version: versions.get(r.testVersionId) ?? 0, title: test.title, expected: test.expectedResult },
+          context: context(flow, stepIndex),
           note: r.note,
           attachments: attachments.get(r.id) ?? [],
           blocking: r.blocking,
@@ -84,7 +96,7 @@ reports.openapi(
       const step = flow?.steps[stepIndex];
       if (!flow || !step) return [];
       return [{
-        context: { flowId: flow.id, flow: flow.name, stepId: step.id, stepNumber: stepIndex + 1, stepText: step.text, device: step.deviceLabel },
+        context: context(flow, stepIndex),
         note: p.note,
         workaround: p.workaround,
         blocking: p.blocking,
@@ -103,6 +115,7 @@ reports.openapi(
           productId: tpl?.product_id ?? "",
           template: run.snapshot.name,
           templateId: run.templateId,
+          templateKey: (await query<{ key: string }>(raw`select key from template where id = ${run.templateId}`))[0]?.key ?? null,
         },
         issues,
         stepProblems,

@@ -1,6 +1,5 @@
 /**
- * Flowdeck schema. Follows `.docs/01-domain-model.md`; see `.docs/09-implementation-plan.md`
- * for why the shapes are what they are.
+ * Flowdeck schema.
  *
  * Two conventions worth knowing before reading:
  *
@@ -11,7 +10,7 @@
  *
  * 2. **Nothing derived is stored.** Coverage is a view, device hand-offs are computed
  *    in `@flowdeck/domain`, and worst-result-wins is a query. A stored derivation is a
- *    stale derivation waiting to happen — `07-open-items.md` warns about exactly this.
+ *    stale derivation waiting to happen.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -39,17 +38,23 @@ const id = () => uuid("id").primaryKey().defaultRandom();
 const now = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
 /* ── Product ─────────────────────────────────────────────────────────────
-   Fully independent (D23). Everything else lives under exactly one product. */
+   Fully independent. Everything else lives under exactly one product. */
 
-export const product = pgTable("product", {
-  id: id(),
-  name: text("name").notNull(),
-  description: text("description").notNull().default(""),
-  createdAt: now(),
-});
+export const product = pgTable(
+  "product",
+  {
+    id: id(),
+    /** How a person or the CLI names it: `flowdeck pull relay`. */
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    createdAt: now(),
+  },
+  (t) => [uniqueIndex("product_slug_unique").on(t.slug)],
+);
 
 /* ── Test ────────────────────────────────────────────────────────────────
-   An assertion, not a procedure (D4). Stable identity, immutable versions (D6):
+   An assertion, not a procedure. Stable identity, immutable versions:
    flows reference `test.id` and always resolve to the current version, while a
    result pins the exact `test_version.id` it was executed against. */
 
@@ -62,11 +67,16 @@ export const test = pgTable(
       .references(() => product.id, { onDelete: "cascade" }),
     // Nullable only for the instant between inserting a test and its first version.
     currentVersionId: uuid("current_version_id"),
-    // Deletion archives; it never erases (D7).
+    /** Stable, readable, unique in the product — the file name in a pulled suite. */
+    key: text("key").notNull(),
+    // Deletion archives; it never erases.
     archived: boolean("archived").notNull().default(false),
     createdAt: now(),
   },
-  (t) => [index("test_product_idx").on(t.productId)],
+  (t) => [
+    index("test_product_idx").on(t.productId),
+    uniqueIndex("test_key_unique").on(t.productId, t.key),
+  ],
 );
 
 export const testVersion = pgTable(
@@ -80,7 +90,7 @@ export const testVersion = pgTable(
     version: integer("version").notNull(),
     title: text("title").notNull(),
     expectedResult: text("expected_result").notNull(),
-    /** Deliberately generic (D5): priority, tags, category, reference screenshots.
+    /** Deliberately generic: priority, tags, category, reference screenshots.
         Adding a field is a configuration change, not a migration. */
     metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
     createdAt: now(),
@@ -94,7 +104,7 @@ export const testVersion = pgTable(
 
 /* ── Template ────────────────────────────────────────────────────────────
    A reusable definition of a testing day for one setup. Scope is implicit —
-   whatever its flows mark (D1). Archived templates still count for coverage (D3). */
+   whatever its flows mark. Archived templates still count for coverage. */
 
 export const template = pgTable(
   "template",
@@ -106,16 +116,19 @@ export const template = pgTable(
     name: text("name").notNull(),
     description: text("description").notNull().default(""),
     status: text("status").$type<TemplateStatus>().notNull().default("active"),
+    /** Stable, readable, unique in the product. */
+    key: text("key").notNull(),
     createdAt: now(),
   },
   (t) => [
     index("template_product_idx").on(t.productId),
+    uniqueIndex("template_key_unique").on(t.productId, t.key),
     check("template_status_check", sql`${t.status} in ('active','archived')`),
   ],
 );
 
 /* ── Flow ────────────────────────────────────────────────────────────────
-   One continuous human path. Unordered and independent within a template (D22):
+   One continuous human path. Unordered and independent within a template:
    setup requirements are free-text preconditions, never enforced dependencies,
    because a real dependency graph serialises seven people. */
 
@@ -128,22 +141,27 @@ export const flow = pgTable(
       .references(() => template.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     precondition: text("precondition").notNull().default(""),
-    /** Hand-typed and optional; never derived from run history (D31). */
+    /** Hand-typed and optional; never derived from run history. */
     estimatedMinutes: integer("estimated_minutes"),
     /** Display order within the template only. */
     position: integer("position").notNull(),
-    /** Archived, never deleted (D7 applies to flows too): a day started from this
-        template stops including it, its marks still count toward coverage (D3),
+    /** Archived, never deleted (flows too): a day started from this
+        template stops including it, its marks still count toward coverage,
         and results already recorded against its steps stay readable. */
     archived: boolean("archived").notNull().default(false),
+    /** Stable, readable, unique in the template. */
+    key: text("key").notNull(),
     createdAt: now(),
   },
-  (t) => [index("flow_template_idx").on(t.templateId)],
+  (t) => [
+    index("flow_template_idx").on(t.templateId),
+    uniqueIndex("flow_key_unique").on(t.templateId, t.key),
+  ],
 );
 
 /* ── Step ────────────────────────────────────────────────────────────────
    Order is meaningful — this is a sequence, not a set. `updated_at` supports
-   last-write-wins between two authors on the same step (D37). */
+   last-write-wins between two authors on the same step. */
 
 export const step = pgTable(
   "step",
@@ -158,11 +176,11 @@ export const step = pgTable(
     /** Shown for assertions only. The asymmetry is informative: an expected
         result appearing means "stop and look". */
     expectedResult: text("expected_result"),
-    /** Where the tester should be once the step is done, in their words (D40).
+    /** Where the tester should be once the step is done, in their words.
         Optional, on either kind. It is what lets a tester improvise past a stale
         step — "however you get there, you should now see the contact list". */
     postState: text("post_state"),
-    /** Free text (D16). The step that first uses a label introduces that device;
+    /** Free text. The step that first uses a label introduces that device;
         that fact is computed, never stored — see `computeHandoffs`. */
     deviceLabel: text("device_label").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -176,7 +194,7 @@ export const step = pgTable(
 /* ── step_mark ───────────────────────────────────────────────────────────
    The many-to-many join that the Confluence document never made. Zero marks is
    normal (navigation steps verify nothing); several is normal; the same test
-   marked in many flows is allowed and unrestricted (D19). */
+   marked in many flows is allowed and unrestricted. */
 
 export const stepMark = pgTable(
   "step_mark",
@@ -195,9 +213,9 @@ export const stepMark = pgTable(
 );
 
 /* ── Run ─────────────────────────────────────────────────────────────────
-   The template is the class; the run is the object (D8). A run pins a snapshot
-   at start (D21) so an edit mid-day cannot reshuffle the checklist of a tester
-   on step 14, and stays open indefinitely across sittings (D25). */
+   The template is the class; the run is the object. A run pins a snapshot
+   at start so an edit mid-day cannot reshuffle the checklist of a tester
+   on step 14, and stays open indefinitely across sittings. */
 
 export const run = pgTable(
   "run",
@@ -217,7 +235,7 @@ export const run = pgTable(
 );
 
 /* ── FlowRun ─────────────────────────────────────────────────────────────
-   Per tester, not per flow (D26). Two people may run the same flow in the same
+   Per tester, not per flow. Two people may run the same flow in the same
    run and each produces an independent set of results; neither overwrites the
    other, and worst-result-wins resolves any disagreement at no extra cost. */
 
@@ -230,13 +248,13 @@ export const flowRun = pgTable(
       .references(() => run.id, { onDelete: "cascade" }),
     /** References the flow in the snapshot, so it survives the flow being edited. */
     flowId: uuid("flow_id").notNull(),
-    /** Claims are advisory, not exclusive (D26) — this records who, not a lock. */
+    /** Claims are advisory, not exclusive — this records who, not a lock. */
     claimedBy: text("claimed_by"),
     state: text("state").$type<FlowRunState>().notNull().default("open"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     /**
-     * The tester's draft, summarised, while the flow is claimed (D42). Provisional:
+     * The tester's draft, summarised, while the flow is claimed. Provisional:
      * never counted, and cleared on finish and abandon. The one stored copy of
      * something derived, because its source lives only in the tester's browser.
      */
@@ -252,7 +270,7 @@ export const flowRun = pgTable(
 );
 
 /* ── TestResult ──────────────────────────────────────────────────────────
-   Recorded per test, not per step (D12): one step marking three tests can
+   Recorded per test, not per step: one step marking three tests can
    produce two passes and a failure, and a per-step verdict cannot say that. */
 
 export const testResult = pgTable(
@@ -266,20 +284,20 @@ export const testResult = pgTable(
     testId: uuid("test_id")
       .notNull()
       .references(() => test.id, { onDelete: "cascade" }),
-    /** Pinned at execution (D6). March's result stays readable against March's
+    /** Pinned at execution. March's result stays readable against March's
         wording even after six edits. */
     testVersionId: uuid("test_version_id")
       .notNull()
       .references(() => testVersion.id, { onDelete: "restrict" }),
     verdict: text("verdict").$type<Verdict>().notNull(),
-    /** Required for fail and skipped; optional for minor (D13). Enforced by the
+    /** Required for fail and skipped; optional for minor. Enforced by the
         API against `verdictRequiresNote`, and by the CHECK below. */
     note: text("note"),
-    /** Only meaningful for fail: did this wedge the rest of the flow? (D11) */
+    /** Only meaningful for fail: did this wedge the rest of the flow? */
     blocking: boolean("blocking").notNull().default(false),
     recordedBy: text("recorded_by").notNull(),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
-    /** A tired tester taps the tick twice (D36). One column, one unique index. */
+    /** A tired tester taps the tick twice. One column, one unique index. */
     idempotencyKey: text("idempotency_key").notNull(),
   },
   (t) => [
@@ -302,11 +320,11 @@ export const testResult = pgTable(
 );
 
 /* ── StepProblem ─────────────────────────────────────────────────────────
-   "This step is wrong" (D40). A statement about the flow, not the product —
+   "This step is wrong". A statement about the flow, not the product —
    the button moved, the wording is stale, the screen is gone. One per step per
    FlowRun. The tester says whether they got past it: with a workaround, which
    is what the maintainer needs to fix the step, or not at all, which blocks the
-   rest of the flow exactly as a blocking failure does (D11). */
+   rest of the flow exactly as a blocking failure does. */
 
 export const stepProblem = pgTable(
   "step_problem",
@@ -359,7 +377,7 @@ export const attachment = pgTable(
 
 /* ── Presence ────────────────────────────────────────────────────────────
    "Dana is editing this flow", "Ori is on this run". Synced as a shape, swept
-   by TTL. The cheapest possible presence given Electric is already there (D37). */
+   by TTL. The cheapest possible presence given Electric is already there. */
 
 export const presence = pgTable(
   "presence",
@@ -375,7 +393,7 @@ export const presence = pgTable(
   ],
 );
 
-/** Every name that has ever identified itself, so the picker can offer them (D38). */
+/** Every name that has ever identified itself, so the picker can offer them. */
 export const actor = pgTable("actor", {
   name: text("name").primaryKey(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),

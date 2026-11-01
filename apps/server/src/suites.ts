@@ -4,7 +4,7 @@
  * The restic repository the `backup` service writes is encrypted and chunked —
  * only restic can read it, and it holds the whole database. A *suite* is a
  * different thing: one product's tests, templates, flows and steps as the plain
- * JSON that `GET /products/{id}/export` produces. Keeping those as ordinary
+ * suite document `GET /products/{ref}/suite` returns. Keeping those as ordinary
  * objects beside the repository, under `suites/`, means anyone with the bucket
  * key can list and read them, another Flowdeck can import them, and nothing
  * here needs restic or the encryption password.
@@ -14,6 +14,7 @@
  * With none set the store reports itself unavailable and the routes say so.
  */
 import { S3Client } from "bun";
+import type { Suite } from "@flowdeck/domain";
 
 export interface SuiteEntry {
   /** `<savedAt>_<productId>` — what the API addresses a snapshot by. */
@@ -28,11 +29,10 @@ export interface SuiteEntry {
 }
 
 export interface SuiteDocument {
-  /** What is stored: the export bundle plus a small header. */
-  flowdeck: { savedAt: string; savedBy: string; productId: string };
-  product: { id: string; name: string; description: string };
-  tests: unknown[];
-  templates: unknown[];
+  /** What is stored: the suite document plus a small header. */
+  flowdeck: { savedAt: string; savedBy: string; productId: string; productSlug: string };
+  revision: string;
+  suite: Suite;
 }
 
 const PREFIX = "suites/";
@@ -95,12 +95,12 @@ export async function listSuites(productId?: string): Promise<SuiteEntry[]> {
       out.push({
         id,
         productId: pid,
-        productName: doc.product?.name ?? "",
+        productName: doc.suite?.product?.name ?? "",
         savedAt: doc.flowdeck?.savedAt ?? id.slice(0, id.indexOf("_")),
         savedBy: doc.flowdeck?.savedBy ?? "",
         bytes: o.size ?? 0,
-        tests: doc.tests?.length ?? 0,
-        templates: doc.templates?.length ?? 0,
+        tests: doc.suite?.tests?.length ?? 0,
+        templates: doc.suite?.templates?.length ?? 0,
       });
     }
     token = page.isTruncated ? page.nextContinuationToken : undefined;
@@ -108,23 +108,30 @@ export async function listSuites(productId?: string): Promise<SuiteEntry[]> {
   return out.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
 }
 
-export async function saveSuite(bundle: Omit<SuiteDocument, "flowdeck">, savedBy: string): Promise<SuiteEntry> {
+export async function saveSuite(
+  of: { productId: string; productSlug: string; revision: string; suite: Suite },
+  savedBy: string,
+): Promise<SuiteEntry> {
   const s = s3();
   if (!s) throw new Error("suite store not configured");
   const savedAt = new Date().toISOString();
-  const id = `${savedAt}_${bundle.product.id}`;
-  const doc: SuiteDocument = { flowdeck: { savedAt, savedBy, productId: bundle.product.id }, ...bundle };
+  const id = `${savedAt}_${of.productId}`;
+  const doc: SuiteDocument = {
+    flowdeck: { savedAt, savedBy, productId: of.productId, productSlug: of.productSlug },
+    revision: of.revision,
+    suite: of.suite,
+  };
   const body = JSON.stringify(doc);
   await s.client.write(keyOf(id, s.prefix), body, { type: "application/json" });
   return {
     id,
-    productId: bundle.product.id,
-    productName: bundle.product.name,
+    productId: of.productId,
+    productName: of.suite.product.name,
     savedAt,
     savedBy,
     bytes: Buffer.byteLength(body),
-    tests: bundle.tests.length,
-    templates: bundle.templates.length,
+    tests: of.suite.tests.length,
+    templates: of.suite.templates.length,
   };
 }
 

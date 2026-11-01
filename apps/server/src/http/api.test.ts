@@ -72,15 +72,22 @@ describe("products", () => {
     expect(res.status).toBe(404);
   });
 
+  test("a product is found by its slug as well as its id; an unknown one is a 404", async () => {
+    const res = await req("/api/products/relay");
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { slug: string }).slug).toBe("relay");
+    expect((await req("/api/products/no-such-product")).status).toBe(404);
+  });
+
   test("a malformed id fails validation with the field named", async () => {
-    const res = await req("/api/products/not-a-uuid");
+    const res = await req("/api/products/not-a-uuid/tests");
     expect(res.status).toBe(400);
     const body = (await res.json()) as { details: unknown[] };
     expect(body.details.length).toBeGreaterThan(0);
   });
 });
 
-describe("tests — assertions, versioned (D4, D6)", () => {
+describe("tests — assertions, versioned", () => {
   test("the library excludes archived tests unless asked", async () => {
     const res = await req(`/api/products/${relayId}/tests`);
     expect(res.status).toBe(200);
@@ -89,7 +96,7 @@ describe("tests — assertions, versioned (D4, D6)", () => {
     expect(rows.every((r) => !r.archived)).toBe(true);
   });
 
-  test("creating requires an identity — every write is attributed (D24)", async () => {
+  test("creating requires an identity — every write is attributed", async () => {
     const res = await req(`/api/products/${relayId}/tests`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -117,7 +124,7 @@ describe("tests — assertions, versioned (D4, D6)", () => {
     expect(created.every((t) => t.current.version === 1)).toBe(true);
   });
 
-  test("an edit creates a new version and leaves the old one intact (D6)", async () => {
+  test("an edit creates a new version and leaves the old one intact", async () => {
     const created = await getJson<{ id: string; current: { id: string } }[]>(
       `/api/products/${relayId}/tests`,
       {
@@ -173,7 +180,7 @@ describe("tests — assertions, versioned (D4, D6)", () => {
     expect(res.status).toBe(400);
   });
 
-  test("archiving reports how many places marked it, for the confirmation (D24)", async () => {
+  test("archiving reports how many places marked it, for the confirmation", async () => {
     const rows = await getJson<{ id: string; current: { title: string } }[]>(
       `/api/products/${relayId}/tests`,
     );
@@ -195,7 +202,7 @@ describe("tests — assertions, versioned (D4, D6)", () => {
     expect(body.marks.steps).toBeGreaterThan(0);
     expect(body.marks.flows).toBeGreaterThan(0);
 
-    // Archiving is reversible; hard deletion is never offered (D7).
+    // Archiving is reversible; hard deletion is never offered.
     const undone = await req(`/api/tests/${marked.id}/archive?undo=true`, {
       method: "POST",
       headers: { cookie },
@@ -206,7 +213,7 @@ describe("tests — assertions, versioned (D4, D6)", () => {
   });
 });
 
-describe("coverage (D1, D2, D3)", () => {
+describe("coverage", () => {
   test("reports totals and flags the test nothing marks", async () => {
     const res = await req(`/api/products/${relayId}/coverage`);
     expect(res.status).toBe(200);
@@ -225,7 +232,7 @@ describe("coverage (D1, D2, D3)", () => {
     expect(body.tests.every((t) => !(t.covered && t.needsAttention))).toBe(true);
   });
 
-  test("a test marked only by an archived template still counts as covered (D3)", async () => {
+  test("a test marked only by an archived template still counts as covered", async () => {
     const coverage = await getJson<{
       tests: { testId: string; covered: boolean; templateIds: string[] }[];
     }>(`/api/products/${relayId}/coverage`);
@@ -258,7 +265,7 @@ describe("templates", () => {
       misses: string[];
     }>(`/api/templates/${regression.id}/scope`);
     // A template targeting one setup reaches a slice of the library, and that is
-    // not a deficiency — it is why several templates exist (D1).
+    // not a deficiency — it is why several templates exist.
     expect(scope.covers).toBeGreaterThan(0);
     expect(scope.covers).toBeLessThan(scope.productTotal);
     expect(scope.misses.length).toBe(scope.productTotal - scope.covers);
@@ -293,7 +300,7 @@ describe("templates", () => {
 });
 
 describe("constraints are enforced by the database, not only the API", () => {
-  test("a failing verdict without a note is rejected at the row level (D13)", async () => {
+  test("a failing verdict without a note is rejected at the row level", async () => {
     // Written directly, bypassing the API, because a migration script or a future
     // route must not be able to create a bug report with no description.
     // `db.execute` returns a lazy builder, so it is awaited inside a thunk rather
@@ -312,7 +319,7 @@ describe("constraints are enforced by the database, not only the API", () => {
     expect(attempt()).rejects.toThrow(/test_result_note_required/);
   });
 
-  test("blocking is only meaningful on a failure (D11)", async () => {
+  test("blocking is only meaningful on a failure", async () => {
     const attempt = async () =>
       db.execute(raw`
       insert into test_result

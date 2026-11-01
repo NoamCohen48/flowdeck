@@ -1,8 +1,7 @@
 /**
  * Database rows to API shapes.
  *
- * The two are deliberately not the same type. `.docs/08-api-and-integration.md`
- * makes the REST surface a product that adapters and importers code against, so
+ * The two are deliberately not the same type. The REST surface is a product that adapters and importers code against, so
  * it must not move because a column was renamed. Timestamps also differ in kind:
  * Drizzle hands back `Date`, and the contract says ISO 8601 string.
  */
@@ -40,6 +39,7 @@ export function testVersionDto(row: TestVersionRow) {
 export interface TestRow {
   id: string;
   productId: string;
+  key: string;
   archived: boolean;
   current: TestVersionRow;
 }
@@ -48,6 +48,7 @@ export function testDto(row: TestRow) {
   return {
     id: row.id,
     productId: row.productId,
+    key: row.key,
     archived: row.archived,
     current: testVersionDto(row.current),
   };
@@ -80,6 +81,7 @@ export function stepDto(row: StepRow) {
 export interface FlowRow {
   id: string;
   templateId: string;
+  key: string;
   name: string;
   precondition: string;
   estimatedMinutes: number | null;
@@ -92,6 +94,7 @@ export function flowDto(row: FlowRow) {
   return {
     id: row.id,
     templateId: row.templateId,
+    key: row.key,
     name: row.name,
     precondition: row.precondition,
     estimatedMinutes: row.estimatedMinutes,
@@ -104,6 +107,7 @@ export function flowDto(row: FlowRow) {
 export interface TemplateRow {
   id: string;
   productId: string;
+  key: string;
   name: string;
   description: string;
   status: "active" | "archived";
@@ -114,6 +118,7 @@ export function templateDto(row: TemplateRow) {
   return {
     id: row.id,
     productId: row.productId,
+    key: row.key,
     name: row.name,
     description: row.description,
     status: row.status,
