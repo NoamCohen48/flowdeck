@@ -82,7 +82,7 @@ export function StepProblemDialog({
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 dir="auto"
-                placeholder="There is no Appearance section any more — the theme switch moved to the profile menu…"
+                placeholder="What the step says, and what you found instead…"
               />
 
               <label className="f">Could you get past it?</label>
@@ -123,7 +123,7 @@ export function StepProblemDialog({
                     value={workaround}
                     onChange={(e) => setWorkaround(e.target.value)}
                     dir="auto"
-                    placeholder="Opened the profile menu and used the theme switch there…"
+                    placeholder="What you did instead, so the next person can do the same…"
                   />
                 </>
               ) : null}
