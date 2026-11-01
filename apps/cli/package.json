@@ -1,0 +1,16 @@
+{
+  "name": "@flowdeck/cli",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "flowdeck": "./src/main.ts"
+  },
+  "scripts": {
+    "build": "bun build src/main.ts --compile --outfile dist/flowdeck",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@flowdeck/domain": "workspace:*"
+  }
+}

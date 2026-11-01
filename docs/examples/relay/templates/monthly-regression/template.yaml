@@ -1,0 +1,3 @@
+name: Monthly regression — fresh install
+description: Two phones, clean install, the QA accounts.
+flows: [messaging-across-two-devices]

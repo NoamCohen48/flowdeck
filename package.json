@@ -12,7 +12,7 @@
   "scripts": {
     "test": "bun test",
     "test:setup": "bun apps/server/src/db/test-setup.ts",
-    "typecheck": "bun run --cwd packages/domain typecheck && bun run --cwd apps/server typecheck && bun run --cwd packages/api-client typecheck && bun run --cwd apps/web typecheck",
+    "typecheck": "bun run --cwd packages/domain typecheck && bun run --cwd apps/server typecheck && bun run --cwd packages/api-client typecheck && bun run --cwd apps/web typecheck && bun run --cwd apps/cli typecheck",
     "db:up": "docker compose up -d postgres electric",
     "db:down": "docker compose down",
     "db:migrate": "bun run --cwd apps/server db:migrate",
@@ -20,7 +20,8 @@
     "dev": "bun run --cwd apps/server dev",
     "dev:web": "bun run --cwd apps/web dev",
     "api:generate": "bun run --cwd packages/api-client generate",
-    "docs:api": "bun run api:generate && cp packages/api-client/openapi.json docs/openapi.json"
+    "docs:api": "bun run api:generate && cp packages/api-client/openapi.json docs/openapi.json",
+    "cli": "bun apps/cli/src/main.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

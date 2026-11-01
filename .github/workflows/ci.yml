@@ -34,6 +34,9 @@ jobs:
       - name: Build the web app
         run: bun run --cwd apps/web build
 
+      - name: Build the CLI
+        run: bun run --cwd apps/cli build && apps/cli/dist/flowdeck guide steps > /dev/null
+
       # The same compose file that runs in development and production, rather
       # than GitHub service containers: those start in parallel with no ordering
       # and no way to pass wal_level=logical, so Electric would come up against a

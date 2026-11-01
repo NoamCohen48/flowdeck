@@ -1,11 +1,13 @@
 # The Flowdeck API
 
-Flowdeck exposes one REST API. The web app uses it; so does an import script, an issue-tracker
-adapter, or `curl`. There is no second, private surface — anything the UI can do, a script can do.
+Flowdeck exposes one REST API. The web app uses it; so does the [`flowdeck` CLI](cli.md), an
+agent, an issue-tracker adapter, or `curl`. There is no second, private surface — anything the UI can do, a script can do.
 
 - Base path: `/api` on the Flowdeck origin (e.g. `https://flowdeck.example.com/api`).
 - Bodies and responses are JSON, except attachments (`multipart/form-data` up, the image down).
-- IDs are UUIDs, timestamps are ISO 8601.
+- IDs are UUIDs, timestamps are ISO 8601. Products, tests, templates and flows also have a
+  readable **key** (`sign-in-rejects-a-wrong-password`), unique in its scope and never changed
+  by a rename; a product's is its **slug** (`relay`), accepted wherever `{product}` appears.
 - The full machine-readable contract is [`openapi.json`](openapi.json); the one-line-per-endpoint
   version is [`reference.md`](reference.md).
 
@@ -14,10 +16,10 @@ adapter, or `curl`. There is no second, private surface — anything the UI can 
 1. `GET /api` — a one-request orientation: identity, the contract, the routes below.
 2. Put `X-Flowdeck-Actor: <your name>` on every request. That is the whole of authentication.
 3. `GET /api/products` → pick or `POST` one.
-4. `GET /api/products/{id}/export` — the entire suite as one JSON document: tests, templates,
-   flows, steps, marks. Edit it. `POST /api/products/import` the same shape back as a new
-   product (import creates rather than merges), or `POST /api/products/{id}/import` its
-   `tests` and `templates` into an existing one.
+4. `GET /api/products/{product}/suite` — the entire suite as one document, by key, plus its
+   `revision`. Edit it. `POST …/suite/plan` says what pushing it would change;
+   `PUT …/suite { baseRevision, suite }` applies it in one transaction. Or let the
+   [`flowdeck` CLI](cli.md) do this from a folder of files.
 5. `GET /api/products/{id}/coverage` — is every test reachable?
 6. `POST /api/templates/{id}/runs` → claim, record, `GET /api/runs/{id}/issues`.
 
@@ -46,8 +48,7 @@ Run  (a testing day: a frozen snapshot of a template)
   verified". The same test may be marked by many steps in many flows.
 - A **run** instantiates a template. Testers claim flows and record a verdict per marked test.
 
-That is why the import is shaped the way it is: tests first (or keyed), then templates whose
-steps point at them.
+That is why a suite document has tests beside templates, and steps point at tests by key.
 
 ## Identity
 
@@ -74,90 +75,87 @@ curl -s https://flowdeck.example.com/api/me -H 'X-Flowdeck-Actor: migration-scri
 `PUT /api/me` additionally adds the name to the picker the web app shows. A header-only script
 never appears there, which is usually what you want.
 
-## Importing a suite
+## The suite document
 
-There are two ways to load tests, templates, flows and steps. Both create everything in one
-transaction; both are **not idempotent** — running the same import twice creates everything
-twice. During a migration the practical answer is to wipe the product and re-import while the
-parser is still being debugged.
+A product's whole suite — tests, templates, flows, steps and what each step verifies — as one
+JSON document addressed by keys. It is how agents, the CLI and scripts author: read it, edit it,
+see what a change would do, push it.
 
-### One request: the bundle
-
-`POST /api/products/{productId}/import`
-
-Give every test a `key` of your choosing (the spreadsheet row, the Jira issue, anything unique
-within the bundle) and have steps mark tests by that key. Flowdeck resolves the keys server-side
-and returns the mapping.
+```
+GET  /api/products/{product}/suite         → { revision, suite }     (?download=true for a file)
+POST /api/products/{product}/suite/plan    suite → { revision, changes, summary, problems }
+PUT  /api/products/{product}/suite         { baseRevision, suite, force? } → what changed, the new revision
+```
 
 ```json
 {
+  "product": { "name": "Relay", "description": "Team messaging across phones and the web." },
   "tests": [
-    { "key": "T-10", "title": "Sending a message shows it optimistically",
-      "expectedResult": "Appears immediately with a pending clock icon",
-      "metadata": { "priority": "high", "tags": ["messaging"] } },
-    { "key": "T-11", "title": "Emoji reaction syncs across devices",
-      "expectedResult": "The reaction and its count are identical on both devices." }
+    { "key": "sending-a-message-shows-it-optimistically",
+      "title": "Sending a message shows it optimistically",
+      "expect": "The message appears at once with a pending clock, then a single check within 2 seconds.",
+      "tags": ["messaging"], "metadata": { "priority": "high" } }
   ],
   "templates": [
-    {
-      "name": "Monthly regression — fresh install",
-      "description": "Two phones, clean install, QA account.",
+    { "key": "monthly-regression", "name": "Monthly regression — fresh install",
       "flows": [
-        {
-          "name": "Messaging across two devices",
-          "precondition": "Relay installed on both phones, signed in as qa-1 and qa-2.",
-          "estimatedMinutes": 25,
+        { "key": "messaging-across-two-devices", "name": "Messaging across two devices",
+          "precondition": "Signed in as qa-1 on the Pixel.", "estimateMinutes": 15,
           "steps": [
-            { "kind": "action",    "text": "On Device A, open the chat with qa-2.", "deviceLabel": "Device A" },
-            { "kind": "action",    "text": "Send the message 'hello'.", "deviceLabel": "Device A" },
-            { "kind": "assertion", "text": "The message appears in the thread.",
-              "expectedResult": "Immediately, with a pending clock icon.", "deviceLabel": "Device A",
-              "marks": ["T-10"] },
-            { "kind": "action",    "text": "Pick up Device B and open the same chat.", "deviceLabel": "Device B" },
-            { "kind": "action",    "text": "React to 'hello' with 👍.", "deviceLabel": "Device B" },
-            { "kind": "assertion", "text": "Compare the reaction on both screens.",
-              "expectedResult": "Same emoji, same count, on both.", "deviceLabel": "Device A",
-              "marks": ["T-11"] }
-          ]
-        }
-      ]
-    }
+            { "kind": "action", "text": "Send the message \"hello\".", "device": "Pixel 8" },
+            { "kind": "check", "text": "Watch the message as it sends.", "device": "Pixel 8",
+              "expect": "It appears at once with a pending clock, then a single check.",
+              "verifies": ["sending-a-message-shows-it-optimistically"] }
+          ] }
+      ] }
   ]
 }
 ```
 
-Response, `201`:
+A complete one is [`examples/suite.json`](examples/suite.json); [`examples/push.sh`](examples/push.sh)
+plans and pushes it with `curl`.
 
-```json
-{
-  "keys": { "T-10": "5c0e…", "T-11": "9a41…" },
-  "tests": [ { "id": "5c0e…", "productId": "…", "archived": false, "current": { … } }, … ],
-  "templates": [ { "id": "…", "name": "Monthly regression — fresh install", "flows": [ … ] } ]
-}
-```
+**A push replaces the suite**, matching by key:
 
-Rules:
+- a key the product does not have is created;
+- an edited test gets a **new version** — the old one, and every result recorded against it,
+  keep their wording;
+- anything the document **leaves out is archived, never deleted**: history keeps pointing at
+  it, and pushing it back restores it. `archived: true` says the same thing explicitly;
+- steps have no keys. They are matched by content, so a step that survives an edit keeps its
+  id, and a reworded step is an edit rather than a delete and an insert;
+- pushing what you pulled changes nothing and keeps the revision. Push is idempotent.
 
-- A mark is either a `key` declared in the same bundle or the `id` of a test that already exists
-  in the product. Anything else is a `400` whose `details` name the offending mark by path
-  (`templates[0].flows[0].steps[5].marks[0]`), and nothing is created.
-- Keys must be unique within the bundle. Up to 1000 tests and 200 templates per request.
-- Either half may be empty — a bundle of only tests, or only templates marking existing ids,
-  is fine. An empty bundle is a `400`.
-- `deviceLabel` is free text. The first step to use a label is where the tester is told to pick
-  that device up; there is no device registry to create first.
-- `expectedResult` is shown for `assertion` steps and may be `null` for `action` steps.
-- `postState` is optional on either kind: where the tester should be once the step is done
-  ("back on the channel list, the new message at the bottom"). It is what a tester improvises
-  toward when the step itself has gone stale.
+**Plan first.** `POST …/suite/plan` returns each change as data (`changes`) and as a line
+(`summary`: `+` created or restored, `~` edited, `-` archived), plus the warnings. It writes
+nothing.
 
-A complete example lives in [`examples/import-bundle.json`](examples/import-bundle.json), with
-[`examples/import.sh`](examples/import.sh) to send it.
+**Revisions.** `GET` returns a `revision` (a hash of the suite). `PUT` names it as
+`baseRevision`; if the suite has changed since — someone pushed, or edited in the app — the
+push is a `409` carrying the current `revision`, and nothing is written. Re-read, re-apply your
+change, push again; or send `"force": true` to overwrite. A plan's `revision` is the one it was
+made against, so `PUT { baseRevision: plan.revision }` applies exactly what was previewed.
 
-### Two requests: tests, then templates
+**Rules.** The document is checked before anything is written. Errors are a `400` with each
+problem in `details` by path (`["templates", 0, "flows", 2, "steps", 5, "verifies", 0]`):
+an invalid or duplicate key, an empty title or `expect`, a step verifying a test that does not
+exist. Warnings come back in `problems` and never block: a step that names a second device or
+does two things ("Open the chat and send hi"), a check without an `expect`, a test no flow
+verifies. [`cli.md`](cli.md) lists them.
 
-The original contract, for a script that wants to hold the mapping itself or that produces
-tests and templates at different times.
+Fields:
+
+- `kind` is `action` (something to do) or `check` (something to look at; shows `expect`).
+- `device` is free text, one per step. The first step that names a device is where the tester
+  is told to pick it up; there is no device registry to create first.
+- `after` is optional on either kind: where the step leaves the tester, so they can recover
+  when the step itself has gone stale.
+- `tags` lift out of the test's `metadata`; anything else in `metadata` is kept as given.
+
+### Creating rows one at a time
+
+The granular routes the web app's editor uses are there for scripts too — useful when a
+script produces tests and templates at different times, or adds one thing to a large suite.
 
 ```
 POST /api/products/{productId}/tests       { "tests": [ {title, expectedResult, metadata?}, … ] }
@@ -182,40 +180,29 @@ curl -s -X POST $FLOWDECK/api/products \
 ```
 
 `GET /api/products` lists what is there; `PATCH /api/products/{id}` renames or describes one.
-While an import script is still being debugged, `DELETE /api/products/{id}?confirm=true` wipes
+`POST /api/products` takes an optional `slug`; without one it is made from the name.
+While a script is still being debugged, `DELETE /api/products/{product}?confirm=true` wipes
 the product and everything in it so the next attempt starts clean. Without `confirm=true` it
 answers `409` and does nothing.
-
-### Getting a suite back out
-
-`GET /api/products/{productId}/export` returns the same shape the bundle import takes — every
-test (archived ones flagged `archived: true`), every template with its flows, steps and marks —
-plus the product's own name and description. Test ids serve as the `key`s. It is the way to read
-a whole suite in one call, diff two products, move a suite between instances, or edit a suite
-as a document and import it into a fresh product. Runs are not part of a suite; read them from
-`GET /api/runs/{runId}`.
-
-`POST /api/products/import` takes that same document — `product`, `tests`, `templates` — and
-creates a new product from it. Override `product.name` in the body to keep the copy apart from
-the original.
 
 ### Snapshots in the backup bucket
 
 When `BACKUP_REPOSITORY` is set (the same bucket the backup service uses — see
-[`backup.md`](backup.md)), a product's export can be kept there as a plain JSON object and
-brought back later, here or on another instance:
+[`backup.md`](backup.md)), a product's suite document can be kept there as a plain JSON object
+and brought back later, here or on another instance:
 
 ```
 POST /api/products/{productId}/suites          save a snapshot → { id, savedAt, savedBy, tests, templates, … }
 GET  /api/suites?productId=…                   list, newest first
-GET  /api/suites/{suiteId}                     the bundle as saved
-POST /api/suites/{suiteId}/import              { "into": "new", "name"? }  or  { "into": "<productId>" }
+GET  /api/suites/{suiteId}                     { revision, suite } as saved
+POST /api/suites/{suiteId}/restore             { "into": "new", "name"? }  or  { "into": "<product>" }
 DELETE /api/suites/{suiteId}
 ```
 
 `GET /api/suites/status` says whether a bucket is configured; without one the other routes
-answer `503`. Nothing here needs restic or the backup password — snapshots sit beside the
-encrypted repository as ordinary objects.
+answer `503`. Restoring over an existing product is a forced push: its suite becomes the
+snapshot's, and whatever the snapshot does not have is archived. Nothing here needs restic or
+the backup password — snapshots sit beside the encrypted repository as ordinary objects.
 
 ### Checking the result
 
@@ -227,7 +214,7 @@ finish when nothing is.
 misses — a report, not a warning, since a template targeting one setup can only reach the tests
 performable in that setup.
 
-## Editing after import
+## Editing one thing at a time
 
 Everything the editor does is a route, so a script can keep a suite in sync rather than only
 seeding it.
@@ -294,7 +281,9 @@ the step marks can still be recorded.
 
 `GET /api/runs/{runId}/issues` is the export. Every non-pass result from the run, each
 self-contained — test wording at the version it was run against, flow, step, device, note,
-attachments, who and when — so it can become a ticket without a second lookup.
+attachments, who and when — so it can become a ticket without a second lookup. The test's
+`key` and the flow's `flowKey` (with the run's `templateKey`) name the files in a pulled suite;
+`flowdeck report` prints exactly that.
 
 ```json
 {
@@ -302,8 +291,8 @@ attachments, who and when — so it can become a ticket without a second lookup.
   "issues": [
     {
       "type": "failure",
-      "test": { "id": "…", "versionId": "…", "version": 3, "title": "…", "expected": "…" },
-      "context": { "flowId": "…", "flow": "Messaging across two devices", "stepId": "…",
+      "test": { "id": "…", "key": "emoji-reaction-syncs-across-devices", "versionId": "…", "version": 3, "title": "…", "expected": "…" },
+      "context": { "flowId": "…", "flowKey": "messaging-across-two-devices", "flow": "Messaging across two devices", "stepId": "…",
                    "stepNumber": 6, "stepText": "Compare the reaction on both screens.", "device": "Device A" },
       "note": "Count showed 2 on one phone and 1 on the other.",
       "attachments": ["/api/attachments/…"],
@@ -339,7 +328,7 @@ run it appeared in. `GET /api/products/{productId}/runs` lists a product's runs,
 | `400` | The request did not validate. `details` is a list of `{ path, message }` naming each field, so a script fixes its parser rather than guessing. |
 | `401` | No identity on a write. Send `X-Flowdeck-Actor`. |
 | `404` | No such product / test / template / run. |
-| `409` | A confirmation is needed, or the action is not allowed right now: a run is already open for this template (`?force=true`), someone else holds this flow (`?confirm=true`), deleting a product (`?confirm=true`), deleting a template that has run (archive it instead), or the step is blocked by an earlier blocking failure. |
+| `409` | A suite push whose `baseRevision` is stale (the body carries the current `revision`), a key or slug that is taken, a confirmation is needed, or the action is not allowed right now: a run is already open for this template (`?force=true`), someone else holds this flow (`?confirm=true`), deleting a product (`?confirm=true`), deleting a template that has run (archive it instead), or the step is blocked by an earlier blocking failure. |
 | `507` | The attachment disk budget is exhausted. |
 | `500` | A bug. The body is `{"error":"internal error"}`; the server log has the rest. |
 

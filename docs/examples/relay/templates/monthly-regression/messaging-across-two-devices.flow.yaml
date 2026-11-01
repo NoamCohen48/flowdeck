@@ -1,0 +1,25 @@
+name: Messaging across two devices
+precondition: Relay installed on both phones, signed in as qa-1 (Pixel 8) and qa-2 (iPhone 13).
+estimateMinutes: 15
+steps:
+  - do: Open the chat with qa-2.
+    device: Pixel 8
+  - do: Send the message "hello".
+    device: Pixel 8
+  - check: Watch the message as it sends.
+    device: Pixel 8
+    expect: It appears at once with a pending clock, then a single check.
+    verifies: [sending-a-message-shows-it-optimistically]
+  - do: Open the chat with qa-1.
+    device: iPhone 13
+    after: "\"hello\" is the last message"
+  - do: React to "hello" with 👍.
+    device: iPhone 13
+  - check: Look at "hello".
+    device: Pixel 8
+    expect: 👍 with a count of 1.
+    verifies: [emoji-reaction-syncs-across-devices]
+  - check: Look at "hello".
+    device: iPhone 13
+    expect: 👍 with a count of 1.
+    verifies: [emoji-reaction-syncs-across-devices]
