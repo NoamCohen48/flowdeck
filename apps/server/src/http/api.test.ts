@@ -316,7 +316,9 @@ describe("constraints are enforced by the database, not only the API", () => {
       join test t on t.id = sm.test_id
       limit 1
     `);
-    expect(attempt()).rejects.toThrow(/test_result_note_required/);
+    // Drizzle wraps the driver's error; the constraint is named in its cause.
+    const failure = await attempt().then(() => null, (e: Error) => (e.cause as Error | undefined)?.message ?? e.message);
+    expect(failure).toMatch(/test_result_note_required/);
   });
 
   test("blocking is only meaningful on a failure", async () => {
@@ -331,7 +333,9 @@ describe("constraints are enforced by the database, not only the API", () => {
       join test t on t.id = sm.test_id
       limit 1
     `);
-    expect(attempt()).rejects.toThrow(/test_result_blocking_only_on_fail/);
+    // Drizzle wraps the driver's error; the constraint is named in its cause.
+    const failure = await attempt().then(() => null, (e: Error) => (e.cause as Error | undefined)?.message ?? e.message);
+    expect(failure).toMatch(/test_result_blocking_only_on_fail/);
   });
 });
 

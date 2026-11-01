@@ -89,6 +89,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
+                    /** @description The product's id or its slug */
                     product: string;
                 };
                 cookie?: never;
@@ -128,6 +129,7 @@ export interface paths {
                 };
                 header?: never;
                 path: {
+                    /** @description The product's id or its slug */
                     product: string;
                 };
                 cookie?: never;
@@ -178,6 +180,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
+                    /** @description The product's id or its slug */
                     product: string;
                 };
                 cookie?: never;
@@ -2829,10 +2832,12 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
+                    /** @description Adds a Content-Disposition so a browser saves it as a file */
                     download?: "true" | "false";
                 };
                 header?: never;
                 path: {
+                    /** @description The product's id or its slug */
                     product: string;
                 };
                 cookie?: never;
@@ -2868,6 +2873,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
+                    /** @description The product's id or its slug */
                     product: string;
                 };
                 cookie?: never;
@@ -2952,6 +2958,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
+                    /** @description The product's id or its slug */
                     product: string;
                 };
                 cookie?: never;
@@ -3361,6 +3368,16 @@ export interface components {
             slug?: string;
             description?: string;
         };
+        Test: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            /** @example sign-in-rejects-a-wrong-password */
+            key: string;
+            archived: boolean;
+            current: components["schemas"]["TestVersion"];
+        };
         TestVersion: {
             /** Format: uuid */
             id: string;
@@ -3376,15 +3393,13 @@ export interface components {
             createdAt: string;
             createdBy: string;
         };
-        Test: {
-            /** Format: uuid */
-            id: string;
+        CoverageReport: {
             /** Format: uuid */
             productId: string;
-            /** @example sign-in-rejects-a-wrong-password */
-            key: string;
-            archived: boolean;
-            current: components["schemas"]["TestVersion"];
+            total: number;
+            covered: number;
+            uncovered: number;
+            tests: components["schemas"]["TestCoverage"][];
         };
         TestCoverage: {
             /** Format: uuid */
@@ -3393,13 +3408,8 @@ export interface components {
             needsAttention: boolean;
             templateIds: string[];
         };
-        CoverageReport: {
-            /** Format: uuid */
-            productId: string;
-            total: number;
-            covered: number;
-            uncovered: number;
-            tests: components["schemas"]["TestCoverage"][];
+        CreateTests: {
+            tests: components["schemas"]["CreateTest"][];
         };
         CreateTest: {
             /** @example sign-in-rejects-a-wrong-password */
@@ -3412,9 +3422,6 @@ export interface components {
             };
             /** @default false */
             archived: boolean;
-        };
-        CreateTests: {
-            tests: components["schemas"]["CreateTest"][];
         };
         UpdateTest: {
             title?: string;
@@ -3437,17 +3444,18 @@ export interface components {
             flowCount: number;
             marksTestCount: number;
         };
-        Step: {
+        Template: {
             /** Format: uuid */
             id: string;
-            position: number;
+            /** Format: uuid */
+            productId: string;
+            /** @example sign-in-rejects-a-wrong-password */
+            key: string;
+            name: string;
+            description: string;
             /** @enum {string} */
-            kind: "action" | "assertion";
-            text: string;
-            expectedResult: string | null;
-            postState: string | null;
-            deviceLabel: string;
-            marks: string[];
+            status: "active" | "archived";
+            flows: components["schemas"]["Flow"][];
         };
         Flow: {
             /** Format: uuid */
@@ -3463,43 +3471,20 @@ export interface components {
             archived: boolean;
             steps: components["schemas"]["Step"][];
         };
-        Template: {
+        Step: {
             /** Format: uuid */
             id: string;
-            /** Format: uuid */
-            productId: string;
-            /** @example sign-in-rejects-a-wrong-password */
-            key: string;
-            name: string;
-            description: string;
-            /** @enum {string} */
-            status: "active" | "archived";
-            flows: components["schemas"]["Flow"][];
-        };
-        CreateStep: {
+            position: number;
             /** @enum {string} */
             kind: "action" | "assertion";
             text: string;
-            /** @default null */
             expectedResult: string | null;
-            /** @default null */
             postState: string | null;
             deviceLabel: string;
-            /** @default [] */
             marks: string[];
         };
-        CreateFlow: {
-            name: string;
-            /** @example sign-in-rejects-a-wrong-password */
-            key?: string;
-            /** @default  */
-            precondition: string;
-            /** @default null */
-            estimatedMinutes: number | null;
-            /** @default false */
-            archived: boolean;
-            /** @default [] */
-            steps: components["schemas"]["CreateStep"][];
+        CreateTemplates: {
+            templates: components["schemas"]["CreateTemplate"][];
         };
         CreateTemplate: {
             name: string;
@@ -3515,8 +3500,30 @@ export interface components {
             /** @default [] */
             flows: components["schemas"]["CreateFlow"][];
         };
-        CreateTemplates: {
-            templates: components["schemas"]["CreateTemplate"][];
+        CreateFlow: {
+            name: string;
+            /** @example sign-in-rejects-a-wrong-password */
+            key?: string;
+            /** @default  */
+            precondition: string;
+            /** @default null */
+            estimatedMinutes: number | null;
+            /** @default false */
+            archived: boolean;
+            /** @default [] */
+            steps: components["schemas"]["CreateStep"][];
+        };
+        CreateStep: {
+            /** @enum {string} */
+            kind: "action" | "assertion";
+            text: string;
+            /** @default null */
+            expectedResult: string | null;
+            /** @default null */
+            postState: string | null;
+            deviceLabel: string;
+            /** @default [] */
+            marks: string[];
         };
         Me: {
             name: string | null;
@@ -3541,6 +3548,19 @@ export interface components {
                 skipped: number;
             };
             notReached: number;
+        };
+        Run: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            templateId: string;
+            date: string;
+            startedBy: string;
+            closedAt: string | null;
+            snapshot: components["schemas"]["TemplateSnapshot"];
+            flowRuns: components["schemas"]["FlowRun"][];
+            results: components["schemas"]["TestResult"][];
+            stepProblems: components["schemas"]["StepProblem"][];
         };
         TemplateSnapshot: {
             /** Format: uuid */
@@ -3633,19 +3653,6 @@ export interface components {
             blocking: boolean;
             recordedBy: string;
             recordedAt: string;
-        };
-        Run: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            templateId: string;
-            date: string;
-            startedBy: string;
-            closedAt: string | null;
-            snapshot: components["schemas"]["TemplateSnapshot"];
-            flowRuns: components["schemas"]["FlowRun"][];
-            results: components["schemas"]["TestResult"][];
-            stepProblems: components["schemas"]["StepProblem"][];
         };
         ClaimResponse: {
             flowRun: components["schemas"]["FlowRun"];
@@ -3740,6 +3747,25 @@ export interface components {
             /** @enum {string} */
             templateStatus: "active" | "archived";
         };
+        IssueFeed: {
+            run: {
+                /** Format: uuid */
+                id: string;
+                /** Format: date-time */
+                date: string;
+                /** Format: date-time */
+                closedAt: string | null;
+                product: string;
+                /** Format: uuid */
+                productId: string;
+                template: string;
+                /** Format: uuid */
+                templateId: string;
+                templateKey: string | null;
+            };
+            issues: components["schemas"]["Issue"][];
+            stepProblems: components["schemas"]["StepProblemIssue"][];
+        };
         Issue: {
             /** @enum {string} */
             type: "failure" | "minor" | "invalid_test" | "pass";
@@ -3790,25 +3816,6 @@ export interface components {
             /** Format: date-time */
             recordedAt: string;
         };
-        IssueFeed: {
-            run: {
-                /** Format: uuid */
-                id: string;
-                /** Format: date-time */
-                date: string;
-                /** Format: date-time */
-                closedAt: string | null;
-                product: string;
-                /** Format: uuid */
-                productId: string;
-                template: string;
-                /** Format: uuid */
-                templateId: string;
-                templateKey: string | null;
-            };
-            issues: components["schemas"]["Issue"][];
-            stepProblems: components["schemas"]["StepProblemIssue"][];
-        };
         TestHistoryEntry: {
             /** Format: uuid */
             runId: string;
@@ -3827,6 +3834,18 @@ export interface components {
             /** Format: date-time */
             recordedAt: string;
         };
+        SuiteDocument: {
+            revision: string;
+            suite: components["schemas"]["Suite"];
+        };
+        Suite: {
+            product: {
+                name: string;
+                description?: string;
+            };
+            tests: components["schemas"]["SuiteTest"][];
+            templates: components["schemas"]["SuiteTemplate"][];
+        };
         SuiteTest: {
             /** @example sign-in-rejects-a-wrong-password */
             key: string;
@@ -3838,14 +3857,13 @@ export interface components {
             };
             archived?: boolean;
         };
-        SuiteStep: {
-            /** @enum {string} */
-            kind: "action" | "check";
-            text: string;
-            device: string;
-            expect?: string | null;
-            after?: string | null;
-            verifies?: string[];
+        SuiteTemplate: {
+            /** @example sign-in-rejects-a-wrong-password */
+            key: string;
+            name: string;
+            description?: string;
+            archived?: boolean;
+            flows: components["schemas"]["SuiteFlow"][];
         };
         SuiteFlow: {
             /** @example sign-in-rejects-a-wrong-password */
@@ -3856,25 +3874,20 @@ export interface components {
             archived?: boolean;
             steps: components["schemas"]["SuiteStep"][];
         };
-        SuiteTemplate: {
-            /** @example sign-in-rejects-a-wrong-password */
-            key: string;
-            name: string;
-            description?: string;
-            archived?: boolean;
-            flows: components["schemas"]["SuiteFlow"][];
+        SuiteStep: {
+            /** @enum {string} */
+            kind: "action" | "check";
+            text: string;
+            device: string;
+            expect?: string | null;
+            after?: string | null;
+            verifies?: string[];
         };
-        Suite: {
-            product: {
-                name: string;
-                description?: string;
-            };
-            tests: components["schemas"]["SuiteTest"][];
-            templates: components["schemas"]["SuiteTemplate"][];
-        };
-        SuiteDocument: {
+        SuitePlan: {
             revision: string;
-            suite: components["schemas"]["Suite"];
+            changes: components["schemas"]["SuiteChange"][];
+            summary: string[];
+            problems: components["schemas"]["SuiteProblem"][];
         };
         SuiteChange: {
             /** @enum {string} */
@@ -3895,12 +3908,6 @@ export interface components {
             level: "error" | "warning";
             path: (string | number)[];
             message: string;
-        };
-        SuitePlan: {
-            revision: string;
-            changes: components["schemas"]["SuiteChange"][];
-            summary: string[];
-            problems: components["schemas"]["SuiteProblem"][];
         };
         PushResult: components["schemas"]["SuitePlan"] & {
             previousRevision: string;

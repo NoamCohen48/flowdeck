@@ -25,7 +25,7 @@ export const Txid = z.number().int();
  * reference screenshot all land here, and adding one is a configuration change
  * rather than a migration. Typing it narrowly would defeat the point.
  */
-export const MetadataSchema = z.record(z.any());
+export const MetadataSchema = z.record(z.string(), z.any());
 
 export const VerdictSchema = z.enum(["pass", "fail", "minor", "skipped"]);
 export const StepKindSchema = z.enum(["action", "assertion"]);
@@ -779,6 +779,6 @@ export const MeSchema = z
 
 export const PresenceSchema = z
   .object({
-    scope: z.string().regex(/^(run|flow|template):[0-9a-f-]{36}$/i),
+    scope: z.string().regex(/^(run|flow|template):[0-9a-fA-F-]{36}$/),
   })
   .openapi("Presence");

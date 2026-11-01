@@ -23,6 +23,7 @@ import {
   usagesOf,
 } from "../../db/authoring.ts";
 import { getFlowWithSteps, getTemplateWithFlows, getTest, markCountFor } from "../../db/queries.ts";
+import { pgErrorCode } from "../../db/client.ts";
 import {
   CreateFlowSchema,
   ErrorSchema,
@@ -418,5 +419,5 @@ authoring.openapi(
 );
 
 function isForeignKeyViolation(e: unknown) {
-  return typeof e === "object" && e !== null && (e as { code?: string }).code === "23503";
+  return pgErrorCode(e) === "23503";
 }

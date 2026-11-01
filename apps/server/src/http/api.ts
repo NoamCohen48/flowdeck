@@ -10,6 +10,7 @@
 import { ZodError } from "zod";
 import { ActorRequiredError } from "./actor.ts";
 import { BadKeyError, KeyTakenError } from "../db/keys.ts";
+import { pgErrorCode } from "../db/client.ts";
 import { createRouter } from "./router.ts";
 import { products } from "./routes/products.ts";
 import { tests } from "./routes/tests.ts";
@@ -43,7 +44,7 @@ api.onError((error, c) => {
     return c.json({ error: error.message }, 400);
   }
   // A unique key or slug: asked for explicitly, or set by a PATCH.
-  if (error instanceof KeyTakenError || (error as { code?: string }).code === "23505") {
+  if (error instanceof KeyTakenError || pgErrorCode(error) === "23505") {
     return c.json({ error: error instanceof KeyTakenError ? error.message : "that key or slug is already taken" }, 409);
   }
   if (error instanceof ZodError) {
