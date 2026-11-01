@@ -1,0 +1,167 @@
+# A release is a tag, v<version>, matching the version in package.json
+# (scripts/release.sh makes both). From it:
+#   - ghcr.io/<owner>/flowdeck and flowdeck-backup, multi-arch, as :<version>, :<major>.<minor> and :latest
+#   - the flowdeck CLI for Linux, macOS and Windows
+#   - a deploy bundle (compose, Caddyfile, .env.example, README, start.sh; pinned to this
+#     version), and offline ones with every image and the CLI inside, for a closed network
+#   - a GitHub release holding all of it, with checksums
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        name: The tag names the version in package.json
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          inside="$(jq -r .version package.json)"
+          if [ "$version" != "$inside" ]; then
+            echo "::error::tag $GITHUB_REF_NAME but package.json says $inside — tag with scripts/release.sh"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in *-*) echo "prerelease=true" ;; *) echo "prerelease=false" ;; esac >> "$GITHUB_OUTPUT"
+
+  images:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - { name: flowdeck, context: . }
+          - { name: flowdeck-backup, context: backup }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.name }}" >> "$GITHUB_ENV"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # A prerelease (v1.2.0-rc.1) gets only its own tag, never :latest or :1.2.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          flavor: latest=${{ needs.version.outputs.prerelease == 'false' }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ needs.version.outputs.version }}
+            REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.name }}-release
+          cache-to: type=gha,scope=${{ matrix.name }}-release,mode=max
+
+  cli:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun test apps/cli
+      # Bun cross-compiles: every target from this one runner.
+      - name: Compile
+        working-directory: apps/cli
+        run: |
+          mkdir -p release
+          for target in linux-x64 linux-arm64 darwin-x64 darwin-arm64 windows-x64; do
+            ext=$([ "${target%%-*}" = windows ] && echo .exe || true)
+            bun build src/main.ts --compile --minify --target="bun-$target" \
+              --outfile "release/flowdeck-$target$ext"
+          done
+          ./release/flowdeck-linux-x64 --version | grep -qx "flowdeck ${{ needs.version.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli
+          path: apps/cli/release/*
+
+  bundles:
+    needs: [version, images, cli]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # The offline bundles carry the CLI too: a closed network cannot fetch it from here.
+      - uses: actions/download-artifact@v4
+        with:
+          name: cli
+          path: apps/cli/release
+      - run: chmod +x apps/cli/release/*
+      - name: Deploy bundle, and offline bundles with the images inside
+        run: |
+          scripts/bundle.sh "${{ needs.version.outputs.version }}"
+          # The same bundle under a fixed name, so releases/latest/download/flowdeck.tar.gz always works.
+          cp "dist/flowdeck-${{ needs.version.outputs.version }}.tar.gz" dist/flowdeck.tar.gz
+          scripts/bundle.sh --offline "${{ needs.version.outputs.version }}"
+          PLATFORM=linux/arm64 scripts/bundle.sh --offline "${{ needs.version.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundles
+          path: dist/*.tar.gz
+
+  release:
+    needs: [version, images, cli, bundles]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Checksums
+        working-directory: out
+        run: sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/flowdeck"
+          cat > notes.md <<EOF
+          ## Install
+
+          \`\`\`sh
+          curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/flowdeck-$VERSION.tar.gz | tar -xz
+          cd flowdeck && ./start.sh
+          \`\`\`
+
+          No internet on the server? \`flowdeck-$VERSION-offline-amd64.tar.gz\` (or \`-arm64\`) has every
+          image and the CLI inside: unpack it and run \`./start.sh\`. Images: \`$image:$VERSION\`, \`$image-backup:$VERSION\`.
+
+          The CLI is a single file: download the one for your system, \`chmod +x\`, and put it on your PATH.
+          EOF
+          flags=$([ "${{ needs.version.outputs.prerelease }}" = true ] && echo --prerelease || true)
+          gh release create "v$VERSION" out/* --repo "$GITHUB_REPOSITORY" \
+            --title "Flowdeck $VERSION" --notes-file notes.md --generate-notes $flags

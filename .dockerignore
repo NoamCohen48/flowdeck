@@ -1,7 +1,22 @@
-node_modules
+# Only what the image build reads. Everything else stays out of the context.
 **/node_modules
-apps/web/dist
+**/dist
 data
-.playwright-mcp
+apps/server/data
 .git
+.github
+.docs
+.playwright-mcp
+.claude
+.agents
+.env
+.env.*
+docs
+backup
+apps/web/e2e
+apps/web/test-results
+**/*.test.ts
 *.png
+*.tar
+*.tar.gz
+site

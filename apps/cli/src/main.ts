@@ -3,6 +3,7 @@
  * flowdeck — author a Flowdeck suite as files, from a terminal or an agent.
  */
 import { parseArgs } from "node:util";
+import { version } from "../../../package.json" with { type: "json" };
 import { CliError, EXIT } from "./client.ts";
 import * as cmd from "./commands.ts";
 import type { Flags, Output } from "./commands.ts";
@@ -71,7 +72,7 @@ async function main(argv: string[]): Promise<number> {
   }
   const { values, positionals } = parsed;
   const [name, ...args] = positionals;
-  if (values.version) { console.log("flowdeck 0.1.0"); return EXIT.ok; }
+  if (values.version) { console.log(`flowdeck ${version}`); return EXIT.ok; }
   if (!name || values.help || name === "help") { console.log(HELP); return name || values.help ? EXIT.ok : EXIT.usage; }
 
   const run = COMMANDS[name];
