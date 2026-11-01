@@ -41,6 +41,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: false
     strategy:
       matrix:
         include:
@@ -136,10 +138,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Only what the release ships: the image builds leave build-record artifacts too.
       - uses: actions/download-artifact@v4
         with:
+          name: cli
           path: out
-          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundles
+          path: out
       - name: Checksums
         working-directory: out
         run: sha256sum * > SHA256SUMS && cat SHA256SUMS
