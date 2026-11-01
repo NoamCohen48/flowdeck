@@ -102,6 +102,8 @@ Then push again. `flowdeck push --force` skips the check and overwrites.
   suite moved on, `4` the server failed or is unreachable.
 - Identity: `--as <name>`, `FLOWDECK_ACTOR`, or `flowdeck login --as`. Server: `--url`,
   `FLOWDECK_URL`, or `flowdeck login <url>`.
+- A server with a self-signed or internal-CA certificate: point `NODE_EXTRA_CA_CERTS` at the
+  CA certificate (for the bundled Caddy on `localhost`, `docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt .`).
 - `flowdeck guide all` is the whole guide in one read; a pull writes it in short as `AGENTS.md`.
 
 ## Commands

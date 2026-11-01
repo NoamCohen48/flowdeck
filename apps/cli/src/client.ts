@@ -45,7 +45,10 @@ export class Client {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (e) {
-      throw new CliError(`cannot reach Flowdeck at ${this.url}: ${(e as Error).message}`, EXIT.server);
+      const message = (e as Error).message;
+      // A self-signed or internal-CA certificate: the CLI trusts only public CAs unless told.
+      const hint = /certificate|issuer/i.test(message) ? " (trust its CA with NODE_EXTRA_CA_CERTS=<ca.crt>)" : "";
+      throw new CliError(`cannot reach Flowdeck at ${this.url}: ${message}${hint}`, EXIT.server);
     }
     const data = (await res.json().catch(() => null)) as ({ error?: string; details?: unknown; revision?: string } & T) | null;
     if (res.ok) return data as T;
