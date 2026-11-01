@@ -386,3 +386,56 @@ vocabulary.
 **Accepted tradeoff:** Once improvisation is legal, a flow can rot while every run passes. Flag counts
 are therefore shown per finished flow run and the report lists every flagged step under *Steps to
 update*, so a half-improvised green day is visible as such.
+
+---
+
+### D41 — A step happens on one device; a device has one colour across its template
+
+**Chosen:** Two rules that make the device system mean the same thing everywhere.
+
+1. **One device per step, enforced by the editor rather than the schema.** A step whose text names
+   another device in the template, or says "both screens", "each device" and the like, gets a warning
+   badge in the editor, and its edit form offers *Save and add a step on …* to split it on the spot.
+   A test that needs both screens is marked on both steps; worst-result-wins (D19) already combines
+   them. A typed device label that matches a known one apart from case and spacing is saved as the
+   known one, and a genuinely new label is called out as new before it is saved.
+2. **Device colour and letter are assigned per template, not per flow.** Slots go by first appearance
+   across the template's flows, in flow order (active flows first, which is exactly what a run's
+   snapshot holds). The iPhone is teal on the board, the template page, the runner and the editor.
+
+**Rejected:** (a) Multi-device steps (a list of devices per step). The question a step answers is
+"which screen do I look at?"; two answers is no answer, and it is the confusion D18 exists to remove.
+A comparison is written as a check on one device against what the tester saw on the other ("the 👍
+you added on the iPhone, with a count of 1"). (b) Hashing labels to colours, the reason slots were
+per flow in the first place: two labels can hash to the same slot. Template-wide first appearance
+cannot collide — every new label takes the next slot. (c) Product-wide slots: a run only snapshots
+its template, and a template is the unit a testing day shows.
+
+**Why:** Per-flow slots meant teal was the iPhone in one flow and the second laptop in the next, on the
+same board. A colour system that changes meaning between two rows is not a colour system.
+
+**Accepted tradeoff:** A flow using only the Pixel and the second laptop shows A and C, not A and B.
+Past the seventh device in a template, colours repeat (the letter still differs), as before.
+
+---
+
+### D42 — The board sees a running flow as it goes, provisionally
+
+**Chosen:** Verdicts still stay a draft on the tester's device until Finish (Abandon still discards
+them, so an abandoned flow leaves nothing behind). Alongside, the runner publishes a summary of the
+draft to the flow run — the step the tester is on, a tally, where they are blocked, and every non-pass
+with its note — a moment after each change. The board shows it under the flow as a dashed *running
+now* row, and anything failed or flagged in a running flow at the top under *Going wrong right now*.
+The claim dialog shows where each holder is and when they were last active. It is never counted in
+the day's numbers, is cleared when the flow is finished or abandoned, and only the person who
+claimed the flow can publish it.
+
+**Rejected:** (a) Recording verdicts one by one again — that is what the draft replaced, because an
+abandoned flow then showed up as passed. (b) Leaving the board blind until Finish: a blocking failure
+on step 3 of a forty-step flow reached the coordinator hours late.
+
+**Why:** The coordinator's question during the day is "is anything on fire?", not "what is the final
+count?". The draft answers the first; only Finish should answer the second.
+
+**Accepted tradeoff:** One stored derivation (`flow_run.progress`), against the schema's "nothing derived
+is stored" rule — its source lives only in a browser, so there is nothing to derive it from server-side.

@@ -26,7 +26,9 @@ device colours are the only strong colour on the page apart from result states.
 
 ## The device system
 
-Each device gets a colour and a letter, used consistently everywhere it appears:
+Each device gets a colour and a letter, used consistently everywhere it appears. Slots are
+assigned per template, by first appearance across its flows (D41), so a device is the same colour
+on the board, the template page, the runner and the editor:
 
 | | Device | Colour |
 |---|---|---|
@@ -49,11 +51,12 @@ always present, so free-text labels work whether abstract or literal.
 device in play. It grows as the flow introduces devices, so the tester's physical setup and the
 screen always agree.
 
-**4. The hand-off banner.** When a flow first needs a device, a full-width dashed banner in that
-device's colour: *"Pick up iPhone 13 — iOS, same account. Everything in this colour from here on
-happens on the iPhone."*
+**4. The hand-off banner.** When a flow first needs a device, a full-width banner filled solid in
+that device's colour, its letter in a white disc and the device named large: *"Pick up iPhone 13 —
+everything in this colour from here on happens on iPhone 13 (device B)."*
 
-The banner is intentionally the loudest element in the product. Multi-device ambiguity is the
+The banner is intentionally the loudest element in the product — louder than a failed verdict, which
+is why it is solid rather than the tinted, dashed box it started as. Multi-device ambiguity is the
 biggest pain point in the current suite, and the design puts its heaviest emphasis exactly there.
 
 ---
