@@ -97,3 +97,7 @@ bun run cli -- push --plan    # see what would change, and push
 | `site` | The landing page, published to GitHub Pages by `.github/workflows/pages.yml` |
 | `scripts` | `release.sh` cuts a release; `bundle.sh` packages one for a host (with `start.sh` and a README), optionally with the images and the CLI |
 | `compose.yaml` | postgres + electric + app + caddy + backup |
+
+## License
+
+[MIT](LICENSE)
