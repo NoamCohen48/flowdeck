@@ -22,3 +22,8 @@ compose.override.yaml
 # Internal CA certificates for the backup service (docs/backup.md)
 backup/ca/*
 !backup/ca/.gitkeep
+
+# Agent skills and local agent settings live in each person's home folder, not here
+.agents/
+.claude/
+skills-lock.json
