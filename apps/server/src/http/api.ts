@@ -20,6 +20,7 @@ import { authoring } from "./routes/authoring.ts";
 import { reports } from "./routes/reports.ts";
 import { suite } from "./routes/suite.ts";
 import { suites } from "./routes/suites.ts";
+import { version } from "../../../../package.json" with { type: "json" };
 
 /** Validation failures name the field; see `router.ts` for why that is shared. */
 export const api = createRouter();
@@ -77,7 +78,7 @@ export const openApiConfig = {
   openapi: "3.1.0",
   info: {
     title: "Flowdeck",
-    version: "0.1.0",
+    version,
     description:
       "Manual testing as human flows. A test says what must be true; a flow says what a human does. " +
       "Flowdeck integrates with nothing directly — it emits structured data and accepts structured data, " +

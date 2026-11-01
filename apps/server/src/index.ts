@@ -10,6 +10,7 @@ import { sql as raw } from "drizzle-orm";
 import { withActor, type ActorEnv } from "./http/actor.ts";
 import { shapes } from "./http/shapes.ts";
 import { api } from "./http/api.ts";
+import { version } from "../../../package.json" with { type: "json" };
 
 const app = new Hono<ActorEnv>();
 
@@ -28,6 +29,7 @@ app.get("/health", async (c) => {
   }
   return c.json({
     ok: true,
+    version,
     database: "ready",
     latencyMs: Math.round(performance.now() - started),
   });
@@ -38,6 +40,9 @@ app.route("/api/shapes", shapes);
 
 /** The public contract, and the only API the web app uses. */
 app.route("/api", api);
+
+/** A mistyped API path is a JSON 404, not the SPA shell with a 200. */
+app.all("/api/*", (c) => c.json({ error: `no route ${c.req.method} ${c.req.path}: see GET /api/openapi.json` }, 404));
 
 /**
  * In production the built frontend is served from the same origin (one

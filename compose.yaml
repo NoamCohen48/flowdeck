@@ -1,4 +1,4 @@
-# Flowdeck — the whole system. See .docs/09-implementation-plan.md (D32).
+# Flowdeck — the whole system.
 #
 #   postgres  the database, with logical replication so Electric can follow it
 #   electric  syncs Postgres queries to the browser as "shapes" (the live read path)
@@ -8,6 +8,11 @@
 #
 # The app proxies shape requests rather than exposing Electric directly, so there is
 # one place that decides what a client may subscribe to.
+#
+# app and backup name both a published image and the source that builds it. From a
+# release bundle (no source next to this file) `docker compose up` pulls the image;
+# in the repository `docker compose up --build` builds it from the working tree.
+# FLOWDECK_VERSION picks the release; `latest` is the newest tagged one.
 
 name: flowdeck
 
@@ -40,7 +45,7 @@ services:
       retries: 20
 
   electric:
-    image: electricsql/electric:latest
+    image: electricsql/electric:1.8.1
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://flowdeck:${POSTGRES_PASSWORD:-flowdeck-dev}@postgres:5432/flowdeck?sslmode=disable
@@ -61,7 +66,7 @@ services:
   # `bun run test:setup` starts it. A replication stream id of its own, because
   # replication slot names are per Postgres server, not per database.
   electric-test:
-    image: electricsql/electric:latest
+    image: electricsql/electric:1.8.1
     profiles: ["test"]
     environment:
       DATABASE_URL: postgresql://flowdeck:${POSTGRES_PASSWORD:-flowdeck-dev}@postgres:5432/flowdeck_test?sslmode=disable
@@ -79,6 +84,7 @@ services:
       retries: 20
 
   app:
+    image: ${FLOWDECK_IMAGE:-ghcr.io/noamcohen48/flowdeck}:${FLOWDECK_VERSION:-latest}
     build: .
     restart: unless-stopped
     environment:
@@ -129,6 +135,7 @@ services:
   # snapshot on start and one every BACKUP_INTERVAL. Restore with
   # `docker compose exec backup flowdeck-restore latest` — see docs/backup.md.
   backup:
+    image: ${FLOWDECK_IMAGE:-ghcr.io/noamcohen48/flowdeck}-backup:${FLOWDECK_VERSION:-latest}
     build: ./backup
     restart: unless-stopped
     environment:
