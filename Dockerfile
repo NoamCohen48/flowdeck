@@ -7,6 +7,7 @@ COPY packages/domain/package.json packages/domain/
 COPY packages/api-client/package.json packages/api-client/
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
+COPY apps/cli/package.json apps/cli/
 RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run --cwd apps/web build

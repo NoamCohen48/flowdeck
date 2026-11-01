@@ -24,19 +24,23 @@ All paths are under `/api`. Writes need an identity (`X-Flowdeck-Actor` header o
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/products` | List products |
-| `POST` | `/products` | Create a product `{ name, description? }` |
-| `GET` | `/products/{productId}` | One product |
-| `PATCH` | `/products/{productId}` | `{ name?, description? }` |
-| `DELETE` | `/products/{productId}` | Everything in it, irreversibly. Needs `?confirm=true` (`409` without) |
-
-## Export and import
+`{product}` is the product's id or its slug (`relay`).
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/products/{productId}/export` | The whole suite as an import bundle: every test (archived flagged) and every template with flows, steps and marks. Round-trips into `import`. `?download=true` adds a file name |
-| `POST` | `/products/import` | An export bundle (with its `product`) lands in a **new** product |
-| `POST` | `/products/{productId}/import` | Tests keyed by the caller plus templates marking by key, in one transaction. Returns `{ keys, tests, templates }`. |
+| `GET` | `/products` | List products |
+| `POST` | `/products` | Create a product `{ name, slug?, description? }`; the slug is made from the name when left out |
+| `GET` | `/products/{product}` | One product |
+| `PATCH` | `/products/{product}` | `{ name?, slug?, description? }` |
+| `DELETE` | `/products/{product}` | Everything in it, irreversibly. Needs `?confirm=true` (`409` without) |
+
+## The suite document
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/products/{product}/suite` | `{ revision, suite }`: every test, template, flow and step by key. `?download=true` adds a file name |
+| `POST` | `/products/{product}/suite/plan` | A suite → what pushing it would change (`changes`, `summary`) and its warnings. Writes nothing; `400` with `details` on errors |
+| `PUT` | `/products/{product}/suite` | `{ baseRevision, suite, force? }` → replaces the suite in one transaction. Left out ⇒ archived, never deleted. `409` with the current `revision` when `baseRevision` is stale |
 
 ## Suite snapshots in the backup bucket
 
@@ -46,9 +50,9 @@ Plain JSON objects under `suites/` in the bucket `BACKUP_REPOSITORY` points at. 
 |---|---|---|
 | `GET` | `/suites/status` | `{ available, where }` |
 | `GET` | `/suites` | Every snapshot, newest first; `?productId=` for one product's |
-| `POST` | `/products/{productId}/suites` | Save the product's export as a snapshot |
-| `GET` | `/suites/{suiteId}` | The snapshot's bundle |
-| `POST` | `/suites/{suiteId}/import` | `{ into: "new", name? }` restores as a new product; `{ into: <productId> }` adds it to an existing one |
+| `POST` | `/products/{productId}/suites` | Save the product's suite document as a snapshot |
+| `GET` | `/suites/{suiteId}` | `{ revision, suite }` as saved |
+| `POST` | `/suites/{suiteId}/restore` | `{ into: "new", name? }` restores as a new product; `{ into: <product> }` pushes it over an existing one, forced |
 | `DELETE` | `/suites/{suiteId}` | Remove it from the bucket |
 
 ## Tests
@@ -56,7 +60,7 @@ Plain JSON objects under `suites/` in the bucket `BACKUP_REPOSITORY` points at. 
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/products/{productId}/tests` | The library. `?includeArchived=true` to include archived tests |
-| `POST` | `/products/{productId}/tests` | Bulk-create `{ tests: [ { title, expectedResult, metadata?, archived? } ] }`; returns them in request order |
+| `POST` | `/products/{productId}/tests` | Bulk-create `{ tests: [ { title, expectedResult, key?, metadata?, archived? } ] }`; returns them in request order. A key is made from the title when left out; a taken one is `409` |
 | `GET` | `/tests/{testId}` | A test at its current version |
 | `PATCH` | `/tests/{testId}` | Edit — creates a new version; `{ title?, expectedResult?, metadata? }` |
 | `GET` | `/tests/{testId}/versions` | Every version, oldest first |

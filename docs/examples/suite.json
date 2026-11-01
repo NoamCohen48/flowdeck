@@ -1,0 +1,54 @@
+{
+  "product": { "name": "Relay (example)", "description": "Team messaging across phones and the web." },
+  "tests": [
+    {
+      "key": "emoji-reaction-syncs-across-devices",
+      "title": "An emoji reaction syncs across devices",
+      "expect": "The same emoji and the same count show on every device in the thread.",
+      "tags": ["messaging", "sync"]
+    },
+    {
+      "key": "sending-a-message-shows-it-optimistically",
+      "title": "Sending a message shows it optimistically",
+      "expect": "The message appears at once with a pending clock, then a single check within 2 seconds.",
+      "tags": ["messaging"],
+      "metadata": { "priority": "high" }
+    }
+  ],
+  "templates": [
+    {
+      "key": "monthly-regression",
+      "name": "Monthly regression — fresh install",
+      "description": "Two phones, clean install, the QA accounts.",
+      "flows": [
+        {
+          "key": "messaging-across-two-devices",
+          "name": "Messaging across two devices",
+          "precondition": "Relay installed on both phones, signed in as qa-1 (Pixel 8) and qa-2 (iPhone 13).",
+          "estimateMinutes": 15,
+          "steps": [
+            { "kind": "action", "text": "Open the chat with qa-2.", "device": "Pixel 8" },
+            { "kind": "action", "text": "Send the message \"hello\".", "device": "Pixel 8" },
+            {
+              "kind": "check", "text": "Watch the message as it sends.", "device": "Pixel 8",
+              "expect": "It appears at once with a pending clock, then a single check.",
+              "verifies": ["sending-a-message-shows-it-optimistically"]
+            },
+            { "kind": "action", "text": "Open the chat with qa-1.", "device": "iPhone 13", "after": "\"hello\" is the last message" },
+            { "kind": "action", "text": "React to \"hello\" with 👍.", "device": "iPhone 13" },
+            {
+              "kind": "check", "text": "Look at \"hello\".", "device": "Pixel 8",
+              "expect": "👍 with a count of 1.",
+              "verifies": ["emoji-reaction-syncs-across-devices"]
+            },
+            {
+              "kind": "check", "text": "Look at \"hello\".", "device": "iPhone 13",
+              "expect": "👍 with a count of 1.",
+              "verifies": ["emoji-reaction-syncs-across-devices"]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
