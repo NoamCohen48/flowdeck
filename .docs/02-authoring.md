@@ -107,12 +107,18 @@ that.
 
 ---
 
+## Authoring as files
+
+Everything above can also be written as files — one per test, one per flow — and pushed as one change
+with the `flowdeck` CLI, by a person or an agent (D43). The rules on this page are the CLI's lint and
+its guide: a step happens on one device, a step does one thing, a check says what to see.
+
 ## The flow editor
 
 The editor is a linear list of steps with the same visual language as the execution view — device
 colours, action/check markers, and attached test rows — so authors see what testers will see.
 
-### Editing capabilities agreed (see `07-open-items.md` for build status)
+### Editing capabilities
 
 Writing a flow is not a linear act. Authors write several steps, realize something was forgotten,
 and need to go back. The editor must support:

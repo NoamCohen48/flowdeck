@@ -80,57 +80,24 @@ for filing one bug by hand without running anything.
 
 ---
 
-## Import: creating content
+## Authoring: the suite as files
 
-The import path exists so a script can parse an existing suite — Confluence, Jira, a spreadsheet —
-and load it in. Flowdeck does not care about the source.
-
-### Two-phase, using returned IDs
+A suite is mostly writing — tests and long flows — so it is written as files, by people or by
+agents, and landed as one reviewed change (D43).
 
 ```
-POST /api/products/{id}/tests        → returns created tests with their IDs
-POST /api/products/{id}/templates    → templates, flows and steps;
-                                       steps reference tests by the IDs from phase one
+flowdeck pull relay        →  relay/tests/*.yaml, relay/templates/<t>/<f>.flow.yaml, AGENTS.md
+flowdeck lint              →  the rules, offline: one device per step, one thing per step, …
+flowdeck push --plan       →  + created  ~ edited  - archived; nothing written
+flowdeck push              →  one transaction, refused if the suite moved on since the pull
 ```
 
-The importing script creates tests first, holds the mapping from source row to Flowdeck test ID, and
-then creates templates whose steps mark those IDs.
+Underneath is one document per product, addressed by readable keys rather than ids. Migrating from
+Confluence, Jira or a spreadsheet is the same path: a script (or an agent) writes the document or the
+files, plans, pushes — and can push again after fixing its parser, because a push of the same thing
+changes nothing.
 
-**Known tradeoff:** this is not idempotent. Running the parser twice creates every test twice, and
-Flowdeck cannot tell they are the same. In practice the fix during migration is to wipe and
-re-import while the parser is still wrong. If that becomes painful, an optional `externalId` field
-on tests would make re-import safe — it can be added later without breaking existing callers, since
-it is optional on create.
+Writes are attributed: a script sends `X-Flowdeck-Actor: <name>` (D38). The coverage endpoint doubles
+as a migration progress bar — start with everything uncovered, finish when nothing is.
 
-### One-phase, using caller keys
-
-`POST /api/products/{id}/import` folds the two phases into one transaction: each test carries a
-caller-chosen `key`, steps mark by key (or by the id of an existing test), and the response returns
-the key → id mapping. Same non-idempotency, one fewer thing for the script to hold. The two-phase
-contract stays for scripts that produce tests and templates at different times.
-
-### Identity for scripts
-
-Writes are attributed. A script has no cookie jar, so it sends `X-Flowdeck-Actor: <name>` on every
-request instead of `PUT /api/me`; the header wins over the cookie when both are present. Still a
-name picker, not authentication (D38).
-
-The how-to for all of this — guide, endpoint reference, generated OpenAPI file, examples — is in
-[`docs/`](../docs/README.md).
-
-### Endpoints
-
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/api/products/{id}/import` | Tests and templates together, keyed, one transaction |
-| `POST` | `/api/products/{id}/tests` | Bulk-create tests |
-| `PATCH` | `/api/tests/{id}` | Edit — creates a new version |
-| `POST` | `/api/tests/{id}/archive` | Archive |
-| `POST` | `/api/products/{id}/templates` | Bulk-create templates with flows and steps |
-| `GET` | `/api/products/{id}/coverage` | Coverage state per test |
-| `POST` | `/api/templates/{id}/runs` | Start a testing day |
-| `GET` | `/api/runs/{id}` | Full run state |
-| `GET` | `/api/runs/{id}/issues` | The issue feed above |
-
-The coverage endpoint is worth having beyond the UI: during a migration it is a progress bar —
-start with everything uncovered, finish when nothing is.
+Routes, the CLI, examples and the OpenAPI file: [`docs/`](../docs/README.md).

@@ -80,8 +80,6 @@ to be unaware of it.
 | `03-execution.md` | Runs, claiming, verdicts, failure handling, blocking |
 | `04-coverage-and-reporting.md` | Coverage rules, conflict resolution, dashboards |
 | `05-design-and-ux.md` | Visual system, device identity, rationale for every UI decision |
-| `06-decision-log.md` | Every decision taken, the alternatives, and why |
-| `08-api-and-integration.md` | Issue-feed export, import API, why there is no direct integration |
-| `07-open-items.md` | Agreed but not yet built, including the flow editor |
-| `09-implementation-plan.md` | Stack, realtime design, schema, build order (D32–D38) |
-| `flowdeck-demo.html` | Clickable demo |
+| `06-decision-log.md` | Every decision taken, the alternatives, and why — including the stack and platform (D32–D39, D44) |
+| `07-open-items.md` | What is still open or deliberately deferred |
+| `08-api-and-integration.md` | Issue-feed export, authoring as files, why there is no direct integration |
