@@ -454,8 +454,8 @@
                 },
                 {
                   "kind": "assertion",
-                  "text": "Compare the reaction on both screens.",
-                  "expectedResult": "Same emoji and count on the Pixel and the iPhone.",
+                  "text": "Look at \"ping 1\" on the Pixel.",
+                  "expectedResult": "The 👍 you added on the iPhone, with a count of 1.",
                   "deviceLabel": "Pixel 8",
                   "marks": [
                     "T-10"
@@ -502,9 +502,18 @@
                 },
                 {
                   "kind": "assertion",
-                  "text": "Check the iPhone and the second laptop.",
-                  "expectedResult": "Both show \"Message deleted\".",
+                  "text": "Check the thread on the iPhone.",
+                  "expectedResult": "\"ping 1 edited\" is replaced by \"Message deleted\".",
                   "deviceLabel": "iPhone 13",
+                  "marks": [
+                    "T-12"
+                  ]
+                },
+                {
+                  "kind": "assertion",
+                  "text": "Check the thread on the second laptop.",
+                  "expectedResult": "The same \"Message deleted\" in place of the message.",
+                  "deviceLabel": "Second laptop",
                   "marks": [
                     "T-12"
                   ]
