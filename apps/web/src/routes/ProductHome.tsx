@@ -6,7 +6,7 @@
  */
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRunBoard } from "../lib/run-model.ts";
+import { isStale, useRunBoard } from "../lib/run-model.ts";
 import { useTestIndex } from "../lib/editor-model.ts";
 import { Bar } from "../components/Progress.tsx";
 import { type IssueFeed, type Issue } from "../components/Issues.tsx";
@@ -25,22 +25,31 @@ export function ProductHome() {
   const qc = useQueryClient();
   useTitle(product.data ? `${product.data.name} — Flowdeck` : "Flowdeck");
 
-  async function start(templateId: string) {
+  async function start(templateId: string, force = false) {
     try {
-      const run = await unwrap(api.POST("/templates/{templateId}/runs", { params: { path: { templateId }, query: { force: "false" } } }));
+      const run = await unwrap(api.POST("/templates/{templateId}/runs", { params: { path: { templateId }, query: { force: force ? "true" : "false" } } }));
       await qc.invalidateQueries({ queryKey: ["runs", productId] });
       void navigate({ to: "/products/$productId/runs/$runId", params: { productId, runId: run.id } });
     } catch (e) {
-      // Already open: the day is the answer, not an error.
-      if (e instanceof ApiError && e.status === 409) void navigate({ to: "/products/$productId/runs/$runId", params: { productId, runId: (e.body as { openRunId: string }).openRunId } });
-      else throw e;
+      if (!(e instanceof ApiError) || e.status !== 409) throw e;
+      // Already open this week: that day is the answer, not an error. Open since
+      // weeks ago: a day somebody forgot to close, and no reason to send anyone there.
+      const openRunId = (e.body as { openRunId: string }).openRunId;
+      const existing = runs.data?.find((r) => r.id === openRunId);
+      if (existing && isStale(existing)) await start(templateId, true);
+      else void navigate({ to: "/products/$productId/runs/$runId", params: { productId, runId: openRunId } });
     }
   }
 
   const open = (runs.data ?? []).filter((r) => !r.closedAt);
   const past = (runs.data ?? []).filter((r) => r.closedAt);
+  // A day left open for weeks is not "today". Recent ones get a card each; older
+  // ones are one line that says they are still open and should be closed.
+  const recent = open.filter((r) => !isStale(r));
+  const stale = open.length - recent.length;
+  const shown = recent.slice(0, MAX_OPEN_CARDS);
   const feeds = useQueries({
-    queries: open.map((r) => ({
+    queries: recent.map((r) => ({
       queryKey: ["issues", r.id, "home"],
       queryFn: () => unwrap(api.GET("/runs/{runId}/issues", { params: { path: { runId: r.id } } })),
       refetchInterval: 15_000,
@@ -104,11 +113,13 @@ export function ProductHome() {
         <div className="col">
           <section className="section">
             <div className="head">
-              <h2>Today's testing day</h2>
-              {open.length ? <span className="meta">{open.length === 1 ? "1 day open" : `${open.length} days open`}</span> : null}
+              <h2>{recent.length > 1 ? "Open testing days" : "Testing day"}</h2>
+              {recent.length > shown.length ? (
+                <Link className="btn sm" to="/products/$productId/runs" params={{ productId }}>All {recent.length} open</Link>
+              ) : null}
             </div>
-            {open.length ? (
-              open.map((r) => <OpenRun key={r.id} productId={productId} runId={r.id} templateName={r.templateName} startedBy={r.startedBy} date={r.date} />)
+            {shown.length ? (
+              shown.map((r) => <OpenRun key={r.id} productId={productId} runId={r.id} templateName={r.templateName} startedBy={r.startedBy} date={r.date} />)
             ) : (
               <div className="empty">
                 <b>No testing day is open</b>
@@ -116,6 +127,12 @@ export function ProductHome() {
                 {active[0] ? <button className="btn primary" onClick={() => void start(active[0]!.id)}>Start “{active[0].name}”</button> : null}
               </div>
             )}
+            {stale ? (
+              <p className="meta stalenote">
+                {stale === 1 ? "1 older testing day is" : `${stale} older testing days are`} still open.{" "}
+                <Link className="lnk" to="/products/$productId/runs" params={{ productId }}>Close {stale === 1 ? "it" : "them"}</Link> once {stale === 1 ? "its" : "their"} report is final, so the open list means today.
+              </p>
+            ) : null}
           </section>
 
           <section className="section">
@@ -195,6 +212,18 @@ export function ProductHome() {
   );
 }
 
+const MAX_OPEN_CARDS = 3;
+
+/** "at 09:20" today, "yesterday at 09:20", else "on 17 Sept at 09:20". */
+function startedWhen(iso: string) {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const days = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(iso).setHours(0, 0, 0, 0)) / 86_400_000);
+  if (days === 0) return `at ${time}`;
+  if (days === 1) return `yesterday at ${time}`;
+  return `on ${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })} at ${time}`;
+}
+
 const ATTN: Record<Issue["type"], { label: string; color: string }> = {
   failure: { label: "Failed today", color: "var(--color-fail)" },
   minor: { label: "Minor", color: "var(--color-minor)" },
@@ -231,7 +260,7 @@ function OpenRun({ productId, runId, templateName, startedBy, date }: { productI
         <div style={{ minWidth: 0 }}>
           <h3 dir="auto" style={{ margin: 0 }}>{templateName}</h3>
           <span className="meta">
-            Started by {startedBy} at {new Date(date).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+            Started by {startedBy} {startedWhen(date)}
             {board ? ` · ${board.flows.length} flows · ${testers === 1 ? "1 tester" : `${testers} testers`} on it` : ""}
           </span>
         </div>

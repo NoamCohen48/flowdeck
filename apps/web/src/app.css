@@ -273,6 +273,8 @@
   .btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
   .btn.soft { background: var(--primary-soft); border-color: var(--primary-line); color: var(--primary-ink); }
   .btn.soft:hover { border-color: var(--primary); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .btn.ghost:hover { border-color: var(--line); color: var(--ink); background: var(--surface); }
   .btn.sm { padding: 4px 9px; font-size: 13.5px; }
   .btn.danger { border-color: var(--pill-fail-line); color: var(--color-fail); }
 
@@ -309,6 +311,13 @@
   .flowhead { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; box-shadow: var(--shadow); }
   .pre { margin-top: 10px; padding: 10px 12px; border-radius: var(--radius-r); background: var(--surface-2); border: 1px solid var(--line-soft); font-size: 14px; }
   .pre b { font-weight: 600; }
+  /* The runner's set-up block: open before the first verdict, one line after. */
+  .setup > summary { display: none; }
+  .setup:not([open]) > summary { display: flex; gap: 8px; align-items: baseline; margin-top: 8px; cursor: pointer; list-style: none; font-size: 13.5px; min-width: 0; }
+  .setup > summary::-webkit-details-marker { display: none; }
+  .setup > summary > .meta { flex: none; white-space: nowrap; }
+  .setup > summary .sum { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .setup > summary:after { content: "Show"; margin-inline-start: auto; color: var(--primary); font-weight: 500; flex: none; }
 
   .steps { list-style: none; margin: 0; padding: 0; }
   .step {
@@ -354,6 +363,7 @@
   @media (hover: none) { .sline .flagbtn { opacity: 1; } }
   .tag.flagged { display: inline-flex; align-items: center; gap: 5px; color: var(--note-skip-ink); background: var(--note-skip-bg); border-color: var(--note-skip-line); font-weight: 500; }
   .tag.flagged svg { width: 11px; height: 11px; }
+  .tag.warn { color: var(--note-minor-ink); background: var(--note-minor-bg); border-color: var(--note-minor-line); font-weight: 500; }
   /* Grey like a skipped test, for the same reason: it says something about the
      flow, not the product. The flag icon is what tells the two apart at a glance. */
   .stale { margin: 10px 0 0; padding: 9px 12px 10px; border-radius: var(--radius-r); background: var(--note-skip-bg); border: 1px solid var(--note-skip-line); color: var(--note-skip-ink); font-size: 13.5px; }
@@ -402,14 +412,19 @@
   .note.skp { background: var(--note-skip-bg); border-color: var(--note-skip-line); color: var(--note-skip-ink); }
   .trow .note { margin-left: 0; margin-top: 7px; flex-basis: 100%; }
 
+  /* The hand-off: deliberately the loudest thing on the screen (D18). Solid device
+     colour, the device named large — louder than a failed verdict, because picking
+     up the wrong phone is the failure that quietly invalidates everything after. */
   .pickup {
-    margin: 16px 0 10px; padding: 14px 16px; border-radius: var(--radius-r);
-    border: 2px dashed var(--dev); background: color-mix(in srgb, var(--dev) 7%, transparent);
-    display: flex; gap: 13px; align-items: center;
+    margin: 22px 0 10px; padding: 16px 18px; border-radius: 10px;
+    background: var(--dev); color: #fff;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--dev) 22%, transparent), 0 10px 24px -14px var(--dev);
+    display: flex; gap: 14px; align-items: center;
   }
-  .pickup .big { font-size: 22px; line-height: 1; }
-  .pickup h3 { margin: 0 0 2px; }
-  .pickup p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+  .pickup .big { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 19px; font-weight: 700; color: var(--dev); background: #fff; }
+  .pickup h3 { margin: 0 0 2px; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; color: #fff; }
+  .pickup p { margin: 0; font-size: 13.5px; color: rgba(255, 255, 255, 0.88); }
+  .pickup.muted { opacity: 0.45; box-shadow: none; }
 
   .hand { margin: 18px 0 10px; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13.5px; }
   .hand:before, .hand:after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -422,6 +437,9 @@
   .pill.skip { color: var(--color-skip); border-color: var(--pill-skip-line); background: var(--pill-skip-bg); }
   .pill.open { color: var(--primary-ink); border-color: var(--primary-line); background: var(--primary-soft); }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+  .tally { display: flex; gap: 5px; }
+  .tally .pill { padding: 1px 8px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .tally .pill.off { opacity: 0.45; }
 
   /* ---- Tables ---- */
   table { width: 100%; border-collapse: collapse; background: var(--surface); }
@@ -431,6 +449,9 @@
   tbody tr:hover { background: var(--surface-3); }
   .tbl { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
   .uncov td { background: var(--uncov-bg); }
+  table.compact td { padding-top: 6px; padding-bottom: 6px; font-size: 14px; vertical-align: middle; }
+  table.compact .oneline { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 62ch; }
+  table.compact .chip, table.compact .tag { font-size: 12px; }
   .uncov td:first-child { box-shadow: inset 3px 0 0 var(--color-fail); }
 
   /* ---- Misc ---- */
@@ -499,7 +520,7 @@
   .stepmap .mh { padding: 10px 14px; border-bottom: 1px solid var(--line-soft); font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
   .stepmap .mh .meta { font-weight: 400; font-size: 12px; }
   .stepmap .ml { overflow: auto; padding: 6px; display: grid; gap: 1px; }
-  .stepmap a { display: grid; grid-template-columns: 22px 1fr; column-gap: 8px; align-items: start; padding: 7px 8px 7px 10px; border-left: 3px solid var(--dev, var(--line)); text-decoration: none; color: var(--ink-2); border-radius: 0 6px 6px 0; font-size: 13px; }
+  .stepmap a { display: grid; grid-template-columns: 22px 1fr auto; column-gap: 8px; align-items: start; padding: 7px 8px 7px 10px; border-left: 3px solid var(--dev, var(--line)); text-decoration: none; color: var(--ink-2); border-radius: 0 6px 6px 0; font-size: 13px; }
   .stepmap a:hover { background: var(--surface-2); }
   .stepmap a.now { background: var(--primary-soft); color: var(--ink); }
   .stepmap a.now .t { font-weight: 600; }
@@ -510,6 +531,15 @@
   .stepmap .s { grid-column: 2; display: flex; gap: 6px; align-items: center; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
   .stepmap .s .d { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--dev); }
   .stepmap .s .m { color: var(--primary-ink); font-weight: 500; }
+  /* Outcome glyph, same colours as the verdict buttons; a failure is never just "done". */
+  .stepmap .st { grid-row: 1; grid-column: 3; font-size: 12px; font-weight: 700; line-height: 18px; color: var(--muted); }
+  .stepmap a.st-pass .st { color: var(--color-pass); }
+  .stepmap a.st-fail .st { color: var(--color-fail); }
+  .stepmap a.st-minor .st { color: var(--color-minor); }
+  .stepmap a.st-fail .t, .stepmap a.st-minor .t, .stepmap a.st-flag .t { text-decoration: none; color: var(--ink-2); }
+  .stepmap a.st-fail { background: color-mix(in srgb, var(--color-fail) 7%, transparent); }
+  .stepmap a.st-blocked { opacity: 0.55; }
+  .stepmap a.st-blocked .t { text-decoration: none; }
   .stepmap.sortable a { cursor: grab; }
   .stepmap.sortable a:active { cursor: grabbing; }
   .stepmap a.dragging { opacity: 0.4; }
@@ -539,6 +569,11 @@
   .editform .kindpick button { border: 0; background: var(--surface); padding: 6px 11px; color: var(--ink-2); font-size: 13.5px; }
   .editform .kindpick button.on { background: var(--primary); color: var(--on-primary); }
   .editform input.devin { width: 200px; flex: none; }
+  .editform .devhint { font-size: 12.5px; }
+  .editform .devhint b { font-weight: 600; color: var(--ink-2); }
+  .splitnote { margin: 0; line-height: 1.45; }
+  .splitnote b { font-weight: 600; }
+  .splitnote .splitbtns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .editform input.mins { width: 90px; flex: none; }
 
   .picker { max-width: 620px; }
@@ -597,6 +632,12 @@
   .switch .track:has(input:disabled) { opacity: 0.5; }
 
   .kbd { font-family: ui-monospace, monospace; font-size: 12px; padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--surface-2); }
+  /* Shortcut hints mean nothing without a keyboard. */
+  @media (hover: none) and (pointer: coarse) { .kbd, .kbdonly { display: none; } }
+
+  /* A secondary action that should not look like a button worth pressing by habit. */
+  .lnkbtn { border: 0; background: none; padding: 4px 2px; font: inherit; font-size: 13px; color: var(--muted); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; cursor: pointer; max-width: 46ch; }
+  .lnkbtn:hover { color: var(--ink); text-decoration-color: currentColor; }
 
 
   /* ---- Product landing ---- */
@@ -684,12 +725,33 @@
   .resultrow .who { grid-area: who; display: grid; line-height: 1.3; }
   .resultrow .who b { font-weight: 600; }
   .resultrow .who .meta { font-size: 12.5px; }
-  .resultrow .tally { grid-area: tally; display: flex; gap: 5px; }
-  .resultrow .tally .pill { padding: 1px 8px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
-  .resultrow .tally .pill.off { opacity: 0.45; }
+  .resultrow .tally { grid-area: tally; }
   .resultrow .bar { grid-area: bar; height: 5px; }
   .resultrow .go { grid-area: go; font-size: 13px; font-weight: 500; color: var(--primary); white-space: nowrap; }
   @media (max-width: 640px) { .resultrow { grid-template-columns: auto 1fr; grid-template-areas: "av who" "tally tally" "bar bar" "go go"; } }
+
+  /* A flow being run right now (D42): the same row as a finished one, dashed —
+     provisional, from the tester's draft, not yet a recorded result. */
+  .resultrow.live { border-style: dashed; background: var(--surface); }
+  .livedot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--primary); margin: 0 4px 1px 6px; vertical-align: middle; animation: livepulse 1.6s ease-in-out infinite; }
+  @keyframes livepulse { 50% { opacity: 0.25; } }
+  @media (prefers-reduced-motion: reduce) { .livedot { animation: none; } }
+  .liveissues { list-style: none; margin: 6px 0 0 46px; padding: 0; display: grid; gap: 6px; }
+  .liveissues li { display: grid; gap: 1px; padding: 7px 11px; border-radius: var(--radius-r); font-size: 13px; background: var(--note-skip-bg); border: 1px solid var(--note-skip-line); color: var(--note-skip-ink); }
+  .liveissues li.k-fail { background: var(--note-fail-bg); border-color: var(--note-fail-line); color: var(--note-fail-ink); }
+  .liveissues li.k-minor { background: var(--note-minor-bg); border-color: var(--note-minor-line); color: var(--note-minor-ink); }
+  .liveissues .what { font-weight: 600; }
+  .liveissues .where { font-size: 12.5px; opacity: 0.85; }
+  .liveissues .why { margin-top: 2px; line-height: 1.4; }
+  @media (max-width: 640px) { .liveissues { margin-left: 0; } }
+
+  .inflight { margin: -8px 0 24px; padding: 12px 16px; border-radius: 12px; display: grid; gap: 2px; background: var(--note-fail-bg); border: 1px solid var(--note-fail-line); border-left: 4px solid var(--color-fail); color: var(--note-fail-ink); }
+  .inflight b { font-weight: 600; font-size: 15px; }
+  .inflight .meta { color: inherit; opacity: 0.8; font-size: 13px; }
+  .inflight ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+  .inflight li { display: flex; gap: 8px; flex-wrap: wrap; }
+  .inflight li a { color: inherit; font-weight: 600; }
+  .inflight li.blocking span { font-weight: 500; }
 
   .runbanner {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; padding: 12px 16px; border-radius: 12px;
@@ -703,9 +765,6 @@
   .runbanner .body { flex: 1; min-width: 240px; display: grid; line-height: 1.35; }
   .runbanner .body b { font-weight: 600; font-size: 15px; }
   .runbanner .body .meta { font-size: 13px; }
-  .runbanner .tally { display: flex; gap: 5px; }
-  .runbanner .tally .pill { padding: 1px 8px; font-size: 12.5px; }
-  .runbanner .tally .pill.off { opacity: 0.45; }
 
   .finishbox { margin: 8px auto 0; max-width: 520px; text-align: center; display: grid; gap: 6px; justify-items: center; padding: 20px; border-radius: 12px; border: 1px solid var(--primary-line); background: color-mix(in srgb, var(--primary-soft) 55%, var(--surface)); }
   .finishbox .meta { font-size: 13px; max-width: 48ch; }
@@ -725,7 +784,11 @@
   .claimdlg .holders .avatar + .avatar { margin-left: -8px; }
   .claimdlg p { margin: 10px 0 0; font-size: 14px; line-height: 1.45; }
   .claimdlg p.meta { margin: 0; font-size: 13px; }
+  .claimdlg .holderlist { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 3px; font-size: 13.5px; color: var(--ink-2); }
+  .claimdlg .holderlist b { font-weight: 600; color: var(--ink); }
   .claimdlg .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+
+  .stalenote { margin: 10px 0 0; font-size: 13px; }
 
   /* ---- Runs page ---- */
   .runrow { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; align-items: center; text-decoration: none; }

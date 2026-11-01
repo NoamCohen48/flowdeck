@@ -3,14 +3,18 @@
  * wizard, no collapsing. The tester's mental model is "I am walking down a list".
  *
  * Verdicts are a local draft until Finish: only then are they recorded, so an
- * abandoned flow leaves nothing behind and the board never shows half a run.
+ * abandoned flow leaves nothing behind and the board never counts half a run.
+ * What the board does get, as the tester goes, is a provisional summary of the
+ * draft (D42, live-progress.ts) — so a coordinator is not blind for four hours.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useNavigate, useParams } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   computeHandoffs,
+  deviceSlots,
   devicesInPlayAt,
+  worstResult,
   type DeviceAssignment,
   type Verdict,
 } from "@flowdeck/domain";
@@ -18,15 +22,16 @@ import { api, unwrap, type SnapshotFlow, type SnapshotStep, type TemplateSnapsho
 import type { StepProblemRow, TestResultRow } from "../lib/collections.ts";
 import { dataUrlToBlob, fileToDataUrl, useDraftResults } from "../lib/draft-results.ts";
 import { flowRunView, progressOf, useLiveFlowRuns, useLiveResults, useLiveStepProblems, useRun } from "../lib/run-model.ts";
+import { liveProgressOf, usePublishProgress } from "../lib/live-progress.ts";
 import { useMe } from "../lib/identity.tsx";
 import { usePresence } from "../lib/presence.ts";
 import { useTitle } from "../lib/title.ts";
 import { shrinkImage } from "../lib/images.ts";
 import { DeviceBar, DeviceChip, Pickup, deviceStyle } from "../components/Device.tsx";
 import { VerdictButtons, noteClass } from "../components/Verdicts.tsx";
-import { Bar, Legend } from "../components/Progress.tsx";
+import { Bar, Legend, Tally } from "../components/Progress.tsx";
 import { VerdictDialog, type VerdictSubmission } from "../components/VerdictDialog.tsx";
-import { StepMap } from "../components/StepMap.tsx";
+import { StepMap, type StepStatus } from "../components/StepMap.tsx";
 import { FlagIcon, KindBadge, PostState, StepProblemNote, TestsIcon } from "../components/Step.tsx";
 import { StepProblemDialog, type StepProblemSubmission } from "../components/StepProblemDialog.tsx";
 import { useClaim } from "../components/ClaimDialog.tsx";
@@ -116,7 +121,9 @@ function RunnerBody({
   const me = useMe();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const handoffs = useMemo(() => computeHandoffs(flow.steps), [flow.steps]);
+  // Slots across the whole template, so the iPhone is teal on the board and here alike (D41).
+  const slots = useMemo(() => deviceSlots(snapshot.flows), [snapshot.flows]);
+  const handoffs = useMemo(() => computeHandoffs(flow.steps, slots), [flow.steps, slots]);
   const readOnly = state !== "claimed";
   const isMine = claimedBy === me.name;
   const editable = !readOnly && isMine;
@@ -126,6 +133,8 @@ function RunnerBody({
   const rows = editable ? draft.rows : results;
   const problems = editable ? draft.problemRows : stepProblems;
   const view = useMemo(() => flowRunView(flow, flowRunId, rows, problems), [flow, flowRunId, rows, problems]);
+  const progress = useMemo(() => (editable ? liveProgressOf(flow, view, problems) : null), [editable, flow, view, problems]);
+  usePublishProgress(flowRunId, progress);
   const testTitle = useCallback(
     (id: string) => snapshot.tests.find((t) => t.id === id)?.title ?? "(archived test)",
     [snapshot.tests],
@@ -231,6 +240,7 @@ function RunnerBody({
     const flagged = Object.values(draft.problems)
       .filter((p) => !view.blocked.blockedStepIds.has(p.stepId))
       .sort((a, b) => (order.get(a.stepId) ?? 0) - (order.get(b.stepId) ?? 0));
+    if (passRest && !confirm(`Record a pass for ${pending.length === 1 ? "the 1 test" : `all ${pending.length} tests`} you have not marked yet? Only do this if you checked ${pending.length === 1 ? "it" : "them"} and everything was fine.`)) return;
     const unverified = passRest ? view.remaining - pending.length : view.remaining;
     if (unverified && !confirm(`${unverified} test${unverified === 1 ? "" : "s"} still ${unverified === 1 ? "has" : "have"} no verdict and will report as not reached. Finish anyway?`)) return;
     try {
@@ -316,6 +326,19 @@ function RunnerBody({
   const [help, setHelp] = useState(false);
 
   const devicesInPlay = devicesInPlayAt(handoffs, current);
+  const started = editable ? draft.count > 0 : view.mine.length > 0;
+  const blockedTests = view.blocked.unverifiedTestIds.size;
+  const toGo = Math.max(view.remaining - blockedTests, 0);
+
+  const statusOf = (s: SnapshotStep, i: number): StepStatus | undefined => {
+    if (view.blocked.blockedStepIds.has(s.id)) return "blocked";
+    const verdicts = s.marks.map((t) => view.byStepTest.get(`${s.id}|${t}`)?.verdict).filter((v): v is Verdict => !!v);
+    const worst = worstResult(verdicts);
+    if (worst && worst !== "pass") return worst;
+    if (view.problemByStep.has(s.id)) return "flag";
+    if (s.marks.length) return verdicts.length === s.marks.length ? "pass" : undefined;
+    return i < view.currentIndex ? "done" : undefined;
+  };
 
   return (
     <main className="shell wide">
@@ -341,20 +364,29 @@ function RunnerBody({
           </div>
           {!readOnly && isMine ? (
             <div className="flex gap-2">
-              <button className="btn" onClick={() => setHelp((h) => !h)} title="Keyboard shortcuts">
+              <button className="btn kbdonly" onClick={() => setHelp((h) => !h)} title="Keyboard shortcuts">
                 <span className="kbd">?</span>
               </button>
               <button className="btn danger" onClick={() => void abandon()}>Abandon flow</button>
             </div>
           ) : null}
         </div>
-        {flow.precondition ? (
-          <div className="pre" dir="auto"><b>Before you start:</b> {flow.precondition}</div>
-        ) : null}
-        <div className="flex gap-2 items-center flex-wrap mt-3">
-          <span className="meta">Devices used:</span>
-          {handoffs.devices.map((d) => <DeviceChip key={d.label} device={d} ghost />)}
-        </div>
+        {/* Once the tester is under way, the set-up folds to one line: the steps are the work. */}
+        <details className="setup" open={!started} key={started ? "started" : "fresh"}>
+          <summary>
+            <span className="meta">Set-up</span>
+            <span className="sum" dir="auto">
+              {flow.precondition || "No precondition"} · {handoffs.devices.length} device{handoffs.devices.length === 1 ? "" : "s"}
+            </span>
+          </summary>
+          {flow.precondition ? (
+            <div className="pre" dir="auto"><b>Before you start:</b> {flow.precondition}</div>
+          ) : null}
+          <div className="flex gap-2 items-center flex-wrap mt-3">
+            <span className="meta">Devices used:</span>
+            {handoffs.devices.map((d) => <DeviceChip key={d.label} device={d} ghost />)}
+          </div>
+        </details>
         {help ? <ShortcutHelp /> : null}
       </div>
 
@@ -370,7 +402,7 @@ function RunnerBody({
             const problem = view.problemByStep.get(step.id);
             return (
               <li key={step.id} ref={(el) => { stepRefs.current[i] = el; }} style={deviceStyle(device.slot)}>
-                {intro && i > 0 ? <Pickup device={intro} /> : null}
+                {intro && i > 0 ? <Pickup device={intro} muted={blocked} /> : null}
                 {intro && i === 0 ? <div className="hand">Start on <DeviceChip device={intro} /></div> : null}
                 <StepCard
                   step={step}
@@ -395,13 +427,7 @@ function RunnerBody({
         </ol>
         {/* The "in your hands" bar is sticky above; the map sits below it. */}
         <aside className="hidden md:block" style={{ "--map-top": "124px" } as React.CSSProperties}>
-          <StepMap
-            steps={flow.steps}
-            handoffs={handoffs}
-            current={current}
-            onJump={scrollTo}
-            isDone={(s) => s.marks.length > 0 && s.marks.every((t) => view.byStepTest.has(`${s.id}|${t}`))}
-          />
+          <StepMap steps={flow.steps} handoffs={handoffs} current={current} onJump={scrollTo} statusOf={statusOf} />
         </aside>
       </div>
 
@@ -409,7 +435,7 @@ function RunnerBody({
         <p className="note" style={{ marginLeft: 0 }}>
           Blocked from step {view.blocked.blockedFromIndex + 1}
           {view.problemByStep.get(flow.steps[view.blocked.blockedFromIndex - 1]?.id ?? "")?.blocking ? " — the step before it is wrong and there was no way past" : ""}.{" "}
-          {view.blocked.unverifiedTestIds.size} tests will report as not reached.
+          {blockedTests} test{blockedTests === 1 ? "" : "s"} will report as not reached.
         </p>
       ) : null}
 
@@ -429,12 +455,13 @@ function RunnerBody({
           </span>
           <div className="finishrow">
             <button className="btn primary" disabled={!!committing} onClick={() => void finish()}>{committing ?? "Finish flow"}</button>
-            {pending.length ? (
-              <button className="btn soft" disabled={!!committing} onClick={() => void finish(true)} title="Records a pass for every test that has no verdict yet, then finishes">
-                Pass the {pending.length === 1 ? "last test" : `${pending.length} remaining`} and finish
-              </button>
-            ) : null}
           </div>
+          {/* Deliberately quiet, and it asks first: a pass nobody looked at is worse than "not reached". */}
+          {pending.length && !committing ? (
+            <button className="lnkbtn" onClick={() => void finish(true)}>
+              I checked the rest and it was all fine — pass {pending.length === 1 ? "the last test" : `the ${pending.length} unmarked tests`} and finish
+            </button>
+          ) : null}
           <div className="afterwards" role="radiogroup" aria-label="After finishing">
             <span className="meta">Afterwards:</span>
             <button type="button" role="radio" aria-checked={!goNext} className={`seg${goNext ? "" : " on"}`} onClick={() => chooseNext(false)}>Back to the board</button>
@@ -448,7 +475,7 @@ function RunnerBody({
 
       <div className="runfoot">
         <span className="meta">
-          {view.total - view.remaining} of {view.total} tests · {view.remaining} remaining
+          {view.total - view.remaining} of {view.total} tests · {toGo} to go{blockedTests ? ` · ${blockedTests} blocked` : ""}
         </span>
         <Bar counts={view.counts} total={view.total} />
         <Legend />
@@ -587,14 +614,7 @@ function RunBanner({ state, by, startedAt, finishedAt, mine, counts, total, flag
           {" · "}read-only — {state === "claimed" ? "only the person who claimed a flow can record verdicts" : "results cannot be changed after a flow is over"}
         </span>
       </div>
-      {state === "finished" || state === "abandoned" ? (
-        <span className="tally">
-          <span className="pill pass"><span className="dot" />{counts.pass}</span>
-          <span className={`pill fail${counts.fail ? "" : " off"}`}><span className="dot" />{counts.fail}</span>
-          <span className={`pill minor${counts.minor ? "" : " off"}`}><span className="dot" />{counts.minor}</span>
-          <span className={`pill skip${counts.skipped ? "" : " off"}`}><span className="dot" />{counts.skipped}</span>
-        </span>
-      ) : null}
+      {state === "finished" || state === "abandoned" ? <Tally counts={counts} /> : null}
     </div>
   );
 }

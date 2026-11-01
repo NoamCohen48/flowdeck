@@ -75,7 +75,9 @@ export const openApiConfig = {
       "Flowdeck integrates with nothing directly — it emits structured data and accepts structured data, " +
       "and adapters written outside it decide what becomes a ticket.",
   },
-  security: [{ actorHeader: [] }, { actorCookie: [] }],
+  // Either scheme identifies the caller. Typed explicitly: as a bare literal TypeScript
+  // infers `{ actorCookie?: undefined }` on the other entry, which a requirement may not hold.
+  security: [{ actorHeader: [] }, { actorCookie: [] }] as Record<string, string[]>[],
   servers: [{ url: "/api", description: "Relative to the Flowdeck origin" }],
   tags: [
     { name: "Products", description: "Independent systems under test (D23)" },

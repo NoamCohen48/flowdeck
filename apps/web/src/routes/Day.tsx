@@ -2,9 +2,13 @@
  * The testing-day board. Every flow with its precondition, devices, estimate,
  * state and who holds it — live. Claims are advisory (D26): a flow someone else
  * holds can still be taken, after a confirmation that says who and how far.
+ *
+ * Recorded results arrive when a flow is finished. Until then each running flow
+ * shows its tester's provisional progress (D42): the step they are on, a tally,
+ * and anything that went wrong, with the note — never counted in the day's numbers.
  */
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { computeHandoffs } from "@flowdeck/domain";
+import { computeHandoffs, deviceSlots, type DeviceSlots, type LiveProgress } from "@flowdeck/domain";
 import { api, unwrap } from "../lib/api.ts";
 import { useLiveResults, useLiveStepProblems, useRunBoard, type FlowProgress } from "../lib/run-model.ts";
 import { worstResultByTest, type Verdict } from "@flowdeck/domain";
@@ -12,10 +16,13 @@ import { useMe } from "../lib/identity.tsx";
 import { usePeers, usePresence } from "../lib/presence.ts";
 import { useTitle } from "../lib/title.ts";
 import { DeviceChip } from "../components/Device.tsx";
-import { Bar, Kpis } from "../components/Progress.tsx";
+import { Bar, Kpis, Tally } from "../components/Progress.tsx";
 import { IssueCard, StepProblemCard, useIssues } from "../components/Issues.tsx";
 import { useClaim } from "../components/ClaimDialog.tsx";
 import { useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import type { FlowRunRow } from "../lib/collections.ts";
+import type { SnapshotFlow } from "../lib/api.ts";
 
 export function Day() {
   const { productId, runId } = useParams({ strict: false }) as { productId: string; runId: string };
@@ -27,6 +34,7 @@ export function Day() {
   const { rows: stepProblems } = useLiveStepProblems(runId);
   const resultCount = (board ? board.flows.reduce((n, f) => n + Object.values(f.counts).reduce((a, b) => a + b, 0), 0) : 0) + stepProblems.length;
   const issues = useIssues(runId, resultCount);
+  const slots = useMemo(() => (board ? deviceSlots(board.run.snapshot.flows) : new Map()), [board?.run.snapshot.flows]);
 
   async function close(reopen: boolean) {
     if (!reopen && !confirm("Close the day? It leaves the open list and its report is final. You can reopen it.")) return;
@@ -37,6 +45,8 @@ export function Day() {
 
   if (!board) return <main className="shell"><p className="meta">Loading the testing day…</p></main>;
   const { run, flows, counts, total, notReached } = board;
+  const titles = new Map(run.snapshot.tests.map((t) => [t.id, t.title]));
+  const testTitle = (id: string) => titles.get(id) ?? "(archived test)";
   const date = new Date(run.date);
 
   return (
@@ -65,9 +75,11 @@ export function Day() {
         <div style={{ padding: "0 18px 16px" }}><Bar counts={counts} total={total} /></div>
       </div>
 
+      <InFlight flows={flows.map((f) => ({ flow: f.flow, flowRuns: f.flowRuns }))} />
+
       <h2>Flows</h2>
       <div className="stack">
-        {flows.map((f) => <FlowCard key={f.flow.id} productId={productId} runId={runId} progress={f} />)}
+        {flows.map((f) => <FlowCard key={f.flow.id} productId={productId} runId={runId} progress={f} slots={slots} testTitle={testTitle} />)}
       </div>
       <h2>Report</h2>
       {issues.data && issues.data.issues.length ? (
@@ -75,7 +87,7 @@ export function Day() {
           {issues.data.issues.map((i, n) => <IssueCard key={n} feed={issues.data!} issue={i} productId={productId} runId={runId} />)}
         </div>
       ) : (
-        <p className="meta">{issues.data ? "Nothing has gone wrong so far." : "…"}</p>
+        <p className="meta">{issues.data ? "Nothing recorded has gone wrong so far." : "Loading the report…"}</p>
       )}
       {notReached ? <p className="meta" style={{ marginTop: 12 }}>{notReached} test{notReached === 1 ? "" : "s"} not reached yet — in scope, with no result at all.</p> : null}
 
@@ -99,11 +111,11 @@ export function Day() {
   );
 }
 
-function FlowCard({ productId, runId, progress }: { productId: string; runId: string; progress: FlowProgress }) {
+function FlowCard({ productId, runId, progress, slots, testTitle }: { productId: string; runId: string; progress: FlowProgress; slots: DeviceSlots; testTitle: (id: string) => string }) {
   const { flow, flowRuns, testCount, state, holders } = progress;
   const me = useMe();
   const navigate = useNavigate();
-  const devices = computeHandoffs(flow.steps).devices;
+  const devices = computeHandoffs(flow.steps, slots).devices;
   const mine = flowRuns.find((fr) => fr.state === "claimed" && fr.claimed_by === me.name);
   const label = { done: "Finished", running: "In progress", open: "Unclaimed" }[state];
   const { claim, busy, dialog } = useClaim(runId);
@@ -111,6 +123,7 @@ function FlowCard({ productId, runId, progress }: { productId: string; runId: st
     void navigate({ to: "/products/$productId/runs/$runId/flows/$flowRunId", params: { productId, runId, flowRunId } });
 
   const finished = flowRuns.filter((fr) => fr.state === "finished").sort((a, b) => (b.finished_at ?? "").localeCompare(a.finished_at ?? ""));
+  const running = flowRuns.filter((fr) => fr.state === "claimed");
   const cta = mine ? (
     <Link className="btn primary" to="/products/$productId/runs/$runId/flows/$flowRunId" params={{ productId, runId, flowRunId: mine.id }}>Continue</Link>
   ) : (
@@ -120,7 +133,7 @@ function FlowCard({ productId, runId, progress }: { productId: string; runId: st
   );
 
   return (
-    <div className={`panel pad flowcard ${state}`}>
+    <div className={`panel pad flowcard ${state}`} id={`flow-${flow.id}`}>
       <div className="row-split">
         <div style={{ flex: 1, minWidth: 230 }}>
           <div className="flex gap-2 items-center flex-wrap">
@@ -136,12 +149,11 @@ function FlowCard({ productId, runId, progress }: { productId: string; runId: st
         {cta}
       </div>
       {flow.precondition ? <div className="pre" style={{ fontSize: 13.5 }} dir="auto"><b>Before you start:</b> {flow.precondition}</div> : null}
-      {finished.length ? (
+      {running.length || finished.length ? (
         <div className="results">
+          {running.map((fr) => <LiveRow key={fr.id} productId={productId} runId={runId} flow={flow} flowRun={fr} testTitle={testTitle} />)}
           {finished.map((fr) => <ResultRow key={fr.id} productId={productId} runId={runId} flowRunId={fr.id} by={fr.claimed_by ?? "someone"} at={fr.finished_at} testCount={testCount} />)}
         </div>
-      ) : state === "running" ? (
-        <p className="meta" style={{ margin: "10px 0 0", fontSize: 13 }}>Results appear here when the flow is finished.</p>
       ) : null}
       {dialog}
     </div>
@@ -168,14 +180,95 @@ function ResultRow({ productId, runId, flowRunId, by, at, testCount }: { product
           {flagged ? ` · ${flagged} step${flagged === 1 ? "" : "s"} flagged as wrong` : ""}
         </span>
       </span>
-      <span className="tally">
-        <span className="pill pass"><span className="dot" />{counts.pass}</span>
-        <span className={`pill fail${counts.fail ? "" : " off"}`}><span className="dot" />{counts.fail}</span>
-        <span className={`pill minor${counts.minor ? "" : " off"}`}><span className="dot" />{counts.minor}</span>
-        <span className={`pill skip${counts.skipped ? "" : " off"}`}><span className="dot" />{counts.skipped}</span>
-      </span>
+      <Tally counts={counts} />
       <Bar counts={counts} total={testCount} />
       <span className="go">View results</span>
     </Link>
+  );
+}
+
+const ago = (iso: string) => {
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  return s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`;
+};
+
+const KIND_LABEL: Record<LiveProgress["issues"][number]["kind"], string> = {
+  fail: "Failed", minor: "Minor", skipped: "Skipped — the test is wrong", flag: "Step is wrong",
+};
+
+/**
+ * A flow someone is running right now: where they are and what has gone wrong so
+ * far, from their device's draft (D42). Provisional — dashed, and not in the totals.
+ */
+function LiveRow({ productId, runId, flow, flowRun, testTitle }: { productId: string; runId: string; flow: SnapshotFlow; flowRun: FlowRunRow; testTitle: (id: string) => string }) {
+  const by = flowRun.claimed_by ?? "someone";
+  const p = flowRun.progress;
+  return (
+    <div className="liverow">
+      <Link className="resultrow live" to="/products/$productId/runs/$runId/flows/$flowRunId" params={{ productId, runId, flowRunId: flowRun.id }}>
+        <span className="avatar" aria-hidden>{by.trim().charAt(0).toUpperCase()}</span>
+        <span className="who">
+          <b dir="auto">{by} <span className="livedot" aria-hidden />running now</b>
+          <span className="meta">
+            {p
+              ? <>On step {p.step + 1} of {flow.steps.length} · {p.counts.pass + p.counts.fail + p.counts.minor + p.counts.skipped} of {p.total} tests checked{p.blockedFrom !== null ? ` · blocked from step ${p.blockedFrom + 1}` : ""} · {ago(p.updatedAt)}</>
+              : "Has not recorded anything yet"}
+          </span>
+        </span>
+        {p ? <Tally counts={p.counts} /> : <span />}
+        {p ? <Bar counts={p.counts} total={p.total} /> : <span />}
+        <span className="go">Watch</span>
+      </Link>
+      {p?.issues.length ? (
+        <ul className="liveissues">
+          {p.issues.map((i, n) => (
+            <li key={n} className={`k-${i.kind}`}>
+              <span className="what">{KIND_LABEL[i.kind]}{i.blocking ? " · blocked the rest" : ""}</span>
+              <span className="where">Step {i.step + 1}{i.testId ? ` · ${testTitle(i.testId)}` : ""}</span>
+              {i.note ? <span className="why" dir="auto">{i.note}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+
+/**
+ * The coordinator's alarm: anything that has gone wrong in a flow still running,
+ * at the top of the board, before it is recorded. Blocking problems first.
+ */
+function InFlight({ flows }: { flows: { flow: SnapshotFlow; flowRuns: FlowRunRow[] }[] }) {
+  const hits = flows.flatMap(({ flow, flowRuns }) =>
+    flowRuns
+      .filter((fr) => fr.state === "claimed" && fr.progress)
+      .map((fr) => {
+        const issues = fr.progress!.issues.filter((i) => i.kind === "fail" || i.kind === "flag");
+        return { flow, by: fr.claimed_by ?? "someone", issues, blocking: issues.some((i) => i.blocking) };
+      })
+      .filter((h) => h.issues.length),
+  ).sort((a, b) => Number(b.blocking) - Number(a.blocking));
+  if (!hits.length) return null;
+  return (
+    <div className="inflight" role="status">
+      <b>Going wrong right now</b>
+      <span className="meta">From flows still being run — not in the numbers above until they are finished.</span>
+      <ul>
+        {hits.map((h, n) => {
+          const fails = h.issues.filter((i) => i.kind === "fail").length;
+          const flags = h.issues.length - fails;
+          return (
+            <li key={n} className={h.blocking ? "blocking" : ""}>
+              <a href={`#flow-${h.flow.id}`} dir="auto">{h.flow.name}</a>
+              <span>
+                {h.by}: {[fails ? `${fails} failure${fails === 1 ? "" : "s"}` : null, flags ? `${flags} wrong step${flags === 1 ? "" : "s"}` : null].filter(Boolean).join(", ")}
+                {h.blocking ? " — stuck, the rest of the flow is blocked" : ""}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

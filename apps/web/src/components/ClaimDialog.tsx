@@ -11,7 +11,8 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useState, type ReactNode } from "react";
 import { api, ApiError, unwrap } from "../lib/api.ts";
 
-interface Holder { name: string; since: string }
+/** Who holds the flow, and — from their live progress (D42) — how far in and how recently. */
+interface Holder { name: string; since: string; step: number | null; steps: number | null; seen: string | null }
 interface Conflict { flowId: string; flowName: string; holders: Holder[]; then: (flowRunId: string) => void }
 
 export function useClaim(runId: string, opts: { onDismiss?: () => void } = {}) {
@@ -23,7 +24,7 @@ export function useClaim(runId: string, opts: { onDismiss?: () => void } = {}) {
    * agreed. If someone else is on it, the dialog opens instead and `then` runs
    * only if the tester chooses to go ahead anyway.
    */
-  async function claim(flow: { id: string; name: string }, then: (flowRunId: string) => void, confirm = false) {
+  async function claim(flow: { id: string; name: string; steps?: readonly unknown[] }, then: (flowRunId: string) => void, confirm = false) {
     setBusy(true);
     try {
       const res = await unwrap(
@@ -35,11 +36,17 @@ export function useClaim(runId: string, opts: { onDismiss?: () => void } = {}) {
       then(res.flowRun.id);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
-        const body = e.body as { alsoRunning: { claimedBy: string | null; startedAt: string }[] };
+        const body = e.body as { alsoRunning: { claimedBy: string | null; startedAt: string; progress: { step: number; updatedAt: string } | null }[] };
         setConflict({
           flowId: flow.id,
           flowName: flow.name,
-          holders: body.alsoRunning.map((f) => ({ name: f.claimedBy ?? "someone", since: f.startedAt })),
+          holders: body.alsoRunning.map((f) => ({
+            name: f.claimedBy ?? "someone",
+            since: f.startedAt,
+            step: f.progress ? f.progress.step + 1 : null,
+            steps: flow.steps?.length ?? null,
+            seen: f.progress?.updatedAt ?? null,
+          })),
           then,
         });
       } else throw e;
@@ -84,6 +91,18 @@ function ClaimDialog({ conflict, busy, onConfirm, onCancel }: {
               {holders.length === 1 ? ` · since ${time(holders[0]!.since)}` : ""}
             </p>
           </Dialog.Description>
+          {/* Where each of them is, and when they last did anything: a claim left by
+              someone who walked away reads very differently from one in full swing. */}
+          <ul className="holderlist">
+            {holders.map((h) => (
+              <li key={h.name}>
+                <b dir="auto">{h.name}</b>{" "}
+                {h.step !== null
+                  ? `is on step ${h.step}${h.steps ? ` of ${h.steps}` : ""} · last active ${time(h.seen!)}`
+                  : "has not recorded anything yet"}
+              </li>
+            ))}
+          </ul>
           <p>
             Do you want to run it as well? Both sets of results are kept, and if either of you
             hits a bug the day reports it.

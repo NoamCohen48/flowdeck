@@ -12,6 +12,7 @@
  */
 import { createCollection } from "@tanstack/react-db";
 import { electricCollectionOptions } from "@tanstack/electric-db-collection";
+import type { LiveProgress } from "@flowdeck/domain";
 import { api, unwrap } from "./api.ts";
 
 export type FlowRunRow = {
@@ -22,6 +23,8 @@ export type FlowRunRow = {
   state: "open" | "claimed" | "finished" | "abandoned" | "released";
   started_at: string;
   finished_at: string | null;
+  /** The tester's draft, summarised, while the flow is claimed (D42). Provisional; never counted. */
+  progress: LiveProgress | null;
 };
 
 export type TestResultRow = {

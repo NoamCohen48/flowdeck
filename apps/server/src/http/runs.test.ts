@@ -486,3 +486,94 @@ describe("flagging a step as wrong (D40)", () => {
     expect(state.results.some((r) => r.id === recorded.body.id)).toBe(false);
   });
 });
+
+describe("live progress for the coordinator (D42)", () => {
+  const progress = (step: number) => ({
+    step,
+    total: 8,
+    counts: { pass: 1, fail: 1, minor: 0, skipped: 0 },
+    blockedFrom: step + 1,
+    issues: [{ step, testId: null, kind: "flag", note: "The button moved", blocking: true }],
+    updatedAt: new Date().toISOString(),
+  });
+  const put = (body: unknown, cookie: string): RequestInit => ({ ...json(body, cookie), method: "PUT" });
+
+  async function claimedBy(cookie: string) {
+    const run = await freshRun();
+    const flowId = run.snapshot.flows[0]!.id;
+    const { body } = await call<{ flowRun: { id: string } }>(`/api/runs/${run.id}/flows/${flowId}/claim`, { method: "POST", headers: { cookie } });
+    return { run, flowRunId: body.flowRun.id };
+  }
+
+  test("the tester running a flow publishes where they are; the run reads it back", async () => {
+    const { run, flowRunId } = await claimedBy(noa);
+    const res = await call<{ progress: { step: number } | null }>(`/api/flow-runs/${flowRunId}/progress`, put(progress(2), noa));
+    expect(res.status).toBe(200);
+    expect(res.body.progress?.step).toBe(2);
+    const again = (await call<{ flowRuns: { id: string; progress: { step: number } | null }[] }>(`/api/runs/${run.id}`)).body;
+    expect(again.flowRuns.find((fr) => fr.id === flowRunId)?.progress?.step).toBe(2);
+  });
+
+  test("nobody else can publish for them", async () => {
+    const { flowRunId } = await claimedBy(noa);
+    const res = await call(`/api/flow-runs/${flowRunId}/progress`, put(progress(1), dana));
+    expect(res.status).toBe(409);
+  });
+
+  test("progress is never counted as a result", async () => {
+    const { run, flowRunId } = await claimedBy(noa);
+    await call(`/api/flow-runs/${flowRunId}/progress`, put(progress(3), noa));
+    const again = (await call<Run>(`/api/runs/${run.id}`)).body;
+    expect(again.results.filter((r) => r.id && again.flowRuns.some((fr) => fr.id === flowRunId))).toHaveLength(0);
+  });
+
+  for (const action of ["finish", "abandon"] as const) {
+    test(`${action} clears it, and a stale tab cannot bring it back`, async () => {
+      const { flowRunId } = await claimedBy(noa);
+      await call(`/api/flow-runs/${flowRunId}/progress`, put(progress(1), noa));
+      const done = await call<{ progress: unknown }>(`/api/flow-runs/${flowRunId}/${action}`, { method: "POST", headers: { cookie: noa } });
+      expect(done.body.progress).toBeNull();
+      const late = await call(`/api/flow-runs/${flowRunId}/progress`, put(progress(4), noa));
+      expect(late.status).toBe(409);
+    });
+  }
+});
+
+describe("the runs list carries each day's tally", () => {
+  test("worst result per test, the same rule the board uses (D19)", async () => {
+    const run = await freshRun();
+    const flow = run.snapshot.flows.find((f) => f.name.startsWith("Messaging across"))!;
+    const { body } = await call<{ flowRun: { id: string } }>(`/api/runs/${run.id}/flows/${flow.id}/claim`, { method: "POST", headers: { cookie: noa } });
+    const marked = flow.steps.filter((s) => s.marks.length);
+    const [first, second] = [marked[0]!, marked[1]!];
+    const record = (step: { id: string }, testId: string, verdict: string, note: string | null = null) =>
+      call(`/api/flow-runs/${body.flowRun.id}/results`, json({ stepId: step.id, testId, verdict, note, blocking: false, idempotencyKey: `${run.id}:${step.id}:${testId}:${verdict}` }, noa));
+    await record(first, first.marks[0]!, "pass");
+    await record(second, second.marks[0]!, "fail", "broken");
+
+    const product = (await call<{ id: string; name: string }[]>("/api/products")).body.find((p) => p.name === "Relay")!;
+    const list = (await call<{ id: string; total: number; counts: Record<string, number>; notReached: number }[]>(`/api/products/${product.id}/runs`)).body;
+    const mine = list.find((r) => r.id === run.id)!;
+    const total = new Set(run.snapshot.flows.flatMap((f) => f.steps.flatMap((s) => s.marks))).size;
+    expect(mine.total).toBe(total);
+    expect(mine.counts).toEqual({ pass: first.marks[0] === second.marks[0] ? 0 : 1, fail: 1, minor: 0, skipped: 0 });
+    expect(mine.notReached).toBe(total - (mine.counts.pass! + 1));
+  });
+});
+
+describe("live progress arriving out of order (D42)", () => {
+  test("an older update landing late does not roll the board back", async () => {
+    const run = await freshRun();
+    const flowId = run.snapshot.flows[0]!.id;
+    const { body } = await call<{ flowRun: { id: string } }>(`/api/runs/${run.id}/flows/${flowId}/claim`, { method: "POST", headers: { cookie: noa } });
+    const at = (step: number, updatedAt: string) => ({
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie: noa },
+      body: JSON.stringify({ step, total: 5, counts: { pass: step, fail: 0, minor: 0, skipped: 0 }, blockedFrom: null, issues: [], updatedAt }),
+    });
+    await call(`/api/flow-runs/${body.flowRun.id}/progress`, at(4, "2026-11-01T10:00:05.000Z"));
+    const late = await call<{ progress: { step: number } }>(`/api/flow-runs/${body.flowRun.id}/progress`, at(2, "2026-11-01T10:00:01.000Z"));
+    expect(late.status).toBe(200);
+    expect(late.body.progress.step).toBe(4);
+  });
+});

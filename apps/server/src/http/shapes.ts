@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { ActorEnv } from "./actor.ts";
+import { IS_TEST } from "../db/client.ts";
 
 /**
  * The Electric shape proxy (D32, D33).
@@ -13,7 +14,8 @@ import type { ActorEnv } from "./actor.ts";
  * allowlist below is the entire set of things anyone can subscribe to.
  */
 
-const ELECTRIC_URL = process.env.ELECTRIC_URL ?? "http://localhost:3010";
+/** The test database has its own Electric (`electric-test` in compose); see `IS_TEST`. */
+const ELECTRIC_URL = process.env.ELECTRIC_URL ?? (IS_TEST ? "http://localhost:3011" : "http://localhost:3010");
 
 /**
  * Parameters Electric owns; the client passes them through untouched on resume.

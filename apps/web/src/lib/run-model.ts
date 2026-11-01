@@ -11,6 +11,11 @@ import { blockingStepIndex, computeBlocked, worstResultByTest, type Verdict } fr
 import { api, unwrap, type Run, type SnapshotFlow } from "./api.ts";
 import { flowRunsOf, resultsOf, stepProblemsOf, type FlowRunRow, type StepProblemRow, type TestResultRow } from "./collections.ts";
 
+/** A day older than a week is not today's: it is one somebody forgot to close. */
+const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+export const isStale = (run: { date: string; closedAt: string | null }) =>
+  !run.closedAt && Date.now() - new Date(run.date).getTime() >= STALE_AFTER_MS;
+
 export function useRun(runId: string) {
   return useQuery({
     queryKey: ["run", runId],

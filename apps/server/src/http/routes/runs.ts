@@ -17,6 +17,7 @@ import {
   openRunFor,
   recordResult,
   recordStepProblem,
+  setFlowRunProgress,
   setFlowRunState,
   startRun,
   type TemplateSnapshot,
@@ -26,6 +27,7 @@ import {
   ClaimResponseSchema,
   ErrorSchema,
   FlowRunSchema,
+  LiveProgressSchema,
   MeSchema,
   PassAllSchema,
   PresenceSchema,
@@ -184,6 +186,9 @@ runs.openapi(
         date: iso(r.date),
         startedBy: r.started_by,
         closedAt: r.closed_at ? iso(r.closed_at) : null,
+        total: r.total,
+        counts: { pass: r.pass, fail: r.fail, minor: r.minor, skipped: r.skipped },
+        notReached: r.total - (r.pass + r.fail + r.minor + r.skipped),
       })),
       200,
     );
@@ -323,6 +328,33 @@ for (const [action, state, summary] of [
     },
   );
 }
+
+runs.openapi(
+  createRoute({
+    method: "put",
+    path: "/flow-runs/{flowRunId}/progress",
+    tags: ["Runs"],
+    summary: "Publish where you are in a flow you are running",
+    description:
+      "Verdicts stay a draft on the tester's device until Finish, so an abandoned flow leaves nothing behind. This is the board's view of that draft while it lasts (D42): the step the tester is on, a tally, and every non-pass with its note. Provisional — never counted in the day's numbers, and cleared on finish and abandon. Only the person who claimed the flow run can publish, and only while it is claimed.",
+    request: {
+      params: z.object({ flowRunId: Uuid }),
+      body: { content: { "application/json": { schema: LiveProgressSchema } } },
+    },
+    responses: {
+      200: { content: { "application/json": { schema: FlowRunSchema } }, description: "Published" },
+      401: { content: { "application/json": { schema: ErrorSchema } }, description: "No identity" },
+      409: { content: { "application/json": { schema: ErrorSchema } }, description: "Not a flow run you are running" },
+    },
+  }),
+  async (c) => {
+    const who = requireActor(c);
+    const fr = await setFlowRunProgress(c.req.valid("param").flowRunId, who, c.req.valid("json"));
+    return fr
+      ? c.json({ ...flowRunDto(fr.row), txid: fr.txid }, 200)
+      : c.json({ error: "not a flow run you are running: it is finished, abandoned, or claimed by someone else" }, 409);
+  },
+);
 
 /* ── Results (D11, D12, D13, D36) ────────────────────────────────────── */
 
