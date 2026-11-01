@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Flowdeck",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Manual testing as human flows. A test says what must be true; a flow says what a human does. Flowdeck integrates with nothing directly — it emits structured data and accepts structured data, and adapters written outside it decide what becomes a ticket."
   },
   "security": [
