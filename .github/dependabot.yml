@@ -19,3 +19,8 @@ updates:
   - package-ecosystem: docker
     directories: [/, /backup]
     schedule: { interval: weekly }
+    ignore:
+      # The backup image's pg_dump must match the database's major version, and a
+      # major Postgres upgrade needs a dump and restore, so both move together, by hand.
+      - dependency-name: postgres
+        update-types: [version-update:semver-major]
