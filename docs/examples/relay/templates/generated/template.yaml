@@ -1,0 +1,3 @@
+name: Generated flows
+description: "Worked out by flowdeck generate from graph.yaml and each test's given. Edit those and run it again: edits made here are overwritten."
+flows: [flow-1]

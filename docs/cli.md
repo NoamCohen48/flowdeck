@@ -32,7 +32,8 @@ the tests no flow verifies.
 ```
 relay/
   product.yaml                                   name, description
-  tests/<key>.yaml                               title, expect, tags, metadata, archived
+  graph.yaml                                     roles, screens, facts, starts, actions (optional)
+  tests/<key>.yaml                               title, expect, tags, given, metadata, archived
   templates/<key>/template.yaml                  name, description, archived, flows: [in order]
   templates/<key>/<flow-key>.flow.yaml           name, precondition, estimateMinutes, archived, steps
   AGENTS.md                                      generated: the rules, for an agent working here
@@ -83,6 +84,61 @@ Unknown fields are errors, so `expected:` or `devices:` is caught rather than ig
 
 Errors stop a push. Warnings are said and allowed — some are judgement calls.
 
+## Generated flows
+
+Long flows, where each test sets up the next, are the cheapest way to test and the hardest
+to write by hand. Instead, describe how a person moves through the app once, in `graph.yaml`,
+say the state each test needs in its `given:`, and let `flowdeck generate` work the flows out.
+
+```yaml
+# graph.yaml
+roles:                       # the devices a flow needs, by part, not by model
+  phone-a: { name: Phone A, surface: phone, usually: Pixel 8 }
+  phone-b: { name: Phone B, surface: phone, usually: iPhone 13 }
+screens:                     # where a role can be, per surface
+  phone: [chats, chat, message-menu]
+facts:                       # what can be true; ~ means fresh: true until the next action
+  hello: A message, "hello", from Phone A is in the chat
+  ~sent: Phone A just sent it
+starts:                      # where a flow may begin: the precondition, and every role's screen
+  signed-in:
+    say: Both phones signed in, on the chat list.
+    at: { phone-a: chats, phone-b: chats }
+actions:                     # one step on one role; needs ["!x"] = x must be false, sets ["-x"] clears x
+  - { device: phone-a, from: chats, to: chat, do: Open the chat with qa-2. }
+  - { device: phone-a, from: chat, do: Send the message "hello"., sets: [hello, ~sent] }
+```
+
+```yaml
+# tests/sending-a-message-shows-it-optimistically.yaml
+title: Sending a message shows it optimistically
+expect: The message appears at once with a pending clock, then a single check within 2 seconds.
+given:                       # a state, never steps: there is more than one way to get there
+  device: phone-a
+  at: chat
+  facts: [~sent]
+  look: Watch the message as it sends.
+```
+
+```sh
+flowdeck generate             # writes templates/generated/: flows of at most 25 steps
+flowdeck generate --max 15    # shorter flows, more of them
+flowdeck generate --replan    # plan from nothing; tests may move between flows
+```
+
+- Every test with a `given` is checked in exactly one generated flow, by the shortest path
+  from wherever that flow already is. Tests with no `given` are left to hand-written flows.
+- Each flow begins from a named start, so flows can run side by side on a testing day.
+- The same suite always gives the same flows. Run it again after an edit and the flows move
+  as little as they can: tests stay in their flow, and a new one goes where it costs the fewest
+  steps. It says when planning from nothing would be noticeably shorter (`--replan`).
+- `templates/generated/` is rewritten on every run: edit the graph and the givens, not it.
+- `flowdeck lint` (and every push) checks the graph: unknown roles, screens and facts, a fact
+  nothing makes true, a screen with no way out, a `given` no start can reach.
+
+[`examples/relay/`](examples/relay/) has a small graph and the flow it gives;
+`flowdeck guide graph` is the full format.
+
 ## When someone else changed the suite
 
 A pull records the suite's *revision*. A push names it, and the server refuses (exit code 3)
@@ -110,7 +166,7 @@ Then push again. `flowdeck push --force` skips the check and overwrites.
 
 | Command | What |
 |---|---|
-| `guide [overview\|tests\|flows\|steps\|files\|workflow\|all]` | How to write a suite |
+| `guide [overview\|tests\|flows\|steps\|graph\|files\|workflow\|all]` | How to write a suite |
 | `login [url] --as <name>` | Remember the server and your name (`~/.config/flowdeck/config.json`) |
 | `products` | Slugs and names |
 | `create "<name>" [--slug s]` | Make a product and pull it |
@@ -122,4 +178,5 @@ Then push again. `flowdeck push --force` skips the check and overwrites.
 | `new flow <template> "<name>" [--precondition "<state>"]` | A flow file, appended to the template's order |
 | `new template "<name>"` | A template folder |
 | `coverage` | Tests in no flow; per template: flows, steps, tests, devices |
+| `generate [--max N] [--replan]` | Flows from `graph.yaml` and each test's `given`, into `templates/generated/` |
 | `report [run-id]` | The latest (or given) testing day's findings, pointing at files |

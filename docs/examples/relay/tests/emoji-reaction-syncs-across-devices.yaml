@@ -1,3 +1,8 @@
 title: An emoji reaction syncs across devices
 expect: The same emoji and the same count show on every device in the thread.
 tags: [messaging, sync]
+given:
+  device: phone-a
+  at: chat
+  facts: [reacted-on-b]
+  look: Look at "hello".

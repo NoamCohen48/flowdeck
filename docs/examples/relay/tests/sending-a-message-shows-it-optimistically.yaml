@@ -1,5 +1,10 @@
 title: Sending a message shows it optimistically
 expect: The message appears at once with a pending clock, then a single check within 2 seconds.
 tags: [messaging]
+given:
+  device: phone-a
+  at: chat
+  facts: [~sent]
+  look: Watch the message as it sends.
 metadata:
   priority: high

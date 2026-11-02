@@ -115,6 +115,12 @@ PUT  /api/products/{product}/suite         { baseRevision, suite, force? } → w
 A complete one is [`examples/suite.json`](examples/suite.json); [`examples/push.sh`](examples/push.sh)
 plans and pushes it with `curl`.
 
+Two optional parts are for generated flows ([`cli.md`](cli.md#generated-flows)): `graph`, how
+a person moves through the app (`roles`, `screens`, `facts`, `starts`, `actions`), and a test's
+`given`, the state it needs (`{ device, at, facts?, also?, look? }`). A push checks them like
+the rest: an unknown screen or fact, or a `given` no start can reach, is an error. The order of
+roles and starts is kept as written.
+
 **A push replaces the suite**, matching by key:
 
 - a key the product does not have is created;

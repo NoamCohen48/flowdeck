@@ -5,6 +5,8 @@
  * real surface rather than a modelled-but-unused one. The Relay data is the demo's,
  * translated into the split the docs describe — its assertions become tests, its
  * procedures become flow steps, and the join between them becomes step marks.
+ * Relay also has its app graph and a given on each test, so `flowdeck generate`
+ * has something real to work from.
  *
  * Plus, behind `--volume`, a synthetic product at the scale the UI actually has to
  * survive: 300 tests and fifty-step flows. Verifying the editor sidebar and the
@@ -29,7 +31,7 @@ import {
 } from "./schema.ts";
 import seedData from "./seed-data.json" with { type: "json" };
 import { snapshotTemplate } from "./runs.ts";
-import { slugify, uniqueKey, type StepKind, type TemplateStatus, type Verdict } from "@flowdeck/domain";
+import { slugify, uniqueKey, type StepKind, type SuiteGraph, type TemplateStatus, type Verdict } from "@flowdeck/domain";
 
 const args = new Set(process.argv.slice(2));
 const WITH_VOLUME = args.has("--volume");
@@ -78,7 +80,7 @@ for (const name of TESTERS) {
 for (const p of seedData.products) {
   const [row] = await db
     .insert(product)
-    .values({ slug: p.key, name: p.name, description: p.description })
+    .values({ slug: p.key, name: p.name, description: p.description, graph: "graph" in p ? (p.graph as SuiteGraph) : null })
     .returning();
   const productId = row!.id;
 
