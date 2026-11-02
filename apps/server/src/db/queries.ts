@@ -345,23 +345,26 @@ export async function listTemplateSummaries(productId: string) {
 
 /* ── Products ────────────────────────────────────────────────────────── */
 
+/** A product as the product routes show it: the graph is part of the suite document, not of every listing. */
+const productColumns = { id: product.id, slug: product.slug, name: product.name, description: product.description, createdAt: product.createdAt };
+
 export async function createProduct(input: { name: string; description: string; slug?: string }) {
   const slug = await assignKey(db, { table: "product" }, input.name, input.slug);
-  const [row] = await db.insert(product).values({ ...input, slug }).returning();
+  const [row] = await db.insert(product).values({ ...input, slug }).returning(productColumns);
   return row!;
 }
 
 export async function deleteProduct(productId: string) {
-  const [row] = await db.delete(product).where(eq(product.id, productId)).returning();
+  const [row] = await db.delete(product).where(eq(product.id, productId)).returning(productColumns);
   return row;
 }
 
 export async function listProducts() {
-  return db.select().from(product).orderBy(asc(product.name));
+  return db.select(productColumns).from(product).orderBy(asc(product.name));
 }
 
 export async function getProduct(productId: string) {
-  const [row] = await db.select().from(product).where(eq(product.id, productId));
+  const [row] = await db.select(productColumns).from(product).where(eq(product.id, productId));
   return row;
 }
 
@@ -369,7 +372,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A product by id or by slug — `relay` and its UUID name the same thing. */
 export async function findProduct(ref: string) {
-  const [row] = await db.select().from(product).where(UUID.test(ref) ? eq(product.id, ref) : eq(product.slug, ref));
+  const [row] = await db.select(productColumns).from(product).where(UUID.test(ref) ? eq(product.id, ref) : eq(product.slug, ref));
   return row;
 }
 

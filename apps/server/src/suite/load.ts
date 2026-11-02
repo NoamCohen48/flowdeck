@@ -7,7 +7,7 @@
  */
 import { createHash } from "node:crypto";
 import { asc, eq, inArray } from "drizzle-orm";
-import type { Suite, SuiteFlow, SuiteStep, SuiteTemplate, SuiteTest } from "@flowdeck/domain";
+import type { Suite, SuiteFlow, SuiteGraph, SuiteStep, SuiteTemplate, SuiteTest, TestGiven } from "@flowdeck/domain";
 import { db } from "../db/client.ts";
 import { flow, product, step, stepMark, template, test, testVersion } from "../db/schema.ts";
 import type { Stored, StoredTemplate, StoredTest } from "@flowdeck/domain";
@@ -40,7 +40,7 @@ export async function loadStored(conn: Conn, productId: string): Promise<Stored 
   for (const m of marks) marksOf.set(m.stepId, [...(marksOf.get(m.stepId) ?? []), m.testId]);
 
   return {
-    product: { name: p.name, description: p.description },
+    product: { name: p.name, description: p.description, graph: p.graph ?? null },
     tests: tests.map((t): StoredTest => ({
       id: t.id, key: t.key, title: t.title, expect: t.expect, archived: t.archived,
       metadata: (t.metadata ?? {}) as Record<string, unknown>,
@@ -77,14 +77,16 @@ export function toSuite(stored: Stored): Suite {
   const tests = stored.tests
     .filter((t) => !t.archived || verified.has(t.id))
     .map((t): SuiteTest => {
-      const { tags, ...rest } = t.metadata as { tags?: unknown };
+      const { tags, given, ...rest } = t.metadata as { tags?: unknown; given?: unknown };
       const tagList = Array.isArray(tags) && tags.every((x) => typeof x === "string") ? (tags as string[]) : undefined;
-      const metadata = tagList || tags === undefined ? rest : { ...rest, tags };
+      const givenOf = givenFrom(given);
+      const metadata = { ...rest, ...(tagList || tags === undefined ? {} : { tags }), ...(givenOf || given === undefined ? {} : { given }) };
       return {
         key: t.key,
         title: t.title,
         expect: t.expect,
         ...(tagList?.length ? { tags: tagList } : {}),
+        ...(givenOf ? { given: givenOf } : {}),
         ...(Object.keys(metadata).length ? { metadata } : {}),
         ...(t.archived ? { archived: true } : {}),
       };
@@ -116,7 +118,31 @@ export function toSuite(stored: Stored): Suite {
     product: { name: stored.product.name, ...(stored.product.description ? { description: stored.product.description } : {}) },
     tests,
     templates,
+    ...(stored.product.graph ? { graph: graphFrom(stored.product.graph) } : {}),
   };
+}
+
+/**
+ * A stored given in the order a file writes it. It lives in the metadata bag,
+ * which is `jsonb` and so forgets the order its keys came in; anything that is
+ * not a given's shape is left in the bag as it was.
+ */
+function givenFrom(v: unknown): TestGiven | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const g = v as Record<string, unknown>;
+  if (typeof g.device !== "string" || typeof g.at !== "string") return undefined;
+  return {
+    device: g.device,
+    at: g.at,
+    ...(Array.isArray(g.facts) && g.facts.length ? { facts: g.facts as string[] } : {}),
+    ...(g.also && typeof g.also === "object" && Object.keys(g.also).length ? { also: g.also as Record<string, string> } : {}),
+    ...(typeof g.look === "string" && g.look ? { look: g.look } : {}),
+  };
+}
+
+/** The graph's sections in the order a file writes them. */
+function graphFrom(g: SuiteGraph): SuiteGraph {
+  return { roles: g.roles ?? {}, screens: g.screens ?? {}, facts: g.facts ?? {}, starts: g.starts ?? {}, actions: g.actions ?? [] };
 }
 
 /** Stable JSON: object keys sorted, so the same suite always hashes the same. */

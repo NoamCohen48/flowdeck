@@ -417,6 +417,43 @@ export const CreateTemplatesSchema = z
    at once. A push replaces the suite: whatever it leaves out is archived, never
    deleted, and pushing it back restores it. */
 
+/** A fact as an action or a given names it: `x`, `!x` (must be false), `-x` (made false), `~x` (fresh). */
+const FactRefSchema = z.string().min(1).max(200);
+const OneOrMany = z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]);
+
+export const TestGivenSchema = z
+  .object({
+    /** The role the check happens on. */
+    device: KeySchema,
+    /** Its screen. */
+    at: z.string().min(1),
+    facts: z.array(FactRefSchema).optional(),
+    /** Other roles that must be on a given screen too. */
+    also: z.record(z.string(), z.string().min(1)).optional(),
+    /** The check step's instruction; the test's title when left out. */
+    look: z.string().optional(),
+  })
+  .strict()
+  .openapi("TestGiven");
+
+export const SuiteGraphSchema = z
+  .object({
+    /** The devices a flow needs, by part: `phone-a: { name: Phone A, surface: phone }`. */
+    roles: z.record(z.string(), z.object({ name: z.string().min(1), surface: z.string().min(1), usually: z.string().optional() }).strict()),
+    /** Where a role can be, per surface. */
+    screens: z.record(z.string(), z.array(z.string().min(1))),
+    /** Name → what it means. A name starting with `~` is fresh: it holds until the next action. */
+    facts: z.record(z.string(), z.string()),
+    /** States a flow may begin from: the precondition in words, and every role's screen. */
+    starts: z.record(z.string(), z.object({ say: z.string().min(1), at: z.record(z.string(), z.string().min(1)) }).strict()),
+    /** One step on one role, from a screen to a screen (the same one when `to` is left out). */
+    actions: z
+      .array(z.object({ device: OneOrMany, from: OneOrMany, to: z.string().min(1).optional(), do: z.string().min(1), needs: z.array(FactRefSchema).optional(), sets: z.array(FactRefSchema).optional() }).strict())
+      .max(5000),
+  })
+  .strict()
+  .openapi("SuiteGraph");
+
 export const SuiteTestSchema = z
   .object({
     key: KeySchema,
@@ -424,6 +461,8 @@ export const SuiteTestSchema = z
     /** What must be true. A test is an assertion, not a procedure. */
     expect: z.string().min(1),
     tags: z.array(z.string().min(1)).optional(),
+    /** The state the test needs, against the graph. Never steps: there is more than one way there. */
+    given: TestGivenSchema.optional(),
     /** Everything else in the generic bag. */
     metadata: MetadataSchema.optional(),
     archived: z.boolean().optional(),
@@ -472,6 +511,8 @@ export const SuiteSchema = z
     product: z.object({ name: z.string().min(1), description: z.string().optional() }),
     tests: z.array(SuiteTestSchema).max(5000),
     templates: z.array(SuiteTemplateSchema).max(500),
+    /** How a person moves through the app, for `flowdeck generate`. */
+    graph: SuiteGraphSchema.optional(),
   })
   .openapi("Suite");
 
