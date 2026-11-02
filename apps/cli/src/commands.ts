@@ -5,7 +5,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { DEFAULT_MAX_STEPS, describeChange, GENERATED_TEMPLATE, generateFlows, KEY_PATTERN, lintSuite, slugify, uniqueKey, type Suite, type SuiteFlow, type SuiteTemplate } from "@flowdeck/domain";
+import { DEFAULT_MAX_STEPS, describeChange, explainGiven, factName, GENERATED_TEMPLATE, generateFlows, KEY_PATTERN, type SuiteGraph, lintSuite, slugify, uniqueKey, type Suite, type SuiteFlow, type SuiteTemplate } from "@flowdeck/domain";
 import { Client, CliError, EXIT, type IssueFeed } from "./client.ts";
 import { flowFile, listSuiteFiles, locate, readFolder, templateFile, testFile, writeFolder, writeTemplateFolder, type FileProblem } from "./files.ts";
 import { agentsFile, AGENTS_MARKER, guide, TOPICS } from "./guide.ts";
@@ -372,6 +372,88 @@ export async function generate(_: string[], flags: Flags): Promise<Output> {
     ],
     json: { generated: true, template: GENERATED_TEMPLATE, maxSteps, flows: g.flows.map((f) => ({ key: f.key, name: f.name, steps: f.steps.length, tests: f.steps.flatMap((s) => s.verifies ?? []) })), steps: g.steps, unplaced: g.unplaced, added, dropped, moved, fresh: g.fresh ?? null, written, removed },
   };
+}
+
+const asList = (x: string | string[]) => (Array.isArray(x) ? x : [x]);
+
+/** The graph as text: per role, per screen, the ways out, and the tests that are checked there. */
+function outline(suite: Suite, graph: SuiteGraph): string[] {
+  const lines: string[] = [];
+  const conditions = (a: SuiteGraph["actions"][number]) => [a.needs?.length ? `needs ${a.needs.join(", ")}` : "", a.sets?.length ? `sets ${a.sets.join(", ")}` : ""].filter(Boolean).join("; ");
+  for (const [key, r] of Object.entries(graph.roles)) {
+    lines.push(`${key}: ${r.name}, on ${r.surface}${r.usually ? ` (usually ${r.usually})` : ""}`);
+    for (const screen of graph.screens[r.surface] ?? []) {
+      const starts = Object.entries(graph.starts).filter(([, st]) => st.at[key] === screen).map(([k]) => k);
+      lines.push(`  ${screen}${starts.length ? `   [start: ${starts.join(", ")}]` : ""}`);
+      for (const a of graph.actions) {
+        if (!asList(a.device).includes(key) || !asList(a.from).includes(screen)) continue;
+        const to = a.to ?? screen;
+        const cond = conditions(a);
+        lines.push(`    ${to === screen ? "(stays)" : `→ ${to}`}  ${a.do}${cond ? `   (${cond})` : ""}`);
+      }
+      for (const t of suite.tests) {
+        if (t.given?.device !== key || t.given.at !== screen || t.archived) continue;
+        lines.push(`    ✓ ${t.key}${t.given.facts?.length ? `   (with ${t.given.facts.join(", ")})` : ""}`);
+      }
+    }
+  }
+  lines.push("", "facts:", ...Object.entries(graph.facts).map(([f, m]) => `  ${f}: ${m}`));
+  return lines;
+}
+
+/** The graph as a Mermaid flowchart: one box per role, screens as nodes, actions as arrows. */
+function mermaid(graph: SuiteGraph): string[] {
+  const id = (role: string, screen: string) => `${role}__${screen}`.replace(/[^A-Za-z0-9_]/g, "_");
+  const label = (s: string) => s.replace(/"/g, "#quot;");
+  const lines = ["flowchart LR"];
+  for (const [key, r] of Object.entries(graph.roles)) {
+    lines.push(`  subgraph ${id(key, "")}["${label(r.name)}"]`);
+    for (const screen of graph.screens[r.surface] ?? []) lines.push(`    ${id(key, screen)}["${label(screen)}"]`);
+    lines.push("  end");
+  }
+  for (const a of graph.actions) {
+    for (const role of asList(a.device)) for (const from of asList(a.from)) {
+      const facts = [...(a.needs ?? []).map((n) => `if ${n}`), ...(a.sets ?? []).map((x) => (x.startsWith("-") ? `clears ${factName(x)}` : `sets ${factName(x)}`))];
+      lines.push(`  ${id(role, from)} -->|"${label(a.do)}${facts.length ? `<br/>${label(facts.join(", "))}` : ""}"| ${id(role, a.to ?? from)}`);
+    }
+  }
+  return lines;
+}
+
+export async function graphCmd(args: string[], flags: Flags): Promise<Output> {
+  const [what = "show", ...rest] = args;
+  const root = findRoot(flags.dir ?? process.cwd()) ?? resolve(flags.dir ?? ".");
+  const { suite, problems } = await readFolder(root);
+  const graph = suite.graph;
+  if (!graph) throw new CliError("no graph.yaml here: flowdeck guide build-graph says how to write one", EXIT.usage);
+  // An unreachable given is what explain is for; any other error makes the answers meaningless.
+  const errors = located(suite, problems).filter((p) => p.level === "error" && !(what === "explain" && p.message.startsWith("no start can reach")));
+  if (errors.length) return { text: [...problemLines(errors), `${tally(errors)}: fix these first (flowdeck lint).`], json: { problems: errors }, code: EXIT.invalid };
+
+  if (what === "show") return { text: outline(suite, graph), json: graph };
+  if (what === "mermaid") return { text: mermaid(graph), json: { mermaid: mermaid(graph).join("\n") } };
+  if (what === "explain") {
+    const [key, start] = rest;
+    if (!key) throw new CliError("flowdeck graph explain <test-key> [start]", EXIT.usage);
+    if (!suite.tests.some((t) => t.key === key)) throw new CliError(`no test "${key}"`, EXIT.usage);
+    if (start && !graph.starts[start]) throw new CliError(`no start "${start}": the starts are ${Object.keys(graph.starts).join(", ")}`, EXIT.usage);
+    const e = explainGiven(suite, key, start);
+    if (e.status === "no-given") return { text: [`${key} has no given, so no generated flow checks it: add one (flowdeck guide graph).`], json: e };
+    if (e.status !== "reachable") return { text: [`${key} cannot be reached${e.status === "unknown" ? " (as far as the search could tell)" : ""}:`, ...e.reasons.map((r) => `  - ${r}`)], json: e, code: EXIT.invalid };
+    const generated = suite.templates.find((t) => t.key === GENERATED_TEMPLATE)?.flows.find((f) => f.steps.some((s) => s.verifies?.includes(key)));
+    const far = Object.entries(e.fromEachStart).map(([k, n]) => `${k}: ${n === null ? "no way" : count(n, "step")}`).join(", ");
+    return {
+      text: [
+        `${key}: ${count(e.steps.length - 1, "step")} from ${e.start} (${graph.starts[e.start]!.say})`,
+        ...e.steps.map((s, i) => `  ${String(i + 1).padStart(2)}. [${s.device}] ${s.kind === "check" ? "✓ " : ""}${s.text}`),
+        "",
+        `From each start: ${far}.`,
+        generated ? `Checked in templates/${GENERATED_TEMPLATE}/${generated.key}.flow.yaml.` : "In no generated flow yet: flowdeck generate.",
+      ],
+      json: e,
+    };
+  }
+  throw new CliError("flowdeck graph show | mermaid | explain <test-key> [start]", EXIT.usage);
 }
 
 export async function report(args: string[], flags: Flags): Promise<Output> {

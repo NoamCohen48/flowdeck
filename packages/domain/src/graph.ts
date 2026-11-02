@@ -93,6 +93,8 @@ interface State {
 }
 
 interface Edge {
+  /** Its index in `actions`. */
+  action: number;
   role: number;
   from: number;
   to: number;
@@ -111,6 +113,10 @@ interface Goal {
 
 interface Compiled {
   roles: string[];
+  /** Per role, its surface's screens by index. */
+  screens: string[][];
+  /** Fact names by bit. */
+  facts: string[];
   edges: Edge[];
   fresh: bigint;
   starts: Map<string, State>;
@@ -140,11 +146,12 @@ function compile(graph: SuiteGraph, tests: readonly SuiteTest[]): Compiled {
     (refs ?? []).filter(pick).reduce((m, ref) => m | (factBit.get(factName(ref)) ?? 0n), 0n);
 
   const edges: Edge[] = [];
-  for (const a of graph.actions) {
+  for (const [action, a] of graph.actions.entries()) {
     for (const r of asList(a.device)) {
       const role = roles.indexOf(r);
       for (const from of asList(a.from)) {
         edges.push({
+          action,
           role,
           from: screenIndex[role]!.get(from)!,
           to: screenIndex[role]!.get(a.to ?? from)!,
@@ -184,7 +191,8 @@ function compile(graph: SuiteGraph, tests: readonly SuiteTest[]): Compiled {
     });
   });
 
-  return { roles, edges, fresh, starts, goals, reach, tests: live, paths: new Map() };
+  const screens = roles.map((r) => [...(graph.screens[graph.roles[r]!.surface] ?? [])]);
+  return { roles, screens, facts: [...factBit.keys()], edges, fresh, starts, goals, reach, tests: live, paths: new Map() };
 }
 
 function move(c: Compiled, s: State, e: Edge): State | undefined {
@@ -435,9 +443,9 @@ export function generateFlows(suite: Suite, options: GenerateOptions = {}): Gene
   };
 }
 
-function renderFlow(graph: SuiteGraph, c: Compiled, plan: FlowPlan, n: number, maxSteps: number): SuiteFlow {
+function stepsOf(graph: SuiteGraph, c: Compiled, planned: readonly PlannedStep[]): SuiteStep[] {
   const nameOf = (role: string) => graph.roles[role]!.name;
-  const steps = materialize(c, plan, maxSteps)!.map((p): SuiteStep => {
+  return planned.map((p): SuiteStep => {
     if (p.kind === "do") {
       const e = c.edges[p.edge]!;
       return { kind: "action", text: e.text, device: nameOf(c.roles[e.role]!) };
@@ -445,6 +453,10 @@ function renderFlow(graph: SuiteGraph, c: Compiled, plan: FlowPlan, n: number, m
     const t = c.tests.get(p.test)!;
     return { kind: "check", text: t.given!.look?.trim() || t.title, device: nameOf(t.given!.device), expect: t.expect, verifies: [t.key] };
   });
+}
+
+function renderFlow(graph: SuiteGraph, c: Compiled, plan: FlowPlan, n: number, maxSteps: number): SuiteFlow {
+  const steps = stepsOf(graph, c, materialize(c, plan, maxSteps)!);
   const first = c.tests.get(plan.tests[0]!)!.title;
   const more = plan.tests.length - 1;
   return {
@@ -453,6 +465,114 @@ function renderFlow(graph: SuiteGraph, c: Compiled, plan: FlowPlan, n: number, m
     precondition: graph.starts[plan.start]!.say,
     steps,
   };
+}
+
+/* ── Explaining ───────────────────────────────────────────────────────── */
+
+/**
+ * Everything that could ever hold from `from`, generously: screens and facts
+ * only ever add up, `!x` needs are taken as met and fresh facts never expire.
+ * So it errs one way only — what it says can never happen, never can — and it
+ * costs one pass per change rather than a search of every state.
+ */
+function relaxed(c: Compiled, from: readonly State[]) {
+  const screens = c.roles.map((_, r) => new Set(from.map((s) => s.at[r]!)));
+  let facts = from.reduce((m, s) => m | s.facts, 0n);
+  const usable = new Set<number>();
+  for (let grew = true; grew; ) {
+    grew = false;
+    c.edges.forEach((e, i) => {
+      if (usable.has(i) || !screens[e.role]!.has(e.from) || (facts & e.needOn) !== e.needOn) return;
+      usable.add(i);
+      screens[e.role]!.add(e.to);
+      facts |= e.setOn;
+      grew = true;
+    });
+  }
+  return { screens, facts, usable };
+}
+
+const bitNames = (c: Compiled, m: bigint) => c.facts.filter((_, i) => (m >> BigInt(i)) & 1n);
+
+export type Explanation =
+  | { test: string; status: "no-given" }
+  /** The shortest way there, as steps ending in the check; and how long it is from every start (null: no way). */
+  | { test: string; status: "reachable"; start: string; steps: SuiteStep[]; fromEachStart: Record<string, number | null> }
+  /** Why not, as sentences a person can act on. */
+  | { test: string; status: "unreachable" | "unknown"; reasons: string[] };
+
+/**
+ * How a test's given is reached, or why it cannot be: the question to ask
+ * when lint says "no start can reach this state", or a generated flow takes a
+ * strange way round. `start` limits it to one start.
+ */
+export function explainGiven(suite: Suite, key: string, start?: string): Explanation {
+  const graph = suite.graph;
+  const test = suite.tests.find((t) => t.key === key);
+  if (!graph || !test?.given) return { test: key, status: "no-given" };
+  const c = compile(graph, suite.tests.map((t) => (t.key === key ? { ...t, archived: false } : t)));
+  const goal = c.goals.get(key)!;
+  const starts = [...c.starts].filter(([k]) => !start || k === start);
+
+  const fromEachStart: Record<string, number | null> = {};
+  let best: { start: string; found: Found } | undefined;
+  let unsure = false;
+  for (const [k, s] of starts) {
+    const found = hopeful(c, s, goal) ? pathTo(c, s, (x) => meets(x, goal), Infinity) : null;
+    if (found === undefined) unsure = true;
+    fromEachStart[k] = found ? found.edges.length : null;
+    if (found && (!best || found.edges.length < best.found.edges.length)) best = { start: k, found };
+  }
+  if (best) {
+    const planned: PlannedStep[] = [...best.found.edges.map((edge) => ({ kind: "do" as const, edge })), { kind: "check", test: key }];
+    return { test: key, status: "reachable", start: best.start, steps: stepsOf(graph, c, planned), fromEachStart };
+  }
+
+  const reasons: string[] = [];
+  const doText = (e: Edge) => `"${graph.actions[e.action]!.do}"`;
+  for (const [k, s] of starts) {
+    const r = relaxed(c, [s]);
+    const at = `from ${k}`;
+    for (const [role, scr] of goal.where) {
+      if (r.screens[role]!.has(scr)) continue;
+      const into = c.edges.filter((e) => e.role === role && e.to === scr && e.from !== scr);
+      reasons.push(`${at}: ${c.roles[role]} can never get to "${c.screens[role]![scr]}"` + (into.length
+        ? `: the ways in (${into.map((e) => `${doText(e)} from ${c.screens[role]![e.from]}`).join("; ")}) are never possible`
+        : ": no action leads there"));
+    }
+    for (const f of bitNames(c, goal.needOn & ~r.facts)) {
+      const setters = c.edges.filter((e) => (e.setOn >> BigInt(c.facts.indexOf(f))) & 1n);
+      reasons.push(`${at}: "${f}" can never become true` + (setters.length
+        ? `: what sets it (${[...new Set(setters.map(doText))].join(", ")}) is never possible`
+        : ": no action sets it"));
+    }
+  }
+  if (!reasons.length) {
+    // Each part can be had on its own, so it is the combination: find the requirement that, dropped, makes it reachable.
+    const parts: { say: string; goal: Goal }[] = [
+      ...bitNames(c, goal.needOn).map((f) => {
+        const bit = 1n << BigInt(c.facts.indexOf(f));
+        const fresh = (c.fresh & bit) !== 0n;
+        return { goal: { ...goal, needOn: goal.needOn & ~bit }, say: fresh
+          ? `"${f}" is fresh: it is gone after the next action, and the rest of the state takes more actions after it is set — check it straight after, or make it not fresh`
+          : `"${f}" cannot be true together with the rest: something on the way there clears it, or needs it false` };
+      }),
+      ...bitNames(c, goal.needOff).map((f) => {
+        const bit = 1n << BigInt(c.facts.indexOf(f));
+        return { goal: { ...goal, needOff: goal.needOff & ~bit }, say: `"!${f}": by the time the rest holds, "${f}" is true, and nothing makes it false again` };
+      }),
+      ...goal.where.filter(([r]) => c.roles[r] !== test.given!.device).map(([r, scr]) => ({
+        goal: { ...goal, where: goal.where.filter(([x]) => x !== r) },
+        say: `${c.roles[r]} on "${c.screens[r]![scr]}" (also:) cannot be had together with the rest`,
+      })),
+    ];
+    for (const p of parts) {
+      if (starts.some(([, s]) => pathTo(c, s, (x) => meets(x, p.goal), Infinity))) reasons.push(p.say);
+    }
+    if (!reasons.length) reasons.push("each part can be reached alone, but not all together: try dropping facts from the given one at a time");
+  }
+  if (unsure) return { test: key, status: "unknown", reasons: ["the graph has too many states to search them all, so this is the likely reason, not a proof:", ...reasons] };
+  return { test: key, status: "unreachable", reasons };
 }
 
 /* ── Checks ───────────────────────────────────────────────────────────── */
@@ -579,8 +699,15 @@ export function lintGraph(suite: Suite): SuiteProblem[] {
     for (const s of [...reach].sort()) if (!out.has(s)) warn(["graph", "roles", r], `${r} can reach "${s}" but no action leads out of it`);
   }
 
-  // Every given must be reachable from some start, or no generated flow can check it.
+  // An action no start can ever get to do is a typo in a screen or a fact, or a missing way there.
   const c = compile(graph, suite.tests);
+  const { usable } = relaxed(c, [...c.starts.values()]);
+  graph.actions.forEach((a, i) => {
+    if (c.edges.some((e, ei) => e.action === i && usable.has(ei))) return;
+    warn(["graph", "actions", i], `"${a.do}" can never be done: no start gets ${asList(a.device).join(" or ")} to ${asList(a.from).join(" or ")} with ${(a.needs ?? []).filter((n) => !n.startsWith("!")).join(", ") || "what it needs"}`);
+  });
+
+  // Every given must be reachable from some start, or no generated flow can check it.
   suite.tests.forEach((t, i) => {
     const goal = c.goals.get(t.key);
     if (!goal) return;

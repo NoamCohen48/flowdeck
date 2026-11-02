@@ -95,3 +95,41 @@ describe("flowdeck generate", () => {
     expect(none.err).toContain("no graph.yaml here");
   });
 });
+
+describe("flowdeck graph", () => {
+  test("show lists each role's screens, the ways out and the tests checked there", async () => {
+    const root = await scratch();
+    await writeFolder(root, suite());
+    const { out, code } = await flowdeck(root, "graph", "show");
+    expect(code).toBe(0);
+    expect(out).toContain("phone-a: Phone A, on phone\n  channels   [start: signed-in]\n    → thread  Open #general.\n");
+    expect(out).toContain('    (stays)  Send "hi".   (sets message, ~sent)\n');
+    expect(out).toContain("    ✓ send-shows-pending   (with ~sent)\n");
+  });
+
+  test("explain gives the shortest way to a test, or why there is none", async () => {
+    const root = await scratch();
+    await writeFolder(root, suite());
+    const ok = await flowdeck(root, "graph", "explain", "message-arrives");
+    expect(ok.out).toContain("message-arrives: 3 steps from signed-in");
+    expect(ok.out).toContain('   4. [Phone B] ✓ Look for "hi".');
+
+    const s = suite();
+    s.tests[0]!.given = { device: "phone-a", at: "channels", facts: ["dark", "~sent"] };
+    await writeFolder(root, s);
+    expect((await flowdeck(root, "lint")).code).toBe(1);
+    const bad = await flowdeck(root, "graph", "explain", "dark-thread");
+    expect(bad.code).toBe(1);
+    expect(bad.out).toContain("dark-thread cannot be reached:\n");
+    expect(bad.out).toContain('"sent" is fresh');
+  });
+
+  test("mermaid draws one box per role", async () => {
+    const root = await scratch();
+    await writeFolder(root, suite());
+    const { out } = await flowdeck(root, "graph", "mermaid");
+    expect(out.split("\n")[0]).toBe("flowchart LR");
+    expect(out).toContain('  subgraph phone_a__["Phone A"]');
+    expect(out).toContain('  phone_a__settings -->|"Switch to the dark theme.<br/>if !dark, sets dark"| phone_a__settings');
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { GENERATED_TEMPLATE, generateFlows, lintGraph, planOf, type SuiteGraph } from "./graph.ts";
+import { explainGiven, GENERATED_TEMPLATE, generateFlows, lintGraph, planOf, type SuiteGraph } from "./graph.ts";
 import { metadataOf, planSuite, type Stored } from "./suite-plan.ts";
 import { lintSuite, type Suite, type SuiteTest } from "./suite.ts";
 
@@ -97,6 +97,13 @@ describe("lintGraph", () => {
     expect(messages(s)).toContain("error tests.3.given: no start can reach this state: check its screen and facts against the actions");
   });
 
+  test("an action no start can get to do is a warning", () => {
+    const g = graph();
+    g.facts.pinned = "A message is pinned";
+    g.actions.push({ device: "phone-a", from: "thread", do: "Unpin the message.", needs: ["pinned"], sets: ["-pinned"] });
+    expect(messages(suite({ graph: g }))).toContain('warning graph.actions.7: "Unpin the message." can never be done: no start gets phone-a to thread with pinned');
+  });
+
   test("an action that does two things is flagged like a step", () => {
     const g = graph();
     g.actions[1]!.do = "Open #general and send a message.";
@@ -191,6 +198,47 @@ describe("generateFlows", () => {
 
   test("no graph, no flows", () => {
     expect(generateFlows(suite({ graph: undefined as never })).flows).toEqual([]);
+  });
+});
+
+describe("explainGiven", () => {
+  test("a reachable test: the shortest way there, from the nearest start", () => {
+    const e = explainGiven(suite(), "message-arrives");
+    expect(e.status).toBe("reachable");
+    if (e.status !== "reachable") return;
+    expect(e.start).toBe("signed-in");
+    expect(e.steps.map((s) => `${s.device}: ${s.text}`)).toEqual(["Phone A: Open #general.", "Phone B: Open #general.", 'Phone A: Send "hi".', 'Phone B: Look for "hi".']);
+    expect(e.fromEachStart).toEqual({ "signed-in": 3, "signed-out": 5 });
+  });
+
+  test("a screen nothing leads to", () => {
+    const s = suite();
+    s.graph!.screens.phone!.push("profile");
+    s.tests[0]!.given = { device: "phone-a", at: "profile" };
+    expect(explainGiven(s, "sign-in-works")).toEqual({ test: "sign-in-works", status: "unreachable", reasons: [
+      'from signed-in: phone-a can never get to "profile": no action leads there',
+      'from signed-out: phone-a can never get to "profile": no action leads there',
+    ] });
+  });
+
+  test("a fact nothing reachable sets, naming what would set it", () => {
+    const s = suite();
+    s.graph!.actions = s.graph!.actions.filter((a) => a.do !== "Open Settings.");
+    const e = explainGiven(s, "dark-thread", "signed-in");
+    expect(e).toEqual({ test: "dark-thread", status: "unreachable", reasons: ['from signed-in: "dark" can never become true: what sets it ("Switch to the dark theme.") is never possible'] });
+  });
+
+  test("a fresh fact checked too far from where it is set", () => {
+    const s = suite();
+    // Sent from the thread, but checked on the channel list: going back clears "just sent".
+    s.tests[1]!.given = { device: "phone-a", at: "channels", facts: ["~sent"] };
+    const e = explainGiven(s, "send-shows-pending");
+    expect(e.status).toBe("unreachable");
+    if (e.status === "unreachable") expect(e.reasons[0]).toContain('"sent" is fresh: it is gone after the next action');
+  });
+
+  test("a test with no given has nothing to explain", () => {
+    expect(explainGiven(suite(), "by-hand").status).toBe("no-given");
   });
 });
 

@@ -27,7 +27,7 @@ Instead of writing long flows by hand, you can describe how a person moves throu
 the app (graph.yaml) and the state each test needs (given:), and let
 "flowdeck generate" work the flows out: flowdeck guide graph.
 
-Topics:  flowdeck guide tests | flows | steps | graph | files | workflow | all`,
+Topics:  flowdeck guide tests | flows | steps | graph | build-graph | files | workflow | all`,
 
   tests: `WRITING TESTS
 
@@ -183,6 +183,22 @@ stay in their flow, new ones go where they cost the fewest steps. It says when
 planning from nothing would be noticeably shorter. The same suite always gives the
 same flows.
 
+Several devices
+  The state is every role's screen at once, plus the facts. The facts are shared:
+  they are the world, not one screen. So a step on one device changes what another
+  can check — Phone A sends, "message" becomes true, and Phone B can now see it:
+
+    - { device: phone-a, from: thread, do: Send "hi"., sets: [message] }
+    - { device: phone-b, from: channels, to: thread, do: "Open #general." }
+    given: { device: phone-b, at: thread, facts: [message] }
+
+  Every action moves one role, so every generated step is on one device. The search
+  interleaves the devices however is shortest: a flow switches device when the next
+  test needs it. A start says where every role is; "also:" in a given pins another
+  role too ("Phone A must still be on the thread when Phone B reacts"). A fact that
+  is about one device names it (read-on-b), because a plain "read" would be true
+  for all of them.
+
 Rules worth knowing:
   - Name facts for what a tester can see, and give a fact its role when it is about
     one device: reacted-on-b, not reacted.
@@ -191,6 +207,71 @@ Rules worth knowing:
   - Tests with no given are left to hand-written flows; both count for coverage.
   - flowdeck lint checks the graph: unknown screens and facts, a fact nothing sets,
     a screen with no way out, a given no start can reach.`,
+
+  "build-graph": `BUILDING A GRAPH — FOR A PERSON OR AN AGENT
+
+The format is "flowdeck guide graph". This is how to get from nothing to a graph that
+generates good flows. Work in small passes and run flowdeck lint after each one: it
+names the file and the problem.
+
+1. Read before writing
+   - Every test (tests/*.yaml): each one hints at a screen and at something that must
+     be true. Together they say which screens and facts the graph needs — and which
+     it does not.
+   - The hand-written flows, if any: they are real paths through the app, with the
+     devices, the order, and "after:" notes on where a step leaves the tester.
+   - The app itself where you can: its routes or screen names in the code, or the
+     running app. Use the app's own names for screens.
+
+2. Roles and starts
+   - One role per device a flow needs, by part: phone-a, phone-b, web. Not by model.
+   - Starts: the states a tester can set up before a flow without steps — "fresh
+     install", "signed in on both phones". Usually one or two. Put every role in each.
+
+3. Screens: coarse
+   - One screen per place a tester stands and looks, not per component or dialog.
+     A menu or an editor is a screen only when a test is checked there or actions
+     happen from it.
+   - Too many screens make long, fiddly flows; too few hide a way back.
+
+4. Actions: one step each
+   - Write each the way a tester reads a step: one instruction, on one device.
+   - Give every screen a way out (lint warns when there is none). Add the ways back
+     a tester really uses: Back, Close, the tab bar.
+   - device and from can be lists, for the same action on several devices or screens.
+
+5. Facts: only what something needs
+   - Add a fact when a test's given or an action's needs depends on it. A fact
+     nothing needs is noise (lint warns).
+   - Name it for what is seen ("photo": a photo is in the thread). Put the device in
+     the name when it is about one device (read-on-b).
+   - Use ~fresh for "watch it happen" checks, which must come right after the action.
+   - Clear what an action undoes: sending a new message clears "edited" (-edited).
+
+6. A given on each test
+   - device, at, the facts it needs, and a look: what the tester looks at. A state,
+     never steps.
+   - A test that cannot be put as a state (a timer, a scheduled job) keeps a
+     hand-written flow instead. That is fine.
+
+7. Check and read the result
+   flowdeck lint                       until no errors
+   flowdeck graph show                 each device's screens, ways out, tests checked there
+   flowdeck graph explain <test>       the shortest way to that test, or why there is none
+   flowdeck generate                   then read the flows as a tester would
+   flowdeck graph mermaid              a diagram, to paste where Mermaid renders
+
+   Read every generated flow. A strange detour (signing out to reach a test, a long
+   walk back) almost always means a missing action. A test checked somewhere odd
+   means its given is too loose — add the fact it really needs.
+
+When lint says "no start can reach this state", run flowdeck graph explain on it. It
+says which screen nothing leads to, which fact nothing sets, or which part of the
+given conflicts with the rest (most often a fresh fact checked too far from where it
+is set).
+
+Change the graph, run flowdeck generate again: the flows change as little as they
+can, so a review of the diff shows exactly what the change did.`,
 
   files: `THE FILES
 
@@ -283,7 +364,9 @@ Workflow:
 
 If there is a graph.yaml, the flows in templates/generated/ are written by
 \`flowdeck generate\`: change graph.yaml and the tests' \`given:\`, then run it again.
-Never edit the generated files. \`flowdeck guide graph\` has the format.
+Never edit the generated files. \`flowdeck guide graph\` has the format;
+\`flowdeck guide build-graph\` is how to write or extend a graph, and
+\`flowdeck graph explain <test>\` says why a test cannot be reached.
 
 \`flowdeck report --json\` lists what testers found on the latest testing day,
 including steps they flagged as wrong — fix those flows first.

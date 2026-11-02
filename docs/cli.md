@@ -136,8 +136,26 @@ flowdeck generate --replan    # plan from nothing; tests may move between flows
 - `flowdeck lint` (and every push) checks the graph: unknown roles, screens and facts, a fact
   nothing makes true, a screen with no way out, a `given` no start can reach.
 
+Several devices work together through the state: it is every role's screen at once plus the
+facts, and the facts are shared. Phone A sending sets `message`; Phone B can then open the
+thread and check it. Each action moves one role, so each step is on one device, and the search
+switches device whenever the next test needs it. `also:` in a given pins another role's screen.
+
+To build or debug a graph:
+
+```sh
+flowdeck graph show                     # per device: screens, ways out, tests checked there
+flowdeck graph explain <test> [start]   # the shortest way to its state, or why there is none
+flowdeck graph mermaid                  # a diagram
+```
+
+`explain` names the screen nothing leads to, the fact nothing sets, or the part of the given
+that conflicts with the rest (often a fresh fact checked too far from where it is set). Lint
+also warns about an action no start can ever get to do.
+
 [`examples/relay/`](examples/relay/) has a small graph and the flow it gives;
-`flowdeck guide graph` is the full format.
+`flowdeck guide graph` is the format and `flowdeck guide build-graph` the way to write one
+(written for agents as much as people).
 
 ## When someone else changed the suite
 
@@ -166,7 +184,7 @@ Then push again. `flowdeck push --force` skips the check and overwrites.
 
 | Command | What |
 |---|---|
-| `guide [overview\|tests\|flows\|steps\|graph\|files\|workflow\|all]` | How to write a suite |
+| `guide [overview\|tests\|flows\|steps\|graph\|build-graph\|files\|workflow\|all]` | How to write a suite |
 | `login [url] --as <name>` | Remember the server and your name (`~/.config/flowdeck/config.json`) |
 | `products` | Slugs and names |
 | `create "<name>" [--slug s]` | Make a product and pull it |
@@ -179,4 +197,5 @@ Then push again. `flowdeck push --force` skips the check and overwrites.
 | `new template "<name>"` | A template folder |
 | `coverage` | Tests in no flow; per template: flows, steps, tests, devices |
 | `generate [--max N] [--replan]` | Flows from `graph.yaml` and each test's `given`, into `templates/generated/` |
+| `graph show\|mermaid\|explain <test> [start]` | Read and debug the graph |
 | `report [run-id]` | The latest (or given) testing day's findings, pointing at files |
