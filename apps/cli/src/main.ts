@@ -23,6 +23,7 @@ const HELP = `flowdeck — a Flowdeck suite as files
   flowdeck new flow <template> "<name>" [--precondition "<state>"]
   flowdeck new template "<name>"
   flowdeck coverage                      which tests no flow verifies (offline)
+  flowdeck generate [--max 25] [--replan] flows from graph.yaml and each test's given (offline)
   flowdeck report [run-id]               what testers found on the latest testing day
 
 Options: --json for machine output, --url, --as <name>, --dir <folder>, --key <key>
@@ -40,6 +41,7 @@ const COMMANDS: Record<string, (args: string[], flags: Flags) => Promise<Output>
   plan: (a, f) => cmd.push(a, { ...f, plan: true }),
   new: cmd.newThing,
   coverage: cmd.coverage,
+  generate: cmd.generate,
   report: cmd.report,
   guide: (a) => cmd.guideCmd(a),
 };
@@ -64,6 +66,8 @@ async function main(argv: string[]): Promise<number> {
         key: { type: "string" },
         slug: { type: "string" },
         precondition: { type: "string" },
+        max: { type: "string" },
+        replan: { type: "boolean", default: false },
       },
     });
   } catch (e) {
@@ -79,7 +83,7 @@ async function main(argv: string[]): Promise<number> {
   if (!run) { console.error(`unknown command "${name}"\n\n${HELP}`); return EXIT.usage; }
 
   const flags: Flags = {
-    json: values.json!, plan: values.plan!, force: values.force!,
+    json: values.json!, plan: values.plan!, force: values.force!, replan: values.replan!,
     ...(values.url ? { url: values.url } : {}),
     ...(values.as ? { as: values.as } : {}),
     ...(values.dir ? { dir: values.dir } : {}),
@@ -88,6 +92,7 @@ async function main(argv: string[]): Promise<number> {
     ...(values.key ? { key: values.key } : {}),
     ...(values.slug ? { slug: values.slug } : {}),
     ...(values.precondition ? { precondition: values.precondition } : {}),
+    ...(values.max ? { max: values.max } : {}),
   };
 
   try {

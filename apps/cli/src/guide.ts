@@ -23,7 +23,11 @@ A step "verifies" the tests it confirms. That link is the whole model:
 On a testing day each tester claims a flow, walks its steps on real devices, and
 records a verdict per test: pass, fail, minor or skipped (the test itself is wrong).
 
-Topics:  flowdeck guide tests | flows | steps | files | workflow | all`,
+Instead of writing long flows by hand, you can describe how a person moves through
+the app (graph.yaml) and the state each test needs (given:), and let
+"flowdeck generate" work the flows out: flowdeck guide graph.
+
+Topics:  flowdeck guide tests | flows | steps | graph | files | workflow | all`,
 
   tests: `WRITING TESTS
 
@@ -129,10 +133,70 @@ The rules (flowdeck lint checks them)
   6. SAY WHERE IT LEAVES THEM when the next step depends on it: after: "The channel
      list". If the UI changed, the tester can still get there and carry on.`,
 
+  graph: `GENERATED FLOWS: THE GRAPH AND EACH TEST'S GIVEN
+
+A long flow where each test sets up the next is the cheapest way to test, and the
+hardest to write: you have to hold the whole app in your head. So describe the app
+once, say the state each test needs, and let flowdeck find the flows.
+
+graph.yaml is how a person moves through the app:
+
+  roles:      the devices a flow needs, by part, not by model
+                phone-a: { name: Phone A, surface: phone, usually: Pixel 8 }
+  screens:    where a role can be, per surface
+                phone: [sign-in, channels, thread, settings]
+  facts:      what can be true in the world, each with what it means
+                message: A message is in #general
+                ~sent: Just sent         (~ = fresh: true only until the next action)
+  starts:     states a flow may begin from: the precondition in words, and where
+              every role is
+                signed-in:
+                  say: Both phones signed in, on the channel list.
+                  at: { phone-a: channels, phone-b: channels }
+  actions:    one step on one role, from a screen to a screen (the same one when
+              "to" is left out), needing some facts and setting others
+                - device: phone-a
+                  from: thread
+                  do: Send "hi".
+                  needs: ["!offline"]           (!x: x must be false)
+                  sets: [message, ~sent]        (-x: makes x false)
+              device and from can be lists: [phone-a, phone-b] does it on either.
+
+A test's given is the state it needs — never steps, because there is more than one
+way to get there:
+
+  given:
+    device: phone-b          the role the check happens on
+    at: thread               its screen
+    facts: [message]         what must be true (and "!x" what must not)
+    also: { phone-a: thread }   other roles that must be somewhere too (optional)
+    look: Look for "hi".     the check's instruction (the title when left out)
+
+  flowdeck generate                 writes templates/generated/, flows of at most 25 steps
+  flowdeck generate --max 15        shorter flows, more of them
+  flowdeck generate --replan        plan from nothing (tests may move between flows)
+
+Every test with a given lands in exactly one generated flow, checked as soon as the
+flow can reach its state. Each flow begins from a start, so flows can run side by
+side. Run it again after an edit and the flows change as little as they can: tests
+stay in their flow, new ones go where they cost the fewest steps. It says when
+planning from nothing would be noticeably shorter. The same suite always gives the
+same flows.
+
+Rules worth knowing:
+  - Name facts for what a tester can see, and give a fact its role when it is about
+    one device: reacted-on-b, not reacted.
+  - A check that must come right after an action ("watch it send") needs a fresh fact.
+  - Do not edit templates/generated/: it is rewritten. Edit the graph and the givens.
+  - Tests with no given are left to hand-written flows; both count for coverage.
+  - flowdeck lint checks the graph: unknown screens and facts, a fact nothing sets,
+    a screen with no way out, a given no start can reach.`,
+
   files: `THE FILES
 
   product.yaml                            name, description
-  tests/<key>.yaml                        title, expect, tags, metadata, archived
+  graph.yaml                              roles, screens, facts, starts, actions (optional)
+  tests/<key>.yaml                        title, expect, tags, given, metadata, archived
   templates/<key>/template.yaml           name, description, archived, flows (in order)
   templates/<key>/<flow-key>.flow.yaml    name, precondition, estimateMinutes, archived, steps
 
@@ -216,6 +280,10 @@ Workflow:
 3. \`flowdeck lint\` until there are no errors; read every warning.
 4. \`flowdeck push --plan\` and check each line is intended (\`-\` archives).
 5. \`flowdeck push\`. On exit code 3, \`flowdeck pull\` (it merges) and push again.
+
+If there is a graph.yaml, the flows in templates/generated/ are written by
+\`flowdeck generate\`: change graph.yaml and the tests' \`given:\`, then run it again.
+Never edit the generated files. \`flowdeck guide graph\` has the format.
 
 \`flowdeck report --json\` lists what testers found on the latest testing day,
 including steps they flagged as wrong — fix those flows first.

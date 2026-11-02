@@ -2,7 +2,8 @@
  * The suite as a folder, one file per thing a person edits:
  *
  *   product.yaml                          name, description
- *   tests/<key>.yaml                      one test: title, expect, tags
+ *   graph.yaml                            how a person moves through the app (optional)
+ *   tests/<key>.yaml                      one test: title, expect, tags, given
  *   templates/<key>/template.yaml         name, description, the flows in order
  *   templates/<key>/<flow>.flow.yaml      one flow: name, precondition, steps
  *
@@ -14,7 +15,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
-import type { Suite, SuiteFlow, SuiteStep, SuiteTemplate, SuiteTest } from "@flowdeck/domain";
+import type { GraphAction, Suite, SuiteFlow, SuiteGraph, SuiteStep, SuiteTemplate, SuiteTest, TestGiven } from "@flowdeck/domain";
 import { toYaml, type YamlValue } from "./yaml.ts";
 
 /** A problem with a file itself, before the suite's own rules are even asked. */
@@ -29,11 +30,20 @@ export interface FileProblem {
 const omitEmpty = <T extends Record<string, YamlValue | undefined>>(o: T) =>
   Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== "" && !(Array.isArray(v) && !v.length))) as T;
 
+const givenYaml = (g: TestGiven) => omitEmpty({
+  device: g.device,
+  at: g.at,
+  facts: g.facts ? [...g.facts] : undefined,
+  also: g.also && Object.keys(g.also).length ? { ...g.also } : undefined,
+  look: g.look,
+});
+
 export function testFile(t: SuiteTest): string {
   return toYaml(omitEmpty({
     title: t.title,
     expect: t.expect,
     tags: t.tags ? [...t.tags] : undefined,
+    given: t.given ? givenYaml(t.given) : undefined,
     metadata: t.metadata && Object.keys(t.metadata).length ? (t.metadata as { [k: string]: YamlValue }) : undefined,
     archived: t.archived ? true : undefined,
   }));
@@ -72,10 +82,30 @@ export function productFile(p: Suite["product"]): string {
   return toYaml(omitEmpty({ name: p.name, description: p.description }));
 }
 
+const oneOrMany = (x: string | string[]): YamlValue => (Array.isArray(x) ? [...x] : x);
+
+export function graphFile(g: SuiteGraph): string {
+  return toYaml({
+    roles: Object.fromEntries(Object.entries(g.roles).map(([k, r]) => [k, omitEmpty({ name: r.name, surface: r.surface, usually: r.usually })])),
+    screens: Object.fromEntries(Object.entries(g.screens).map(([k, list]) => [k, [...list]])),
+    facts: { ...g.facts },
+    starts: Object.fromEntries(Object.entries(g.starts).map(([k, st]) => [k, { say: st.say, at: { ...st.at } }])),
+    actions: g.actions.map((a) => omitEmpty({
+      device: oneOrMany(a.device),
+      from: oneOrMany(a.from),
+      to: a.to,
+      do: a.do,
+      needs: a.needs ? [...a.needs] : undefined,
+      sets: a.sets ? [...a.sets] : undefined,
+    })),
+  });
+}
+
 /** Every file the suite is made of, by path relative to the root. */
 export function suiteFiles(suite: Suite): Map<string, string> {
   const files = new Map<string, string>();
   files.set("product.yaml", productFile(suite.product));
+  if (suite.graph) files.set("graph.yaml", graphFile(suite.graph));
   for (const t of suite.tests) files.set(`tests/${t.key}.yaml`, testFile(t));
   for (const tpl of suite.templates) {
     files.set(`templates/${tpl.key}/template.yaml`, templateFile(tpl));
@@ -116,10 +146,35 @@ export async function writeFolder(root: string, suite: Suite) {
   return { written, removed };
 }
 
+/**
+ * Make one template's folder hold exactly `tpl`, leaving every other file
+ * alone. Returns what changed, by path.
+ */
+export async function writeTemplateFolder(root: string, tpl: SuiteTemplate) {
+  const dir = `templates/${tpl.key}`;
+  const want = new Map([[`${dir}/template.yaml`, templateFile(tpl)], ...tpl.flows.map((f) => [`${dir}/${f.key}.flow.yaml`, flowFile(f)] as [string, string])]);
+  const written: string[] = [];
+  const removed: string[] = [];
+  for (const [path, text] of want) {
+    const full = join(root, path);
+    if (existsSync(full) && (await readFile(full, "utf8")) === text) continue;
+    await mkdir(join(full, ".."), { recursive: true });
+    await writeFile(full, text);
+    written.push(path);
+  }
+  for (const path of (await listSuiteFiles(root)).filter((p) => p.startsWith(`${dir}/`))) {
+    if (want.has(path)) continue;
+    await rm(join(root, path));
+    removed.push(path);
+  }
+  return { written, removed };
+}
+
 /** The suite files present under `root`, relative paths. */
 export async function listSuiteFiles(root: string): Promise<string[]> {
   const out: string[] = [];
   if (existsSync(join(root, "product.yaml"))) out.push("product.yaml");
+  if (existsSync(join(root, "graph.yaml"))) out.push("graph.yaml");
   if (existsSync(join(root, "tests"))) {
     for (const f of await readdir(join(root, "tests"))) if (f.endsWith(".yaml")) out.push(`tests/${f}`);
   }
@@ -208,8 +263,9 @@ export async function readFolder(root: string): Promise<{ suite: Suite; problems
   for (const file of files.filter((f) => f.startsWith("tests/"))) {
     const o = await r.load(file);
     if (!o) continue;
-    r.only(file, o, ["title", "expect", "tags", "metadata", "archived"]);
+    r.only(file, o, ["title", "expect", "tags", "given", "metadata", "archived"]);
     const tags = r.strings(file, o, "tags");
+    const given = o.given === undefined || o.given === null ? undefined : readGiven(r, file, o.given);
     const metadata = o.metadata;
     if (metadata !== undefined && (typeof metadata !== "object" || metadata === null || Array.isArray(metadata))) r.error(file, `"metadata" should be a map`);
     const archived = r.bool(file, o, "archived");
@@ -218,6 +274,7 @@ export async function readFolder(root: string): Promise<{ suite: Suite; problems
       title: r.string(file, o, "title", "", true) ?? "",
       expect: r.string(file, o, "expect", "", true) ?? "",
       ...(tags?.length ? { tags } : {}),
+      ...(given ? { given } : {}),
       ...(metadata && typeof metadata === "object" && !Array.isArray(metadata) && Object.keys(metadata).length ? { metadata: metadata as Record<string, unknown> } : {}),
       ...(archived ? { archived } : {}),
     });
@@ -259,7 +316,96 @@ export async function readFolder(root: string): Promise<{ suite: Suite; problems
     });
   }
 
-  return { suite: { product, tests, templates }, problems: r.problems };
+  const graph = files.includes("graph.yaml") ? await readGraph(r, "graph.yaml") : undefined;
+
+  return { suite: { product, tests, templates, ...(graph ? { graph } : {}) }, problems: r.problems };
+}
+
+const isMap = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** A comma inside `{ }` ends the value, which turns the rest of it into a field nobody meant: say so with every unknown field. */
+const COMMA_HINT = ` — a comma inside { } ends a value: quote it`;
+
+function readGiven(r: FileReader, file: string, v: unknown): TestGiven | undefined {
+  if (!isMap(v)) { r.error(file, `"given" should be a map (device: …, at: …)`); return undefined; }
+  const where = "given: ";
+  for (const k of Object.keys(v)) if (!["device", "at", "facts", "also", "look"].includes(k)) r.error(file, `${where}unknown field "${k}" (expected one of: device, at, facts, also, look)${COMMA_HINT}`);
+  const device = r.string(file, v, "device", where, true);
+  const at = r.string(file, v, "at", where, true);
+  const facts = r.strings(file, v, "facts", where);
+  const look = r.string(file, v, "look", where);
+  let also: Record<string, string> | undefined;
+  if (v.also !== undefined && v.also !== null) {
+    if (!isMap(v.also) || !Object.values(v.also).every((x) => typeof x === "string")) r.error(file, `${where}"also" should be a map of role: screen`);
+    else also = v.also as Record<string, string>;
+  }
+  if (!device || !at) return undefined;
+  return { device, at, ...(facts?.length ? { facts } : {}), ...(also && Object.keys(also).length ? { also } : {}), ...(look ? { look } : {}) };
+}
+
+async function readGraph(r: FileReader, file: string): Promise<SuiteGraph | undefined> {
+  const o = await r.load(file);
+  if (!o) return undefined;
+  r.only(file, o, ["roles", "screens", "facts", "starts", "actions"]);
+  const mapOf = (key: string): Obj => {
+    const v = o[key] ?? {};
+    if (!isMap(v)) { r.error(file, `"${key}" should be a map`); return {}; }
+    return v;
+  };
+
+  const roles: SuiteGraph["roles"] = {};
+  for (const [k, v] of Object.entries(mapOf("roles"))) {
+    const where = `role ${k}: `;
+    if (!isMap(v)) { r.error(file, `${where}should be a map (name: …, surface: …)`); continue; }
+    for (const f of Object.keys(v)) if (!["name", "surface", "usually"].includes(f)) r.error(file, `${where}unknown field "${f}" (expected one of: name, surface, usually)${COMMA_HINT}`);
+    const usually = r.string(file, v, "usually", where);
+    roles[k] = { name: r.string(file, v, "name", where, true) ?? "", surface: r.string(file, v, "surface", where, true) ?? "", ...(usually ? { usually } : {}) };
+  }
+
+  const screens: SuiteGraph["screens"] = {};
+  for (const [k, v] of Object.entries(mapOf("screens"))) {
+    if (!Array.isArray(v) || !v.every((x) => typeof x === "string")) { r.error(file, `screens ${k}: should be a list of screen names`); continue; }
+    screens[k] = v as string[];
+  }
+
+  const facts: SuiteGraph["facts"] = {};
+  for (const [k, v] of Object.entries(mapOf("facts"))) {
+    if (typeof v !== "string") { r.error(file, `fact ${k}: should be a sentence saying what it means`); continue; }
+    facts[k] = v;
+  }
+
+  const starts: SuiteGraph["starts"] = {};
+  for (const [k, v] of Object.entries(mapOf("starts"))) {
+    const where = `start ${k}: `;
+    if (!isMap(v)) { r.error(file, `${where}should be a map (say: …, at: …)`); continue; }
+    for (const f of Object.keys(v)) if (!["say", "at"].includes(f)) r.error(file, `${where}unknown field "${f}" (expected one of: say, at)${COMMA_HINT}`);
+    if (!isMap(v.at) || !Object.values(v.at).every((x) => typeof x === "string")) { r.error(file, `${where}"at" should be a map of role: screen`); continue; }
+    starts[k] = { say: r.string(file, v, "say", where, true) ?? "", at: v.at as Record<string, string> };
+  }
+
+  const actions: GraphAction[] = [];
+  const raw = o.actions ?? [];
+  if (!Array.isArray(raw)) r.error(file, `"actions" should be a list`);
+  else raw.forEach((a, i) => {
+    const where = `action ${i + 1}: `;
+    if (!isMap(a)) { r.error(file, `${where}should be a map (device: …, from: …, do: …)`); return; }
+    for (const f of Object.keys(a)) if (!["device", "from", "to", "do", "needs", "sets"].includes(f)) r.error(file, `${where}unknown field "${f}" (expected one of: device, from, to, do, needs, sets)${COMMA_HINT}`);
+    const oneOrMore = (key: string) => {
+      const v = a[key];
+      if (typeof v === "string") return v;
+      if (Array.isArray(v) && v.length && v.every((x) => typeof x === "string")) return v as string[];
+      r.error(file, `${where}needs "${key}": a name, or a list of them`);
+      return undefined;
+    };
+    const device = oneOrMore("device"), from = oneOrMore("from");
+    const to = r.string(file, a, "to", where);
+    const text = r.string(file, a, "do", where, true);
+    const needs = r.strings(file, a, "needs", where), sets = r.strings(file, a, "sets", where);
+    if (!device || !from || !text) return;
+    actions.push({ device, from, ...(to ? { to } : {}), do: text, ...(needs?.length ? { needs } : {}), ...(sets?.length ? { sets } : {}) });
+  });
+
+  return { roles, screens, facts, starts, actions };
 }
 
 async function readFlow(r: FileReader, file: string, key: string): Promise<SuiteFlow | undefined> {
@@ -312,6 +458,11 @@ async function readFlow(r: FileReader, file: string, key: string): Promise<Suite
 export function locate(suite: Suite, path: readonly (string | number)[]): string {
   const [top, i, , fi, , si] = path;
   if (top === "product") return "product.yaml";
+  if (top === "graph") {
+    const [, section, at] = path;
+    if (section === "actions" && typeof at === "number") return `graph.yaml action ${at + 1}`;
+    return at === undefined ? "graph.yaml" : `graph.yaml ${section} ${at}`;
+  }
   if (top === "tests" && typeof i === "number") return `tests/${suite.tests[i]?.key ?? i}.yaml`;
   if (top === "templates" && typeof i === "number") {
     const tpl = suite.templates[i];

@@ -5,9 +5,9 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { describeChange, KEY_PATTERN, lintSuite, slugify, uniqueKey, type Suite } from "@flowdeck/domain";
+import { DEFAULT_MAX_STEPS, describeChange, GENERATED_TEMPLATE, generateFlows, KEY_PATTERN, lintSuite, slugify, uniqueKey, type Suite, type SuiteFlow, type SuiteTemplate } from "@flowdeck/domain";
 import { Client, CliError, EXIT, type IssueFeed } from "./client.ts";
-import { flowFile, listSuiteFiles, locate, readFolder, templateFile, testFile, writeFolder, type FileProblem } from "./files.ts";
+import { flowFile, listSuiteFiles, locate, readFolder, templateFile, testFile, writeFolder, writeTemplateFolder, type FileProblem } from "./files.ts";
 import { agentsFile, AGENTS_MARKER, guide, TOPICS } from "./guide.ts";
 import { localChanges, merge } from "./merge.ts";
 import { configPath, findRoot, readBase, readConfig, readState, writeConfig, writeState, type ProjectState } from "./project.ts";
@@ -24,6 +24,8 @@ export interface Flags {
   key?: string;
   slug?: string;
   precondition?: string;
+  max?: string;
+  replan: boolean;
 }
 
 /** What a command hands back: lines for a person, a value for `--json`, and the exit code. */
@@ -315,6 +317,60 @@ export async function coverage(_: string[], flags: Flags): Promise<Output> {
       ...templates.map((t) => `${t.key}: ${count(t.flows, "flow")}, ${count(t.steps, "step")}, ${count(t.tests, "test")}, on ${t.devices.join(", ") || "no devices"}`),
     ],
     json: { total: live.length, covered: live.length - uncovered.length, uncovered: uncovered.map((t) => t.key), verifiedBy: Object.fromEntries(verifiedBy), templates },
+  };
+}
+
+const GENERATED_DESCRIPTION = "Worked out by flowdeck generate from graph.yaml and each test's given. Edit those and run it again: edits made here are overwritten.";
+
+/** How much longer than planning from nothing an update may get before it is worth saying. */
+const DRIFT = 0.1;
+
+export async function generate(_: string[], flags: Flags): Promise<Output> {
+  const root = findRoot(flags.dir ?? process.cwd()) ?? resolve(flags.dir ?? ".");
+  const { suite, problems } = await readFolder(root);
+  if (!suite.graph) throw new CliError("no graph.yaml here: describe how a person moves through the app first (flowdeck guide graph)", EXIT.usage);
+  const errors = located(suite, problems).filter((p) => p.level === "error");
+  if (errors.length) return { text: [...problemLines(errors), `${tally(errors)}: nothing generated.`], json: { generated: false, problems: errors }, code: EXIT.invalid };
+
+  const maxSteps = flags.max === undefined ? DEFAULT_MAX_STEPS : Number(flags.max);
+  if (!Number.isInteger(maxSteps) || maxSteps < 1) throw new CliError(`--max is the longest a flow may be, in steps: a whole number, not "${flags.max}"`, EXIT.usage);
+
+  const existing = suite.templates.find((t) => t.key === GENERATED_TEMPLATE);
+  const previous = flags.replan ? undefined : existing?.flows;
+  const g = generateFlows(suite, { maxSteps, ...(previous ? { previous } : {}) });
+  const tpl: SuiteTemplate = {
+    key: GENERATED_TEMPLATE,
+    name: existing?.name ?? "Generated flows",
+    description: existing?.description ?? GENERATED_DESCRIPTION,
+    ...(existing?.archived ? { archived: true } : {}),
+    flows: g.flows,
+  };
+  const { written, removed } = await writeTemplateFolder(root, tpl);
+
+  const flowOf = (flows: readonly SuiteFlow[]) => new Map(flows.flatMap((f) => f.steps.flatMap((s) => (s.verifies ?? []).map((k) => [k, f.key] as const))));
+  const before = flowOf(existing?.flows ?? []), after = flowOf(g.flows);
+  const moved = [...after].filter(([k, f]) => before.has(k) && before.get(k) !== f).map(([k]) => k);
+  const added = [...after.keys()].filter((k) => !before.has(k));
+  const dropped = [...before.keys()].filter((k) => !after.has(k));
+  const tests = after.size;
+  const drift = g.fresh && (g.flows.length > g.fresh.flows || g.steps > g.fresh.steps * (1 + DRIFT)) ? g.fresh : undefined;
+
+  return {
+    text: [
+      `${count(g.flows.length, "flow")}, ${count(g.steps, "step")}, ${count(tests, "test")} (at most ${maxSteps} steps a flow).`,
+      ...g.flows.map((f) => `  ${f.key}  ${count(f.steps.length, "step")}, ${count(f.steps.filter((s) => s.kind === "check").length, "test")}: ${f.name}`),
+      // The first run adds everything; the list says nothing then.
+      ...(added.length && before.size ? [`New: ${added.join(", ")}`] : []),
+      ...(dropped.length ? [`No longer generated: ${dropped.join(", ")}`] : []),
+      ...(moved.length ? [`Moved to another flow: ${moved.join(", ")}`] : []),
+      ...(g.unplaced.length ? [`Not reachable within ${maxSteps} steps, so in no generated flow: ${g.unplaced.join(", ")}. Raise --max, or give the graph a shorter way there.`] : []),
+      ...(drift ? [`Planning from nothing would take ${count(drift.flows, "flow")}, ${count(drift.steps, "step")}: flowdeck generate --replan (tests move between flows).`] : []),
+      "",
+      written.length || removed.length
+        ? `templates/${GENERATED_TEMPLATE}: ${written.length} written, ${removed.length} removed. flowdeck push --plan shows what a push would change.`
+        : `templates/${GENERATED_TEMPLATE} is already up to date.`,
+    ],
+    json: { generated: true, template: GENERATED_TEMPLATE, maxSteps, flows: g.flows.map((f) => ({ key: f.key, name: f.name, steps: f.steps.length, tests: f.steps.flatMap((s) => s.verifies ?? []) })), steps: g.steps, unplaced: g.unplaced, added, dropped, moved, fresh: g.fresh ?? null, written, removed },
   };
 }
 
