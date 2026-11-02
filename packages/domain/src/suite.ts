@@ -9,6 +9,7 @@
  * `check`, it happens on a `device`, a check has an `expect`, and a step
  * `verifies` tests by key.
  */
+import { GENERATED_TEMPLATE, lintGraph, type SuiteGraph, type TestGiven } from "./graph.ts";
 import { matchDeviceLabel, namesSeveralDevices, otherDevicesMentioned } from "./handoffs.ts";
 
 export type SuiteStepKind = "action" | "check";
@@ -19,6 +20,8 @@ export interface SuiteTest {
   title: string;
   expect: string;
   tags?: string[];
+  /** The state the test needs, against the graph: where, and what is true. Never steps. */
+  given?: TestGiven;
   /** Everything else in the generic bag: priority, category… */
   metadata?: Record<string, unknown>;
   archived?: boolean;
@@ -60,6 +63,8 @@ export interface Suite {
   product: { name: string; description?: string };
   tests: SuiteTest[];
   templates: SuiteTemplate[];
+  /** How a person moves through the app, for generated flows. */
+  graph?: SuiteGraph;
 }
 
 /* ── Keys ─────────────────────────────────────────────────────────────── */
@@ -180,19 +185,21 @@ export function lintSuite(suite: Suite): SuiteProblem[] {
 
       // Devices this flow uses, for the one-device-per-step rule.
       const flowDevices = [...new Set(flow.steps.map((s) => s.device))];
+      // Generated steps are worded in graph.yaml and the tests; the wording is checked there, where it can be fixed.
+      const worded = tpl.key !== GENERATED_TEMPLATE;
       flow.steps.forEach((s, si) => {
         const sat = [...fat, "steps", si];
         if (!s.text.trim()) error([...sat, "text"], "a step needs an instruction");
         if (!s.device.trim()) error([...sat, "device"], "a step happens on a device; name it");
-        const joint = joinsSeveralActions(s.text);
+        const joint = worded ? joinsSeveralActions(s.text) : undefined;
         if (joint) warn([...sat, "text"], `"${joint}…": one thing per step — split it into two`);
         if (s.kind === "check" && !s.expect?.trim()) warn([...sat, "expect"], "a check with no expected result: say what the tester should see");
         if (s.kind === "action" && s.expect?.trim()) warn([...sat, "expect"], "an action's expected result is never shown; make it a check, or drop it");
 
         const near = matchDeviceLabel(s.device, [...devices].filter((d) => d !== s.device));
         if (near) warn([...sat, "device"], `"${s.device}" looks like "${near}": one device, two names gives it two colours and two hand-offs`);
-        const others = otherDevicesMentioned(`${s.text} ${s.expect ?? ""}`, s.device, flowDevices);
-        const several = namesSeveralDevices(`${s.text} ${s.expect ?? ""}`);
+        const others = worded ? otherDevicesMentioned(`${s.text} ${s.expect ?? ""}`, s.device, flowDevices) : [];
+        const several = worded && namesSeveralDevices(`${s.text} ${s.expect ?? ""}`);
         if (others.length) warn([...sat, "text"], `also names ${others.join(", ")}: a step happens on one device — split it`);
         else if (several) warn([...sat, "text"], `says "${several}": a step happens on one device — split it`);
 
@@ -216,7 +223,7 @@ export function lintSuite(suite: Suite): SuiteProblem[] {
     if (!t.archived && !verified.has(t.key)) warn(["tests", i], `"${t.key}" is in no flow: it will never be checked on a testing day`);
   });
 
-  return problems;
+  return [...problems, ...lintGraph(suite)];
 }
 
 /** "templates[0].flows[2].steps[5]" — the same rendering the API's `details` use. */
