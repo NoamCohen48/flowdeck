@@ -133,3 +133,36 @@ describe("flowdeck graph", () => {
     expect(out).toContain('  phone_a__settings -->|"Switch to the dark theme.<br/>if !dark, sets dark"| phone_a__settings');
   });
 });
+
+describe("graph lint and setup", () => {
+  test("a problem in graph.yaml names its line", async () => {
+    const root = await scratch();
+    const s = suite();
+    s.graph!.actions[2]!.from = "nowhere";
+    await writeFolder(root, s);
+    const text = await readFile(join(root, "graph.yaml"), "utf8");
+    const line = text.split("\n").findIndex((l) => l.includes("from: nowhere")) + 1;
+    const { out } = await flowdeck(root, "lint");
+    expect(out).toMatch(new RegExp(`graph\\.yaml:(${line - 2}|${line - 1}) action 3: "nowhere" is not a phone screen`));
+  });
+
+  test("--keep-setup keeps the steps that only get to the first test", async () => {
+    const root = await scratch();
+    const s = suite();
+    // From signed out, four actions to get both phones into place; only the last is about the check.
+    s.graph!.screens.phone!.push("sign-in");
+    s.graph!.starts = { "signed-out": { say: "Both phones signed out.", at: { "phone-a": "sign-in", "phone-b": "sign-in" } } };
+    s.graph!.actions.push({ device: ["phone-a", "phone-b"], from: "sign-in", to: "channels", do: "Sign in." });
+    s.tests = [{ key: "both-placed", title: "Both in place", expect: "Yes.", given: { device: "phone-a", at: "settings", also: { "phone-b": "thread" } } }];
+    await writeFolder(root, s);
+    await flowdeck(root, "generate");
+    const folded = await readFile(join(root, "templates/generated/flow-1.flow.yaml"), "utf8");
+    // Three of the four actions fold into the precondition; the last stays, right before the check.
+    expect(folded).toContain("Then, any way you like: Phone A is on ");
+    expect(folded.match(/ {2}- do: /g)).toHaveLength(1);
+    await flowdeck(root, "generate", "--replan", "--keep-setup");
+    const kept = await readFile(join(root, "templates/generated/flow-1.flow.yaml"), "utf8");
+    expect(kept).not.toContain("any way you like");
+    expect(kept).toContain("do: Sign in.");
+  });
+});

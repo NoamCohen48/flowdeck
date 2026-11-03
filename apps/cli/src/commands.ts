@@ -2,12 +2,12 @@
  * The commands. Each returns what it found — as text for a person and as a value
  * for `--json` — and throws `CliError` with an exit code when it cannot do its job.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { DEFAULT_MAX_STEPS, describeChange, explainGiven, factName, GENERATED_TEMPLATE, generateFlows, KEY_PATTERN, type SuiteGraph, lintSuite, slugify, uniqueKey, type Suite, type SuiteFlow, type SuiteTemplate } from "@flowdeck/domain";
 import { Client, CliError, EXIT, type IssueFeed } from "./client.ts";
-import { flowFile, listSuiteFiles, locate, readFolder, templateFile, testFile, writeFolder, writeTemplateFolder, type FileProblem } from "./files.ts";
+import { flowFile, graphLines, listSuiteFiles, locate, readFolder, templateFile, testFile, writeFolder, writeTemplateFolder, type FileProblem } from "./files.ts";
 import { agentsFile, AGENTS_MARKER, guide, TOPICS } from "./guide.ts";
 import { localChanges, merge } from "./merge.ts";
 import { configPath, findRoot, readBase, readConfig, readState, writeConfig, writeState, type ProjectState } from "./project.ts";
@@ -26,6 +26,7 @@ export interface Flags {
   precondition?: string;
   max?: string;
   replan: boolean;
+  keepSetup: boolean;
 }
 
 /** What a command hands back: lines for a person, a value for `--json`, and the exit code. */
@@ -54,10 +55,12 @@ async function project(flags: Flags) {
 
 interface Located { level: "error" | "warning"; where: string; message: string }
 
-function located(suite: Suite, files: FileProblem[]): Located[] {
+function located(suite: Suite, files: FileProblem[], root?: string): Located[] {
+  const graphFile = root ? join(root, "graph.yaml") : undefined;
+  const lines = graphFile && suite.graph && existsSync(graphFile) ? graphLines(readFileSync(graphFile, "utf8")) : undefined;
   return [
     ...files.map((p) => ({ level: p.level, where: p.file, message: p.message })),
-    ...lintSuite(suite).map((p) => ({ level: p.level, where: locate(suite, p.path), message: p.message })),
+    ...lintSuite(suite).map((p) => ({ level: p.level, where: locate(suite, p.path, lines), message: p.message })),
   ].sort((a, b) => (a.level === b.level ? a.where.localeCompare(b.where, undefined, { numeric: true }) : a.level === "error" ? -1 : 1));
 }
 
@@ -165,7 +168,7 @@ async function pullInto(root: string, state: ProjectState, flags: Flags): Promis
 export async function lint(_: string[], flags: Flags): Promise<Output> {
   const root = findRoot(flags.dir ?? process.cwd()) ?? resolve(flags.dir ?? ".");
   const { suite, problems } = await readFolder(root);
-  const all = located(suite, problems);
+  const all = located(suite, problems, root);
   const errors = all.filter((p) => p.level === "error").length;
   return {
     text: [...problemLines(all), all.length ? tally(all) : "No problems."],
@@ -179,7 +182,7 @@ export async function status(_: string[], flags: Flags): Promise<Output> {
   const base = await readBase(root);
   const { suite, problems } = await readFolder(root);
   const changes = base ? localChanges(base, suite) : [];
-  const all = located(suite, problems);
+  const all = located(suite, problems, root);
   const lines = changes.map(describeChange);
   return {
     text: [
@@ -194,7 +197,7 @@ export async function status(_: string[], flags: Flags): Promise<Output> {
 export async function push(_: string[], flags: Flags): Promise<Output> {
   const { root, state } = await project(flags);
   const { suite, problems } = await readFolder(root);
-  const all = located(suite, problems);
+  const all = located(suite, problems, root);
   if (all.some((p) => p.level === "error")) {
     return { text: [...problemLines(all), `${tally(all)}: nothing pushed.`], json: { pushed: false, problems: all }, code: EXIT.invalid };
   }
@@ -329,7 +332,7 @@ export async function generate(_: string[], flags: Flags): Promise<Output> {
   const root = findRoot(flags.dir ?? process.cwd()) ?? resolve(flags.dir ?? ".");
   const { suite, problems } = await readFolder(root);
   if (!suite.graph) throw new CliError("no graph.yaml here: describe how a person moves through the app first (flowdeck guide graph)", EXIT.usage);
-  const errors = located(suite, problems).filter((p) => p.level === "error");
+  const errors = located(suite, problems, root).filter((p) => p.level === "error");
   if (errors.length) return { text: [...problemLines(errors), `${tally(errors)}: nothing generated.`], json: { generated: false, problems: errors }, code: EXIT.invalid };
 
   const maxSteps = flags.max === undefined ? DEFAULT_MAX_STEPS : Number(flags.max);
@@ -337,7 +340,7 @@ export async function generate(_: string[], flags: Flags): Promise<Output> {
 
   const existing = suite.templates.find((t) => t.key === GENERATED_TEMPLATE);
   const previous = flags.replan ? undefined : existing?.flows;
-  const g = generateFlows(suite, { maxSteps, ...(previous ? { previous } : {}) });
+  const g = generateFlows(suite, { maxSteps, ...(flags.keepSetup ? { setupSteps: Infinity } : {}), ...(previous ? { previous } : {}) });
   const tpl: SuiteTemplate = {
     key: GENERATED_TEMPLATE,
     name: existing?.name ?? "Generated flows",
@@ -363,14 +366,15 @@ export async function generate(_: string[], flags: Flags): Promise<Output> {
       ...(added.length && before.size ? [`New: ${added.join(", ")}`] : []),
       ...(dropped.length ? [`No longer generated: ${dropped.join(", ")}`] : []),
       ...(moved.length ? [`Moved to another flow: ${moved.join(", ")}`] : []),
-      ...(g.unplaced.length ? [`Not reachable within ${maxSteps} steps, so in no generated flow: ${g.unplaced.join(", ")}. Raise --max, or give the graph a shorter way there.`] : []),
+      ...(g.unplaced.length > g.gaveUp.length ? [`Not reachable within ${maxSteps} steps, so in no generated flow: ${g.unplaced.filter((k) => !g.gaveUp.includes(k)).join(", ")}. Raise --max, or give the graph a shorter way there (flowdeck graph explain <test>).`] : []),
+      ...(g.gaveUp.length ? [`The search gave up on ${g.gaveUp.join(", ")}: too many combinations of facts to search, so this is not proof they cannot be reached. Fewer facts help most — merge or drop the ones these tests do not need.`] : []),
       ...(drift ? [`Planning from nothing would take ${count(drift.flows, "flow")}, ${count(drift.steps, "step")}: flowdeck generate --replan (tests move between flows).`] : []),
       "",
       written.length || removed.length
         ? `templates/${GENERATED_TEMPLATE}: ${written.length} written, ${removed.length} removed. flowdeck push --plan shows what a push would change.`
         : `templates/${GENERATED_TEMPLATE} is already up to date.`,
     ],
-    json: { generated: true, template: GENERATED_TEMPLATE, maxSteps, flows: g.flows.map((f) => ({ key: f.key, name: f.name, steps: f.steps.length, tests: f.steps.flatMap((s) => s.verifies ?? []) })), steps: g.steps, unplaced: g.unplaced, added, dropped, moved, fresh: g.fresh ?? null, written, removed },
+    json: { generated: true, template: GENERATED_TEMPLATE, maxSteps, flows: g.flows.map((f) => ({ key: f.key, name: f.name, steps: f.steps.length, tests: f.steps.flatMap((s) => s.verifies ?? []) })), steps: g.steps, unplaced: g.unplaced, gaveUp: g.gaveUp, added, dropped, moved, fresh: g.fresh ?? null, written, removed },
   };
 }
 
@@ -427,7 +431,7 @@ export async function graphCmd(args: string[], flags: Flags): Promise<Output> {
   const graph = suite.graph;
   if (!graph) throw new CliError("no graph.yaml here: flowdeck guide build-graph says how to write one", EXIT.usage);
   // An unreachable given is what explain is for; any other error makes the answers meaningless.
-  const errors = located(suite, problems).filter((p) => p.level === "error" && !(what === "explain" && p.message.startsWith("no start can reach")));
+  const errors = located(suite, problems, root).filter((p) => p.level === "error" && !(what === "explain" && p.message.startsWith("no start can reach")));
   if (errors.length) return { text: [...problemLines(errors), `${tally(errors)}: fix these first (flowdeck lint).`], json: { problems: errors }, code: EXIT.invalid };
 
   if (what === "show") return { text: outline(suite, graph), json: graph };

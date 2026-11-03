@@ -23,7 +23,8 @@ const HELP = `flowdeck — a Flowdeck suite as files
   flowdeck new flow <template> "<name>" [--precondition "<state>"]
   flowdeck new template "<name>"
   flowdeck coverage                      which tests no flow verifies (offline)
-  flowdeck generate [--max 25] [--replan] flows from graph.yaml and each test's given (offline)
+  flowdeck generate [--max 25] [--replan] [--keep-setup]
+                                         flows from graph.yaml and each test's given (offline)
   flowdeck graph show                    the graph per device: screens, ways out, tests checked there
   flowdeck graph explain <test> [start]  the shortest way to a test's state, or why there is none
   flowdeck graph mermaid                 the graph as a Mermaid diagram
@@ -72,6 +73,7 @@ async function main(argv: string[]): Promise<number> {
         precondition: { type: "string" },
         max: { type: "string" },
         replan: { type: "boolean", default: false },
+        "keep-setup": { type: "boolean", default: false },
       },
     });
   } catch (e) {
@@ -87,7 +89,7 @@ async function main(argv: string[]): Promise<number> {
   if (!run) { console.error(`unknown command "${name}"\n\n${HELP}`); return EXIT.usage; }
 
   const flags: Flags = {
-    json: values.json!, plan: values.plan!, force: values.force!, replan: values.replan!,
+    json: values.json!, plan: values.plan!, force: values.force!, replan: values.replan!, keepSetup: values["keep-setup"]!,
     ...(values.url ? { url: values.url } : {}),
     ...(values.as ? { as: values.as } : {}),
     ...(values.dir ? { dir: values.dir } : {}),

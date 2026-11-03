@@ -3915,6 +3915,7 @@ export interface components {
                     at: {
                         [key: string]: string;
                     };
+                    facts?: string[];
                 };
             };
             actions: {
@@ -3924,6 +3925,10 @@ export interface components {
                 do: string;
                 needs?: string[];
                 sets?: string[];
+                while?: {
+                    [key: string]: string;
+                };
+                after?: string;
             }[];
         };
         SuitePlan: {

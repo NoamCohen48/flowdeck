@@ -128,13 +128,24 @@ flowdeck generate --replan    # plan from nothing; tests may move between flows
 
 - Every test with a `given` is checked in exactly one generated flow, by the shortest path
   from wherever that flow already is. Tests with no `given` are left to hand-written flows.
-- Each flow begins from a named start, so flows can run side by side on a testing day.
+- Each flow's precondition says the whole state it begins from: the start's words, plus the
+  state its first setup actions would reach when there are three or more of them before the
+  first check ("Then, any way you like: Phone A is on settings."). Those steps are left out;
+  how the tester gets there does not matter. `--keep-setup` keeps them.
+- Flows share the world (the same devices and servers), so a tester sets each precondition up
+  before starting it, whatever ran before.
 - The same suite always gives the same flows. Run it again after an edit and the flows move
   as little as they can: tests stay in their flow, and a new one goes where it costs the fewest
   steps. It says when planning from nothing would be noticeably shorter (`--replan`).
 - `templates/generated/` is rewritten on every run: edit the graph and the givens, not it.
 - `flowdeck lint` (and every push) checks the graph: unknown roles, screens and facts, a fact
   nothing makes true, a screen with no way out, a `given` no start can reach.
+
+Starts can list `facts:` already true, and an action can say `while: { phone-b: thread }`
+(only while another device is there) and `after:` (shown under the step). `~sent` and `sent`
+are one fact. Every on-or-off fact doubles what the search may look through; for each test
+it searches only what can matter, but keep facts few. When a search runs out of room,
+`generate` and `explain` say "the search gave up", which is not proof a test is unreachable.
 
 Several devices work together through the state: it is every role's screen at once plus the
 facts, and the facts are shared. Phone A sending sets `message`; Phone B can then open the
@@ -196,6 +207,6 @@ Then push again. `flowdeck push --force` skips the check and overwrites.
 | `new flow <template> "<name>" [--precondition "<state>"]` | A flow file, appended to the template's order |
 | `new template "<name>"` | A template folder |
 | `coverage` | Tests in no flow; per template: flows, steps, tests, devices |
-| `generate [--max N] [--replan]` | Flows from `graph.yaml` and each test's `given`, into `templates/generated/` |
+| `generate [--max N] [--replan] [--keep-setup]` | Flows from `graph.yaml` and each test's `given`, into `templates/generated/` |
 | `graph show\|mermaid\|explain <test> [start]` | Read and debug the graph |
 | `report [run-id]` | The latest (or given) testing day's findings, pointing at files |

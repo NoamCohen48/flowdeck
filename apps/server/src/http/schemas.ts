@@ -445,10 +445,14 @@ export const SuiteGraphSchema = z
     /** Name → what it means. A name starting with `~` is fresh: it holds until the next action. */
     facts: z.record(z.string(), z.string()),
     /** States a flow may begin from: the precondition in words, and every role's screen. */
-    starts: z.record(z.string(), z.object({ say: z.string().min(1), at: z.record(z.string(), z.string().min(1)) }).strict()),
-    /** One step on one role, from a screen to a screen (the same one when `to` is left out). */
+    starts: z.record(z.string(), z.object({ say: z.string().min(1), at: z.record(z.string(), z.string().min(1)), facts: z.array(FactRefSchema).optional() }).strict()),
+    /** One step on one role, from a screen to a screen (the same one when `to` is left out); `while` needs other roles on given screens. */
     actions: z
-      .array(z.object({ device: OneOrMany, from: OneOrMany, to: z.string().min(1).optional(), do: z.string().min(1), needs: z.array(FactRefSchema).optional(), sets: z.array(FactRefSchema).optional() }).strict())
+      .array(z.object({
+        device: OneOrMany, from: OneOrMany, to: z.string().min(1).optional(), do: z.string().min(1),
+        needs: z.array(FactRefSchema).optional(), sets: z.array(FactRefSchema).optional(),
+        while: z.record(z.string(), z.string().min(1)).optional(), after: z.string().optional(),
+      }).strict())
       .max(5000),
   })
   .strict()

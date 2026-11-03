@@ -114,7 +114,7 @@ const INSTRUCTION_VERBS = [
   "reply", "share", "search", "invite", "accept", "dismiss", "allow", "deny", "connect", "disconnect",
 ];
 const VERBS = INSTRUCTION_VERBS.join("|");
-const SEVERAL_ACTIONS = new RegExp(`(,?\\s+and\\s+then|,?\\s+then|;\\s*|,?\\s+and|,\\s*)\\s+(${VERBS})\\b`, "gi");
+const SEVERAL_ACTIONS = new RegExp(`(,?\\s+and\\s+then|,?\\s+then|;\\s*|,?\\s+and|,\\s*|[.!]\\s*)\\s+(${VERBS})\\b`, "gi");
 const STARTS_WITH_VERB = new RegExp(`^\\s*(${VERBS})\\b`, "i");
 
 /**
@@ -127,6 +127,8 @@ const STARTS_WITH_VERB = new RegExp(`^\\s*(${VERBS})\\b`, "i");
  */
 export function joinsSeveralActions(text: string): string | undefined {
   for (const m of text.matchAll(SEVERAL_ACTIONS)) {
+    // "Close it. Wait 30 seconds." is two steps as surely as "close it and wait".
+    if (/^[.!]/.test(m[1]!)) return m[0].trim();
     const bareComma = /^,\s*$/.test(m[1]!);
     if (!bareComma || STARTS_WITH_VERB.test(text)) return m[0].trim();
   }
@@ -218,10 +220,15 @@ export function lintSuite(suite: Suite): SuiteProblem[] {
     });
   });
 
-  // Coverage: every live test reachable by some flow somewhere — archived templates count.
+  // Coverage: every live test reachable by some flow somewhere — archived templates count. A test with a
+  // given waits for `flowdeck generate`, so those are one line, not one each.
+  const waiting: string[] = [];
   suite.tests.forEach((t, i) => {
-    if (!t.archived && !verified.has(t.key)) warn(["tests", i], `"${t.key}" is in no flow: it will never be checked on a testing day`);
+    if (t.archived || verified.has(t.key)) return;
+    if (t.given && suite.graph) waiting.push(t.key);
+    else warn(["tests", i], `"${t.key}" is in no flow: it will never be checked on a testing day`);
   });
+  if (waiting.length) warn(["graph"], `${waiting.length === 1 ? `"${waiting[0]}" has a given but is` : `${waiting.length} tests with a given are`} in no flow yet: run flowdeck generate`);
 
   return [...problems, ...lintGraph(suite)];
 }

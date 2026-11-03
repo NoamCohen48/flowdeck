@@ -93,3 +93,11 @@ describe("joinsSeveralActions", () => {
     expect(joinsSeveralActions("Check that the header and footer render.")).toBeUndefined();
   });
 });
+
+describe("two sentences, two steps", () => {
+  test("a second sentence that starts with an instruction is a second step", () => {
+    expect(joinsSeveralActions("Turn off airplane mode. Wait up to 30 seconds.")).toBe(". Wait");
+    expect(joinsSeveralActions("Hold the tablet in landscape. Look at the screen.")).toBe(". Look");
+    expect(joinsSeveralActions("The list loads. It shows three rows.")).toBeUndefined();
+  });
+});

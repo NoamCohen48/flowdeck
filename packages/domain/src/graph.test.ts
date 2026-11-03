@@ -201,6 +201,100 @@ describe("generateFlows", () => {
   });
 });
 
+describe("setup folded into the precondition", () => {
+  /** Phone B's test sits behind four setup actions; Phone A's needs nothing. */
+  const setupSuite = (): Suite => {
+    const s = suite();
+    s.tests = [
+      { key: "b-dark", title: "B sees dark", expect: "Dark.", given: { device: "phone-b", at: "settings", facts: ["b-dark"] } },
+      { key: "a-pending", title: "A pending", expect: "A clock.", given: { device: "phone-a", at: "thread", facts: ["~sent"] } },
+    ];
+    s.graph!.facts["b-dark"] = "Phone B is in dark mode";
+    s.graph!.actions.push(
+      { device: "phone-b", from: "channels", to: "settings", do: "Open Settings on Phone B." },
+      { device: "phone-b", from: "settings", do: "Switch Phone B to dark.", sets: ["b-dark"] },
+    );
+    s.graph!.starts = { "signed-out": s.graph!.starts["signed-out"]! };
+    return s;
+  };
+
+  test("leading actions that check nothing become the state to start from; the action under test stays", () => {
+    const s = setupSuite();
+    s.tests = [s.tests[0]!];
+    const [flow] = generateFlows(s, { maxSteps: 25, setupSteps: 2 }).flows;
+    expect(flow!.precondition).toBe("Both phones signed out.\nThen, any way you like: Phone B is on settings.");
+    expect(flow!.steps.slice(0, 2).map((s) => s.text)).toEqual(["Switch Phone B to dark.", "B sees dark"]);
+  });
+
+  test("a fresh fact is never folded away from the check that watches it", () => {
+    const s = setupSuite();
+    s.tests = [s.tests[1]!];
+    const [flow] = generateFlows(s, { maxSteps: 25, setupSteps: 2 }).flows;
+    expect(flow!.precondition).toBe("Both phones signed out.\nThen, any way you like: Phone A is on thread.");
+    expect(flow!.steps.map((x) => x.text)).toEqual(['Send "hi".', "A pending"]);
+  });
+
+  test("below the threshold, or with setupSteps: Infinity, every step stays", () => {
+    for (const setupSteps of [3, Infinity]) {
+      const [flow] = generateFlows(setupSuite(), { maxSteps: 25, setupSteps }).flows;
+      expect(flow!.precondition).toBe("Both phones signed out.");
+      expect(flow!.steps[0]!.text).toBe("Sign in with the QA account.");
+    }
+  });
+
+  test("a folded flow reads back as the same plan", () => {
+    const g = generateFlows(setupSuite(), { maxSteps: 25, setupSteps: 2 });
+    expect(g.flows[0]!.precondition).toContain("Then, any way you like:");
+    expect(planOf(setupSuite().graph!, g.flows)).toEqual([{ start: "signed-out", tests: g.flows[0]!.steps.flatMap((x) => x.verifies ?? []) }]);
+    expect(generateFlows(setupSuite(), { maxSteps: 25, setupSteps: 2, previous: g.flows }).flows).toEqual(g.flows);
+  });
+});
+
+describe("while, start facts, and a search that gives up", () => {
+  test("while: an action needs another role on a screen", () => {
+    const s = suite();
+    s.tests = [{ key: "seen-live", title: "B sees it live", expect: "It appears.", given: { device: "phone-b", at: "thread", facts: ["live"] } }];
+    s.graph!.facts.live = "Phone B watched it arrive";
+    s.graph!.actions.push({ device: "phone-a", from: "thread", do: "Send \"live\".", while: { "phone-b": "thread" }, sets: ["live"] });
+    const steps = generateFlows(s).flows[0]!.steps.map((x) => `${x.device}: ${x.text}`);
+    expect(steps.indexOf("Phone B: Open #general.")).toBeLessThan(steps.indexOf('Phone A: Send "live".'));
+    s.graph!.actions.at(-1)!.while = { "phone-a": "thread" };
+    expect(messages(s)).toContain("error graph.actions.7.while.phone-a: phone-a does the action itself: say where it is with \"from\"");
+  });
+
+  test("a start can say a fact is already true; never a fresh one", () => {
+    const s = suite();
+    s.graph!.starts["signed-in"]!.facts = ["dark"];
+    const flows = generateFlows(s, { maxSteps: 25 }).flows;
+    expect(flows.flatMap((f) => f.steps.map((x) => x.text))).not.toContain("Switch to the dark theme.");
+    s.graph!.starts["signed-in"]!.facts = ["~sent"];
+    expect(messages(s)).toContain('error graph.starts.signed-in.facts.0: "sent" is fresh: it is true only right after an action, never at a start');
+  });
+
+  test("a search that runs out of states says so, rather than calling the test unreachable", () => {
+    const s = suite();
+    // Eighteen switches, all needed for "ready": far more states than one search may visit.
+    const toggles = Array.from({ length: 18 }, (_, i) => `t${i}`);
+    for (const t of toggles) {
+      s.graph!.facts[t] = `Switch ${t} is on`;
+      s.graph!.actions.push({ device: "phone-a", from: "settings", do: `Turn on ${t}.`, needs: [`!${t}`], sets: [t] });
+    }
+    s.graph!.facts.ready = "Everything is on";
+    s.graph!.actions.push({ device: "phone-a", from: "settings", do: "Tap Ready.", needs: toggles, sets: ["ready"] });
+    s.tests = [{ key: "all-on", title: "All on", expect: "Ready.", given: { device: "phone-a", at: "settings", facts: ["ready"] } }];
+    const g = generateFlows(s, { maxSteps: 25 });
+    expect(g.unplaced).toEqual(["all-on"]);
+    expect(g.gaveUp).toEqual(["all-on"]);
+  });
+});
+
+describe("lint around generated flows", () => {
+  test("tests waiting for generate are one warning, not one each", () => {
+    const problems = lintSuite(suite()).filter((p) => p.message.includes("in no flow"));
+    expect(problems.map((p) => p.message).sort()).toEqual(['"by-hand" is in no flow: it will never be checked on a testing day', "4 tests with a given are in no flow yet: run flowdeck generate"]);
+  });
+});
+
 describe("explainGiven", () => {
   test("a reachable test: the shortest way there, from the nearest start", () => {
     const e = explainGiven(suite(), "message-arrives");

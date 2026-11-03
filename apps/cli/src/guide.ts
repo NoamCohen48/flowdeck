@@ -148,11 +148,13 @@ graph.yaml is how a person moves through the app:
   facts:      what can be true in the world, each with what it means
                 message: A message is in #general
                 ~sent: Just sent         (~ = fresh: true only until the next action)
-  starts:     states a flow may begin from: the precondition in words, and where
-              every role is
+              "~sent" and "sent" are one name: refer to it either way, never declare both.
+  starts:     states a flow may begin from: the precondition in words, where every
+              role is, and (optional) facts already true
                 signed-in:
-                  say: Both phones signed in, on the channel list.
+                  say: Both phones signed in, on the channel list. Dark mode on.
                   at: { phone-a: channels, phone-b: channels }
+                  facts: [dark]
   actions:    one step on one role, from a screen to a screen (the same one when
               "to" is left out), needing some facts and setting others
                 - device: phone-a
@@ -160,6 +162,8 @@ graph.yaml is how a person moves through the app:
                   do: Send "hi".
                   needs: ["!offline"]           (!x: x must be false)
                   sets: [message, ~sent]        (-x: makes x false)
+                  while: { phone-b: thread }    (optional: only while Phone B is there)
+                  after: The message shows a clock.   (optional: shown under the step)
               device and from can be lists: [phone-a, phone-b] does it on either.
 
 A test's given is the state it needs — never steps, because there is more than one
@@ -175,13 +179,21 @@ way to get there:
   flowdeck generate                 writes templates/generated/, flows of at most 25 steps
   flowdeck generate --max 15        shorter flows, more of them
   flowdeck generate --replan        plan from nothing (tests may move between flows)
+  flowdeck generate --keep-setup    keep every step, even the setup before the first check
 
 Every test with a given lands in exactly one generated flow, checked as soon as the
-flow can reach its state. Each flow begins from a start, so flows can run side by
-side. Run it again after an edit and the flows change as little as they can: tests
-stay in their flow, new ones go where they cost the fewest steps. It says when
-planning from nothing would be noticeably shorter. The same suite always gives the
-same flows.
+flow can reach its state. Run it again after an edit and the flows change as little
+as they can: tests stay in their flow, new ones go where they cost the fewest steps.
+It says when planning from nothing would be noticeably shorter. The same suite
+always gives the same flows.
+
+Each flow says the whole state it begins from in its precondition: the start's
+words, and then — when the flow would open with three or more actions that check
+nothing — the state those actions reach ("Then, any way you like: Phone A is on
+settings. The tablet is paired."). How the tester gets there does not matter, so
+those steps are left out. The action a first check is about always stays. Flows share
+the world (the same phones, the same server), so set each one's precondition up
+before you start it, whatever ran before.
 
 Several devices
   The state is every role's screen at once, plus the facts. The facts are shared:
@@ -199,6 +211,21 @@ Several devices
   is about one device names it (read-on-b), because a plain "read" would be true
   for all of them.
 
+  When an action only has its effect while another device is somewhere — the alert
+  shows only while Whistle is in the background — say so with while:
+
+    - { device: pc, from: shell, do: Make the agent ask a question., while: { phone: home-screen }, sets: [alert-shown] }
+    - { device: pc, from: shell, do: Make the agent ask a question., while: { phone: herd }, sets: [marked-waiting] }
+
+Keep the facts few
+  Every fact that can be on or off doubles the states the search may have to look
+  through. For each test, flowdeck searches only the facts and devices that can
+  matter to it, which keeps big graphs fast — but a graph where every fact touches
+  every other is still slow. Drop facts no test needs, and merge ones that always
+  change together. When a search runs out of room, generate and explain say so ("the
+  search gave up"): that is not proof a test cannot be reached, only that the graph
+  is too big to tell.
+
 Rules worth knowing:
   - Name facts for what a tester can see, and give a fact its role when it is about
     one device: reacted-on-b, not reacted.
@@ -206,7 +233,8 @@ Rules worth knowing:
   - Do not edit templates/generated/: it is rewritten. Edit the graph and the givens.
   - Tests with no given are left to hand-written flows; both count for coverage.
   - flowdeck lint checks the graph: unknown screens and facts, a fact nothing sets,
-    a screen with no way out, a given no start can reach.`,
+    a screen with no way out, an action no start can get to, a given no start can
+    reach. Each problem names its line in graph.yaml.`,
 
   "build-graph": `BUILDING A GRAPH — FOR A PERSON OR AN AGENT
 
@@ -247,6 +275,12 @@ names the file and the problem.
      the name when it is about one device (read-on-b).
    - Use ~fresh for "watch it happen" checks, which must come right after the action.
    - Clear what an action undoes: sending a new message clears "edited" (-edited).
+   - Keep them few: every on-or-off fact doubles what the search may look through.
+     When generate or explain says "the search gave up", drop or merge facts.
+   - When an effect depends on where another device is, write the action once per
+     case with while: { other-role: screen } rather than a fact that tracks it.
+   - A state a tester can set up before the flow (an agent already waiting, dark
+     mode on) can be a start's facts: instead of actions that build it.
 
 6. A given on each test
    - device, at, the facts it needs, and a look: what the tester looks at. A state,

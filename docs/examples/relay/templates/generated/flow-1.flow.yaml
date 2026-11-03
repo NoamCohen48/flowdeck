@@ -1,4 +1,4 @@
-name: Sending a message shows it optimistically, and 1 more
+name: Messaging, sync (2 tests)
 precondition: Relay installed on both phones, signed in as qa-1 (Phone A) and qa-2 (Phone B), on the chat list.
 steps:
   - do: Open the chat with qa-2.

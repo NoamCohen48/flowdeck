@@ -39,6 +39,8 @@ export interface GraphStart {
   say: string;
   /** Every role's screen. */
   at: Record<string, string>;
+  /** Facts already true at the start ("an agent is already waiting"). */
+  facts?: string[];
 }
 
 export interface GraphAction {
@@ -53,6 +55,10 @@ export interface GraphAction {
   needs?: string[];
   /** Facts it makes true; `-x` makes x false. */
   sets?: string[];
+  /** Other roles that must be on a given screen for it ("the alert shows only while the phone is away"). */
+  while?: Record<string, string>;
+  /** Where it leaves the tester, shown under the step. */
+  after?: string;
 }
 
 export interface SuiteGraph {
@@ -103,12 +109,16 @@ interface Edge {
   needOff: bigint;
   setOn: bigint;
   setOff: bigint;
+  /** Other roles' screens it needs. */
+  whileAt: [role: number, screen: number][];
 }
 
 interface Goal {
   where: [role: number, screen: number][];
   needOn: bigint;
   needOff: bigint;
+  /** Worked out on first use: see `relevance`. */
+  rel?: Relevance;
 }
 
 interface Compiled {
@@ -123,17 +133,26 @@ interface Compiled {
   goals: Map<string, Goal>;
   /** Per role, per screen: every screen it could ever get to, facts aside. */
   reach: Set<number>[][];
+  /** Per role: the fewest moves from one screen to another, facts aside (Infinity: never). */
+  dist: number[][][];
   tests: Map<string, SuiteTest>;
-  /** "state>test" → the path, or null when there is none within the limit. */
-  paths: Map<string, Found | null>;
+  /**
+   * Per test, per state as that test's search sees it: the edges found (or null,
+   * or GAVE_UP), and how far it looked. Keyed by what matters to the test only,
+   * so a change anywhere else still finds the answer.
+   */
+  paths: Map<string, Map<bigint, { edges: number[] | null | typeof GAVE_UP; limit: number }>>;
+  /** Tests some search for gave up on, so "unreachable" is never said when it is "unknown". */
+  gaveUp: Set<string>;
 }
+
+const GAVE_UP = "gave-up";
 
 interface Found {
   edges: number[];
   end: State;
 }
 
-const stateKey = (s: State) => `${s.at.join(",")}/${s.facts.toString(36)}`;
 
 /** Compile a graph that `lintGraph` found no errors in. */
 function compile(graph: SuiteGraph, tests: readonly SuiteTest[]): Compiled {
@@ -160,12 +179,16 @@ function compile(graph: SuiteGraph, tests: readonly SuiteTest[]): Compiled {
           needOff: bits(a.needs, (x) => x.startsWith("!")),
           setOn: bits(a.sets, (x) => !x.startsWith("-")),
           setOff: bits(a.sets, (x) => x.startsWith("-")),
+          whileAt: Object.entries(a.while ?? {}).map(([wr, scr]): [number, number] => {
+            const i = roles.indexOf(wr);
+            return [i, screenIndex[i]!.get(scr)!];
+          }),
         });
       }
     }
   }
 
-  const starts = new Map(Object.entries(graph.starts).map(([k, s]) => [k, { at: roles.map((r, i) => screenIndex[i]!.get(s.at[r]!)!), facts: 0n }]));
+  const starts = new Map(Object.entries(graph.starts).map(([k, s]) => [k, { at: roles.map((r, i) => screenIndex[i]!.get(s.at[r]!)!), facts: bits(s.facts, () => true) }]));
 
   const goals = new Map<string, Goal>();
   const live = new Map<string, SuiteTest>();
@@ -192,11 +215,24 @@ function compile(graph: SuiteGraph, tests: readonly SuiteTest[]): Compiled {
   });
 
   const screens = roles.map((r) => [...(graph.screens[graph.roles[r]!.surface] ?? [])]);
-  return { roles, screens, facts: [...factBit.keys()], edges, fresh, starts, goals, reach, tests: live, paths: new Map() };
+  const dist = roles.map((_, role) => {
+    const n = screens[role]!.length;
+    const next = new Map<number, Set<number>>();
+    for (const e of edges) if (e.role === role) next.set(e.from, (next.get(e.from) ?? new Set()).add(e.to));
+    return screens[role]!.map((_, s0) => {
+      const d = new Array<number>(n).fill(Infinity);
+      d[s0] = 0;
+      const queue = [s0];
+      for (let i = 0; i < queue.length; i++) for (const t of next.get(queue[i]!) ?? []) if (d[t] === Infinity) { d[t] = d[queue[i]!]! + 1; queue.push(t); }
+      return d;
+    });
+  });
+  return { roles, screens, facts: [...factBit.keys()], edges, fresh, starts, goals, reach, dist, tests: live, paths: new Map(), gaveUp: new Set() };
 }
 
 function move(c: Compiled, s: State, e: Edge): State | undefined {
   if (s.at[e.role] !== e.from || (s.facts & e.needOn) !== e.needOn || (s.facts & e.needOff) !== 0n) return undefined;
+  if (e.whileAt.some(([r, scr]) => s.at[r] !== scr)) return undefined;
   // Fresh facts last until the next action, whoever does it.
   const facts = ((s.facts & ~c.fresh) | e.setOn) & ~e.setOff;
   const at = s.at.slice();
@@ -209,38 +245,202 @@ const meets = (s: State, g: Goal) => g.where.every(([r, scr]) => s.at[r] === scr
 /** Whether a goal's screens can be reached at all from `s`, facts aside: a cheap way to skip a hopeless search. */
 const hopeful = (c: Compiled, s: State, g: Goal) => g.where.every(([r, scr]) => c.reach[r]![s.at[r]!]!.has(scr));
 
-/** How many states one search may visit before giving up: a graph with many facts has millions. */
+/** How many states one search may visit before giving up. */
 const SEARCH_BUDGET = 200_000;
 
 /**
- * The shortest list of edges from `from` to a state where `goal` holds, at most
- * `limit` long. Breadth-first, edges in file order, so the same graph gives the
- * same path. Null when there is none; undefined when the search gave up.
+ * What can matter on the way to `goal`. A big app has dozens of facts, and
+ * every on-or-off fact doubles the states there are; but most of them have
+ * nothing to do with any one test. So, working back from the goal: the roles
+ * and facts it names matter; an action that moves a role that matters, or
+ * changes a fact that matters, matters; and then so do the role it is done on
+ * and everything it needs. Everything else is left out of the search, which
+ * keeps it small and still finds the shortest way: an action that changes
+ * nothing that matters can never help.
  */
-function pathTo(c: Compiled, from: State, goal: (s: State) => boolean, limit: number): Found | null | undefined {
-  if (goal(from)) return { edges: [], end: from };
-  const nodes: { state: State; parent: number; edge: number; depth: number }[] = [{ state: from, parent: -1, edge: -1, depth: 0 }];
-  const seen = new Set([stateKey(from)]);
-  const trail = (i: number) => {
-    const out: number[] = [];
-    for (let n = nodes[i]!; n.parent !== -1; n = nodes[n.parent]!) out.push(n.edge);
-    return out.reverse();
+interface Relevance {
+  edges: number[];
+  roles: number[];
+  facts: bigint;
+  /** Per fact the goal needs true: the edges that make it true. */
+  setters: [bit: bigint, edges: Edge[]][];
+  /** A state as the search sees it: one number from the facts and screens that matter. */
+  key: (s: State) => bigint;
+}
+
+function relevance(c: Compiled, goal: Goal): Relevance {
+  if (goal.rel) return goal.rel;
+  const roles = new Set(goal.where.map(([r]) => r));
+  let facts = goal.needOn | goal.needOff;
+  let needFreshOff = (goal.needOff & c.fresh) !== 0n;
+  const picked = new Set<number>();
+  for (let grew = true; grew; ) {
+    grew = false;
+    c.edges.forEach((e, i) => {
+      if (picked.has(i)) return;
+      // A fresh fact that must be false is cleared by any action at all; the actions of the roles that
+      // already matter are enough to clear it, and keep the search small.
+      const clears = needFreshOff && roles.has(e.role);
+      if (!clears && !((roles.has(e.role) && e.from !== e.to) || ((e.setOn | e.setOff) & facts) !== 0n)) return;
+      picked.add(i);
+      grew = true;
+      roles.add(e.role);
+      for (const [r] of e.whileAt) roles.add(r);
+      facts |= e.needOn | e.needOff;
+      if ((e.needOff & c.fresh) !== 0n) needFreshOff = true;
+    });
+  }
+  const setters = c.facts.map((_, i) => 1n << BigInt(i)).filter((bit) => (goal.needOn & bit) !== 0n)
+    .map((bit): [bigint, Edge[]] => [bit, c.edges.filter((e) => (e.setOn & bit) !== 0n)]);
+  const order = [...roles].sort((a, b) => a - b);
+  // Each role's screen in `width` bits, packed into a plain number while it fits, then the facts above them.
+  const width = Math.max(1, ...c.screens.map((list) => list.length)).toString(2).length;
+  const shift = BigInt(width * order.length);
+  const packed = width * order.length <= 52;
+  const key = (s: State) => {
+    if (packed) {
+      let n = 0;
+      for (const r of order) n = n * 2 ** width + s.at[r]!;
+      return ((s.facts & facts) << shift) | BigInt(n);
+    }
+    let k = s.facts & facts;
+    for (const r of order) k = (k << BigInt(width)) | BigInt(s.at[r]!);
+    return k;
   };
-  for (let head = 0; head < nodes.length; head++) {
-    const node = nodes[head]!;
-    if (node.depth >= limit) continue;
-    for (let ei = 0; ei < c.edges.length; ei++) {
+  goal.rel = { edges: [...picked].sort((a, b) => a - b), roles: order, facts, setters, key };
+  return goal.rel;
+}
+
+/**
+ * At least how many more actions `s` needs to meet `goal`: each role must still
+ * walk to its screen, and a fact still false needs one of its setters, whose
+ * role must walk to where it is done first. Never more than the truth, so a
+ * state it rules out could never have made the limit.
+ */
+function atLeast(c: Compiled, s: State, goal: Goal, rel: Relevance): number {
+  let h = 0;
+  for (const [r, scr] of goal.where) h = Math.max(h, c.dist[r]![s.at[r]!]![scr]!);
+  for (const [bit, setters] of rel.setters) {
+    if ((s.facts & bit) !== 0n) continue;
+    let best = Infinity;
+    for (const e of setters) best = Math.min(best, c.dist[e.role]![s.at[e.role]!]![e.from]! + 1);
+    h = Math.max(h, best);
+  }
+  if ((s.facts & goal.needOff) !== 0n) h = Math.max(h, 1);
+  return h;
+}
+
+/**
+ * The shortest list of edges from `from` to a state that meets `goal`, at most
+ * `limit` long. A*, with `atLeast` as the guide: it heads for the goal first and
+ * still finds a shortest way, and it never looks at a state that could not make
+ * the limit. Ties go to the deeper state, then to the one found first — edges
+ * are tried in file order — so the same graph always gives the same path. Null
+ * when there is none; GAVE_UP when the search ran out of states.
+ */
+function search(c: Compiled, from: State, goal: Goal, limit: number): Found | null | typeof GAVE_UP {
+  if (meets(from, goal)) return { edges: [], end: from };
+  if (!hopeful(c, from, goal)) return null;
+  const rel = relevance(c, goal);
+  const key = rel.key;
+  const h0 = atLeast(c, from, goal, rel);
+  if (h0 > limit) return null;
+  const nodes: { state: State; parent: number; edge: number; g: number; f: number }[] = [{ state: from, parent: -1, edge: -1, g: 0, f: h0 }];
+  const best = new Map([[key(from), 0]]);
+  const heap = new Heap((a, b) => {
+    const x = nodes[a]!, y = nodes[b]!;
+    return x.f !== y.f ? x.f < y.f : x.g !== y.g ? x.g > y.g : a < b;
+  });
+  heap.push(0);
+  while (heap.size) {
+    const i = heap.pop();
+    const node = nodes[i]!;
+    if (best.get(key(node.state))! < node.g) continue;
+    if (meets(node.state, goal)) {
+      const out: number[] = [];
+      for (let n = node; n.parent !== -1; n = nodes[n.parent]!) out.push(n.edge);
+      return { edges: out.reverse(), end: node.state };
+    }
+    if (node.g >= limit) continue;
+    for (const ei of rel.edges) {
       const next = move(c, node.state, c.edges[ei]!);
       if (!next) continue;
-      const k = stateKey(next);
-      if (seen.has(k)) continue;
-      seen.add(k);
-      nodes.push({ state: next, parent: head, edge: ei, depth: node.depth + 1 });
-      if (goal(next)) return { edges: trail(nodes.length - 1), end: next };
-      if (seen.size > SEARCH_BUDGET) return undefined;
+      const k = key(next);
+      const g = node.g + 1;
+      if ((best.get(k) ?? Infinity) <= g) continue;
+      const f = g + atLeast(c, next, goal, rel);
+      if (f > limit) continue;
+      best.set(k, g);
+      nodes.push({ state: next, parent: i, edge: ei, g, f });
+      heap.push(nodes.length - 1);
+      if (best.size > SEARCH_BUDGET) return GAVE_UP;
     }
   }
   return null;
+}
+
+/** A binary heap of indices, ordered by `before`. */
+class Heap {
+  private items: number[] = [];
+  constructor(private before: (a: number, b: number) => boolean) {}
+  get size() { return this.items.length; }
+  push(x: number) {
+    const a = this.items;
+    a.push(x);
+    for (let i = a.length - 1; i > 0; ) {
+      const p = (i - 1) >> 1;
+      if (!this.before(a[i]!, a[p]!)) break;
+      [a[i], a[p]] = [a[p]!, a[i]!];
+      i = p;
+    }
+  }
+  pop(): number {
+    const a = this.items;
+    const top = a[0]!;
+    const last = a.pop()!;
+    if (a.length) {
+      a[0] = last;
+      for (let i = 0; ; ) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < a.length && this.before(a[l]!, a[m]!)) m = l;
+        if (r < a.length && this.before(a[r]!, a[m]!)) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m]!, a[i]!];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
+/**
+ * The way from `state` to test `key`'s state, cached. The way depends only on
+ * the facts and screens that matter to the test, so that is the cache key; the
+ * state it ends in is the edges played from where you really are.
+ */
+function hop(c: Compiled, state: State, key: string, limit: number): Found | null {
+  const goal = c.goals.get(key)!;
+  if (meets(state, goal)) return { edges: [], end: state };
+  const rel = relevance(c, goal);
+  let byState = c.paths.get(key);
+  if (!byState) c.paths.set(key, (byState = new Map()));
+  const k = rel.key(state);
+  const cached = byState.get(k);
+  // A way found is the shortest there is, whatever limit it was found within; "none" holds only up to the limit it looked to.
+  const reusable = cached && (cached.edges === null ? cached.limit >= limit : cached.edges === GAVE_UP ? cached.limit === limit : true);
+  let edges: number[] | null | typeof GAVE_UP;
+  if (reusable) edges = Array.isArray(cached.edges) && cached.edges.length > limit ? null : cached.edges;
+  else {
+    const found = search(c, state, goal, limit);
+    edges = found && found !== GAVE_UP ? found.edges : found;
+    byState.set(k, { edges, limit });
+  }
+  if (edges === GAVE_UP) { c.gaveUp.add(key); return null; }
+  if (!edges) return null;
+  let end = state;
+  for (const e of edges) end = move(c, end, c.edges[e]!)!;
+  return { edges, end };
 }
 
 /* ── Plans ────────────────────────────────────────────────────────────── */
@@ -257,81 +457,135 @@ export interface FlowPlan {
 
 type PlannedStep = { kind: "do"; edge: number } | { kind: "check"; test: string };
 
-function materialize(c: Compiled, flow: FlowPlan, limit: number): PlannedStep[] | undefined {
-  let state = c.starts.get(flow.start);
-  if (!state) return undefined;
+/** A plan's steps, and how many leading actions are setup to fold into the precondition. */
+interface Built {
+  steps: PlannedStep[];
+  cut: number;
+}
+
+/** How long a flow is for the tester: its steps, less the setup folded into the precondition. */
+const cost = (b: Built) => b.steps.length - b.cut;
+
+/** Generation settings every plan is built with. */
+interface Settings {
+  maxSteps: number;
+  /** Fold leading setup into the precondition when it is at least this many actions; Infinity never. */
+  setup: number;
+}
+
+/**
+ * How many of a flow's first actions are only setup: they come before its
+ * first check, so they check nothing, and how they are done does not matter.
+ * They can go, and the state they reach becomes part of the precondition. What
+ * the check is about stays: the action that makes one of its facts true (or
+ * false) and everything after it — "Revoke the tablet", "Refresh", then look —
+ * and always at least the last action. A fresh fact only exists right after its
+ * action, so the cut never lands where one is true.
+ */
+function setupCut(c: Compiled, start: State, edges: readonly number[], goal: Goal, min: number): number {
+  let keepFrom = edges.length - 1;
+  edges.forEach((e, i) => {
+    const edge = c.edges[e]!;
+    if ((edge.setOn & goal.needOn) !== 0n || (edge.setOff & goal.needOff) !== 0n) keepFrom = Math.min(keepFrom, i);
+  });
+  let state = start, cut = 0;
+  edges.slice(0, keepFrom).forEach((e, i) => {
+    state = move(c, state, c.edges[e]!)!;
+    if ((state.facts & c.fresh) === 0n) cut = i + 1;
+  });
+  return cut >= min ? cut : 0;
+}
+
+/** A plan's steps, or undefined when some test cannot be reached in order within the limit (or `cap`, when lower). */
+function build(c: Compiled, flow: FlowPlan, set: Settings, cap = set.maxSteps): Built | undefined {
+  const start = c.starts.get(flow.start);
+  if (!start) return undefined;
+  let state = start, cut = 0;
   const steps: PlannedStep[] = [];
-  for (const key of flow.tests) {
-    const goal = c.goals.get(key);
-    if (!goal) return undefined;
-    // The path depends only on where you are and which test is next.
-    const ck = `${stateKey(state)}>${key}`;
-    let found = c.paths.get(ck);
-    if (found === undefined) {
-      found = hopeful(c, state, goal) ? pathTo(c, state, (s) => meets(s, goal), limit) ?? null : null;
-      c.paths.set(ck, found);
-    }
+  for (const [i, key] of flow.tests.entries()) {
+    if (!c.goals.has(key)) return undefined;
+    // A hop never needs to look further than the room the flow has left.
+    const room = i === 0 ? set.maxSteps : cap - (steps.length - cut) - 1;
+    if (room < 0) return undefined;
+    const found = hop(c, state, key, room);
     if (!found) return undefined;
     for (const e of found.edges) steps.push({ kind: "do", edge: e });
+    if (i === 0) cut = setupCut(c, start, found.edges, c.goals.get(key)!, set.setup);
     steps.push({ kind: "check", test: key });
     state = found.end;
   }
-  return steps;
+  return steps.length - cut <= cap ? { steps, cut } : undefined;
 }
 
-/** The nearest of `keys` from `state`: the path there and the first key (in order) it satisfies. */
+/** Shorter first; between equally short paths, the one taking earlier actions in the file (what one search over all of them would find first). */
+function before(a: readonly number[], b: readonly number[]) {
+  if (a.length !== b.length) return a.length < b.length;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i]! < b[i]!;
+  return false;
+}
+
+/** The nearest of `keys` from `state`: the path there, and which key. */
 function nearest(c: Compiled, state: State, keys: readonly string[], limit: number) {
-  const goals = keys.filter((k) => hopeful(c, state, c.goals.get(k)!)).map((k) => [k, c.goals.get(k)!] as const);
-  if (!goals.length) return undefined;
-  const found = pathTo(c, state, (s) => goals.some(([, g]) => meets(s, g)), limit);
-  if (!found) return undefined;
-  return { found, key: goals.find(([, g]) => meets(found.end, g))![0] };
+  let best: { found: Found; key: string } | undefined;
+  for (const key of keys) {
+    // Nothing longer than the best so far can win, so no search needs to look further.
+    const found = hop(c, state, key, best ? Math.min(limit, best.found.edges.length) : limit);
+    if (found && (!best || before(found.edges, best.found.edges))) best = { found, key };
+  }
+  return best;
 }
 
-/** Greedy from nothing: each flow starts where its first test is nearest, then takes the nearest test left until it is full. */
-function freshPlan(c: Compiled, keys: readonly string[], maxSteps: number) {
+/** Greedy from nothing: each flow starts where its first test is cheapest, then takes the nearest test left until it is full. */
+function freshPlan(c: Compiled, keys: readonly string[], set: Settings) {
   const left = [...keys];
   const plan: FlowPlan[] = [];
   while (left.length) {
-    let best: { start: string; length: number } | undefined;
+    let best: { start: string; cost: number; length: number } | undefined;
     for (const [start, s] of c.starts) {
-      const n = nearest(c, s, left, maxSteps);
-      if (n && (!best || n.found.edges.length < best.length)) best = { start, length: n.found.edges.length };
+      const n = nearest(c, s, left, set.maxSteps);
+      const b = n && build(c, { start, tests: [n.key] }, set);
+      if (b && (!best || cost(b) < best.cost || (cost(b) === best.cost && b.steps.length < best.length))) best = { start, cost: cost(b), length: b.steps.length };
     }
     if (!best) break;
     const flow: FlowPlan = { start: best.start, tests: [] };
     let state = c.starts.get(best.start)!;
     let length = 0;
     while (left.length) {
-      const n = nearest(c, state, left, maxSteps);
-      if (!n) break;
-      if (flow.tests.length && length + n.found.edges.length + 1 > maxSteps) break;
+      const n = nearest(c, state, left, flow.tests.length ? set.maxSteps - length - 1 : set.maxSteps);
+      const b = n && build(c, { start: flow.start, tests: [...flow.tests, n.key] }, set);
+      if (!n || !b) break;
       flow.tests.push(n.key);
       left.splice(left.indexOf(n.key), 1);
       state = n.found.end;
-      length += n.found.edges.length + 1;
+      length = cost(b);
     }
+    if (!flow.tests.length) break;
     plan.push(flow);
   }
   return { plan, left };
 }
 
 /** Where inserting `key` costs the fewest extra steps: [cost, flow, position]. */
-function fit(c: Compiled, plan: readonly FlowPlan[], key: string, maxSteps: number, skip = -1): [number, number, number] | undefined {
+function fit(c: Compiled, plan: readonly FlowPlan[], key: string, set: Settings, skip = -1): [number, number, number] | undefined {
   let best: [number, number, number] | undefined;
   plan.forEach((f, fi) => {
-    if (fi === skip) return;
-    const base = materialize(c, f, maxSteps)?.length ?? 0;
-    for (let pos = 0; pos <= f.tests.length; pos++) {
-      const steps = materialize(c, { start: f.start, tests: [...f.tests.slice(0, pos), key, ...f.tests.slice(pos)] }, maxSteps);
-      if (steps && steps.length <= maxSteps && (!best || steps.length - base < best[0])) best = [steps.length - base, fi, pos];
+    // One step (the check itself) is the least a test can add: nothing beats it, and a full flow cannot take it.
+    if (fi === skip || best?.[0] === 1) return;
+    const was = build(c, f, set);
+    const base = was ? cost(was) : 0;
+    if (was && base + 1 > set.maxSteps) return;
+    for (let pos = 0; pos <= f.tests.length && best?.[0] !== 1; pos++) {
+      // Only an insertion cheaper than the best so far matters, so no search needs to look further than that.
+      const cap = Math.min(set.maxSteps, best ? base + best[0] - 1 : set.maxSteps);
+      const b = build(c, { start: f.start, tests: [...f.tests.slice(0, pos), key, ...f.tests.slice(pos)] }, set, cap);
+      if (b && (!best || cost(b) - base < best[0])) best = [cost(b) - base, fi, pos];
     }
   });
   return best;
 }
 
 /** Greedy filling leaves a short last flow; move a flow's tests into the others when they all fit, smallest flow first. */
-function foldSmall(c: Compiled, plan: FlowPlan[], maxSteps: number) {
+function foldSmall(c: Compiled, plan: FlowPlan[], set: Settings) {
   let changed = true;
   while (changed && plan.length > 1) {
     changed = false;
@@ -339,7 +593,7 @@ function foldSmall(c: Compiled, plan: FlowPlan[], maxSteps: number) {
     for (const fi of bySize) {
       const trial = plan.map((f) => ({ start: f.start, tests: [...f.tests] }));
       const ok = plan[fi]!.tests.every((key) => {
-        const spot = fit(c, trial, key, maxSteps, fi);
+        const spot = fit(c, trial, key, set, fi);
         if (spot) trial[spot[1]]!.tests.splice(spot[2], 0, key);
         return !!spot;
       });
@@ -354,23 +608,22 @@ function foldSmall(c: Compiled, plan: FlowPlan[], maxSteps: number) {
 }
 
 /** Keep what can be kept; fit what is new where it costs the fewest steps; start new flows only for what fits nowhere. */
-function updatePlan(c: Compiled, old: readonly FlowPlan[], maxSteps: number) {
+function updatePlan(c: Compiled, old: readonly FlowPlan[], set: Settings) {
   const plan = old
     .filter((f) => c.starts.has(f.start))
     .map((f) => ({ start: f.start, tests: f.tests.filter((k) => c.goals.has(k)) }));
   // A flow the graph no longer allows, or that has grown past the limit, loses tests from the end until it fits.
-  const fits = (f: FlowPlan) => (materialize(c, f, maxSteps)?.length ?? Infinity) <= maxSteps;
   const homeless: string[] = [];
-  for (const f of plan) while (f.tests.length && !fits(f)) homeless.unshift(f.tests.pop()!);
+  for (const f of plan) while (f.tests.length && !build(c, f, set)) homeless.unshift(f.tests.pop()!);
   const kept = plan.filter((f) => f.tests.length);
   const planned = new Set(kept.flatMap((f) => f.tests));
   const unplaced: string[] = [];
   for (const key of [...[...c.goals.keys()].filter((k) => !planned.has(k) && !homeless.includes(k)), ...homeless]) {
-    const spot = fit(c, kept, key, maxSteps);
+    const spot = fit(c, kept, key, set);
     if (spot) kept[spot[1]]!.tests.splice(spot[2], 0, key);
     else unplaced.push(key);
   }
-  const more = freshPlan(c, unplaced, maxSteps);
+  const more = freshPlan(c, unplaced, set);
   return { plan: [...kept, ...more.plan], left: more.left };
 }
 
@@ -379,6 +632,12 @@ function updatePlan(c: Compiled, old: readonly FlowPlan[], maxSteps: number) {
 export interface GenerateOptions {
   /** The longest a flow may be, in steps. */
   maxSteps?: number;
+  /**
+   * Fold a flow's leading setup — the actions before its first check — into its
+   * precondition when there are at least this many: the tester gets to that
+   * state however they like. Infinity keeps every step. Default 3.
+   */
+  setupSteps?: number;
   /** The flows generated last time, to change as little as possible. Left out: plan from nothing. */
   previous?: readonly SuiteFlow[];
 }
@@ -387,21 +646,26 @@ export interface Generated {
   flows: SuiteFlow[];
   /** Tests with a `given` that no flow could reach within the step limit. */
   unplaced: string[];
+  /** Of those, the ones where a search ran out of states: not proven unreachable, just too big to search. */
+  gaveUp: string[];
   steps: number;
   /** When updating: what planning from nothing would give, so a person can see the drift. */
   fresh?: { flows: number; steps: number };
 }
 
 export const DEFAULT_MAX_STEPS = 25;
+export const DEFAULT_SETUP_STEPS = 3;
 
 /** The template generated flows live in. It is rewritten on every run: the edits belong in the graph and the givens. */
 export const GENERATED_TEMPLATE = "generated";
 
 /** Read a plan back from generated flows: the start from the precondition, the tests from the checks. */
 export function planOf(graph: SuiteGraph, flows: readonly SuiteFlow[]): FlowPlan[] {
-  const startBySay = new Map(Object.entries(graph.starts).map(([k, s]) => [s.say.trim(), k]));
+  // A precondition is the start's words, then any setup folded into it: the longest start that begins it.
+  const starts = Object.entries(graph.starts).sort(([, a], [, b]) => b.say.trim().length - a.say.trim().length);
   return flows.flatMap((f) => {
-    const start = startBySay.get((f.precondition ?? "").trim());
+    const pre = (f.precondition ?? "").trim();
+    const start = starts.find(([, s]) => pre === s.say.trim() || pre.startsWith(`${s.say.trim()}\n`) || pre.startsWith(`${s.say.trim()} `))?.[0];
     if (!start || f.archived) return [];
     return [{ start, tests: f.steps.flatMap((s) => (s.kind === "check" ? s.verifies ?? [] : [])) }];
   });
@@ -409,35 +673,45 @@ export function planOf(graph: SuiteGraph, flows: readonly SuiteFlow[]): FlowPlan
 
 /**
  * Flows that check every live test with a `given`, each at most `maxSteps`
- * long and self-contained: it begins from a named start, so flows can run side
- * by side. With `previous`, the flows move as little as possible — tests stay
- * in their flow and new ones go where they cost the fewest steps.
+ * long and self-contained: its precondition says the whole state it begins
+ * from — a named start, plus any setup folded into it — so it does not depend
+ * on what ran before. With `previous`, the flows move as little as possible:
+ * tests stay in their flow and new ones go where they cost the fewest steps.
  */
 export function generateFlows(suite: Suite, options: GenerateOptions = {}): Generated {
   const graph = suite.graph;
-  if (!graph) return { flows: [], unplaced: [], steps: 0 };
-  const maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
+  if (!graph) return { flows: [], unplaced: [], gaveUp: [], steps: 0 };
+  const set: Settings = { maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS, setup: options.setupSteps ?? DEFAULT_SETUP_STEPS };
   const c = compile(graph, suite.tests);
   const keys = [...c.goals.keys()];
 
   const fromNothing = () => {
-    const f = freshPlan(c, keys, maxSteps);
-    return { plan: foldSmall(c, f.plan, maxSteps), left: f.left };
+    const f = freshPlan(c, keys, set);
+    return { plan: foldSmall(c, f.plan, set), left: f.left };
   };
-  const length = (plan: readonly FlowPlan[]) => plan.reduce((n, f) => n + (materialize(c, f, maxSteps)?.length ?? 0), 0);
+  const length = (plan: readonly FlowPlan[]) => plan.reduce((n, f) => { const b = build(c, f, set); return n + (b ? cost(b) : 0); }, 0);
 
-  let result = fromNothing();
+  let result: { plan: FlowPlan[]; left: string[] };
   let fresh: Generated["fresh"];
+  let flows: SuiteFlow[];
   if (options.previous?.length) {
-    const scratch = result;
-    result = updatePlan(c, planOf(graph, options.previous), maxSteps);
-    fresh = { flows: scratch.plan.length, steps: length(scratch.plan) };
+    result = updatePlan(c, planOf(graph, options.previous), set);
+    flows = result.plan.map((f, i) => renderFlow(graph, c, f, i + 1, set));
+    // Planning from nothing is only for saying how far an update has drifted; when nothing moved,
+    // the run that wrote these flows already said it.
+    if (JSON.stringify(flows) !== JSON.stringify(options.previous.filter((f) => !f.archived))) {
+      const scratch = fromNothing();
+      fresh = { flows: scratch.plan.length, steps: length(scratch.plan) };
+    }
+  } else {
+    result = fromNothing();
+    flows = result.plan.map((f, i) => renderFlow(graph, c, f, i + 1, set));
   }
 
-  const flows = result.plan.map((f, i) => renderFlow(graph, c, f, i + 1, maxSteps));
   return {
     flows,
     unplaced: result.left,
+    gaveUp: result.left.filter((k) => c.gaveUp.has(k)),
     steps: flows.reduce((n, f) => n + f.steps.length, 0),
     ...(fresh ? { fresh } : {}),
   };
@@ -448,22 +722,62 @@ function stepsOf(graph: SuiteGraph, c: Compiled, planned: readonly PlannedStep[]
   return planned.map((p): SuiteStep => {
     if (p.kind === "do") {
       const e = c.edges[p.edge]!;
-      return { kind: "action", text: e.text, device: nameOf(c.roles[e.role]!) };
+      const after = graph.actions[e.action]!.after;
+      return { kind: "action", text: e.text, device: nameOf(c.roles[e.role]!), ...(after ? { after } : {}) };
     }
     const t = c.tests.get(p.test)!;
     return { kind: "check", text: t.given!.look?.trim() || t.title, device: nameOf(t.given!.device), expect: t.expect, verifies: [t.key] };
   });
 }
 
-function renderFlow(graph: SuiteGraph, c: Compiled, plan: FlowPlan, n: number, maxSteps: number): SuiteFlow {
-  const steps = stepsOf(graph, c, materialize(c, plan, maxSteps)!);
-  const first = c.tests.get(plan.tests[0]!)!.title;
-  const more = plan.tests.length - 1;
+const sentence = (s: string) => (/[.!?]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`);
+
+/** What changed from `from` to `to`, in the graph's words: where each role is now, and what is true or no longer true, of the facts in `matter`. */
+function describeState(graph: SuiteGraph, c: Compiled, from: State, to: State, matter: bigint): string[] {
+  const meaning = (i: number) => {
+    const name = c.facts[i]!;
+    return graph.facts[name] ?? graph.facts[`~${name}`] ?? name;
+  };
+  const out: string[] = [];
+  c.roles.forEach((r, i) => {
+    if (from.at[i] !== to.at[i]) out.push(`${graph.roles[r]!.name} is on ${c.screens[i]![to.at[i]!]}.`);
+  });
+  c.facts.forEach((_, i) => {
+    const bit = 1n << BigInt(i);
+    if (!(matter & bit)) return;
+    if ((to.facts & bit) && !(from.facts & bit)) out.push(sentence(meaning(i)));
+    if (!(to.facts & bit) && (from.facts & bit)) out.push(`No longer: ${sentence(meaning(i)).replace(/^./, (x) => x.toLowerCase())}`);
+  });
+  return out;
+}
+
+/** "Pairing, tablet, reconnect": the tests' tags in the order they come, else the first and last test. */
+function flowName(tests: readonly SuiteTest[]): string {
+  const tags = [...new Set(tests.flatMap((t) => t.tags ?? []))];
+  if (tags.length) return `${tags.slice(0, 3).map((t, i) => (i ? t : t.replace(/^./, (x) => x.toUpperCase()))).join(", ")}${tags.length > 3 ? "…" : ""} (${tests.length} ${tests.length === 1 ? "test" : "tests"})`;
+  if (tests.length === 1) return tests[0]!.title;
+  return `${tests[0]!.title} … ${tests[tests.length - 1]!.title} (${tests.length} tests)`;
+}
+
+function renderFlow(graph: SuiteGraph, c: Compiled, plan: FlowPlan, n: number, set: Settings): SuiteFlow {
+  const built = build(c, plan, set)!;
+  const start = c.starts.get(plan.start)!;
+  let reached = start;
+  for (const p of built.steps.slice(0, built.cut)) if (p.kind === "do") reached = move(c, reached, c.edges[p.edge]!)!;
+  // Only what the rest of the flow depends on: facts its tests or its remaining actions name.
+  const rest = built.steps.slice(built.cut);
+  const matter = rest.reduce((m, p) => {
+    if (p.kind === "do") { const e = c.edges[p.edge]!; return m | e.needOn | e.needOff | e.setOff; }
+    const g = c.goals.get(p.test)!;
+    return m | g.needOn | g.needOff;
+  }, 0n);
+  const setup = built.cut ? describeState(graph, c, start, reached, matter) : [];
+  const say = graph.starts[plan.start]!.say.trim();
   return {
     key: `flow-${n}`,
-    name: more ? `${first}, and ${more} more` : first,
-    precondition: graph.starts[plan.start]!.say,
-    steps,
+    name: flowName(plan.tests.map((k) => c.tests.get(k)!)),
+    precondition: setup.length ? `${say}\nThen, any way you like: ${setup.join(" ")}` : say,
+    steps: stepsOf(graph, c, built.steps.slice(built.cut)),
   };
 }
 
@@ -483,6 +797,7 @@ function relaxed(c: Compiled, from: readonly State[]) {
     grew = false;
     c.edges.forEach((e, i) => {
       if (usable.has(i) || !screens[e.role]!.has(e.from) || (facts & e.needOn) !== e.needOn) return;
+      if (e.whileAt.some(([r, scr]) => !screens[r]!.has(scr))) return;
       usable.add(i);
       screens[e.role]!.add(e.to);
       facts |= e.setOn;
@@ -518,8 +833,9 @@ export function explainGiven(suite: Suite, key: string, start?: string): Explana
   let best: { start: string; found: Found } | undefined;
   let unsure = false;
   for (const [k, s] of starts) {
-    const found = hopeful(c, s, goal) ? pathTo(c, s, (x) => meets(x, goal), Infinity) : null;
-    if (found === undefined) unsure = true;
+    const result = search(c, s, goal, Infinity);
+    if (result === GAVE_UP) unsure = true;
+    const found = result === GAVE_UP ? null : result;
     fromEachStart[k] = found ? found.edges.length : null;
     if (found && (!best || found.edges.length < best.found.edges.length)) best = { start: k, found };
   }
@@ -567,7 +883,8 @@ export function explainGiven(suite: Suite, key: string, start?: string): Explana
       })),
     ];
     for (const p of parts) {
-      if (starts.some(([, s]) => pathTo(c, s, (x) => meets(x, p.goal), Infinity))) reasons.push(p.say);
+      const results = starts.map(([, st]) => search(c, st, p.goal, Infinity));
+      if (results.some((r) => r && r !== GAVE_UP)) reasons.push(p.say);
     }
     if (!reasons.length) reasons.push("each part can be reached alone, but not all together: try dropping facts from the given one at a time");
   }
@@ -640,6 +957,12 @@ export function lintGraph(suite: Suite): SuiteProblem[] {
     if (!s.say.trim()) error(["graph", "starts", key, "say"], "a start needs its precondition in words: it is what the tester sets up");
     for (const r of roleKeys) if (!(r in s.at)) error(["graph", "starts", key, "at"], `says nothing about where ${r} is`);
     for (const [r, scr] of Object.entries(s.at)) checkScreen(["graph", "starts", key, "at", r], r, scr);
+    (s.facts ?? []).forEach((ref, i) => {
+      const at = ["graph", "starts", key, "facts", i];
+      if (/^[!-]/.test(ref)) error(at, `"${ref}": a start lists the facts that are true; leave out the ones that are not`);
+      else if (!facts.has(factName(ref))) error(at, `no fact "${factName(ref)}": declare it under facts`);
+      else if (facts.get(factName(ref))!.startsWith("~")) error(at, `"${factName(ref)}" is fresh: it is true only right after an action, never at a start`);
+    });
   }
   if (!Object.keys(graph.starts).length) error(["graph", "starts"], "a graph needs at least one start: the state a flow begins from");
 
@@ -656,6 +979,10 @@ export function lintGraph(suite: Suite): SuiteProblem[] {
     }
     checkFacts([...at, "needs"], a.needs, "needs");
     checkFacts([...at, "sets"], a.sets, "sets");
+    for (const [r, scr] of Object.entries(a.while ?? {})) {
+      if (asList(a.device).includes(r)) error([...at, "while", r], `${r} does the action itself: say where it is with "from"`);
+      else checkScreen([...at, "while", r], r, scr);
+    }
     for (const f of a.needs ?? []) needed.add(factName(f));
     for (const f of a.sets ?? []) made.add(factName(f));
   });
@@ -672,6 +999,7 @@ export function lintGraph(suite: Suite): SuiteProblem[] {
     if (joint) warn([...at, "look"], `"${joint}…": one thing per step — a check looks at one thing`);
   });
 
+  for (const s of Object.values(graph.starts)) for (const f of s.facts ?? []) made.add(factName(f));
   for (const [name, declared] of facts) {
     if (needed.has(name) && !made.has(name)) {
       // `!x` alone is satisfiable from the start, where nothing is true yet.
@@ -714,9 +1042,9 @@ export function lintGraph(suite: Suite): SuiteProblem[] {
     let unsure = false;
     const reachable = [...c.starts.values()].some((s) => {
       if (!hopeful(c, s, goal)) return false;
-      const found = pathTo(c, s, (x) => meets(x, goal), Infinity);
-      if (found === undefined) unsure = true;
-      return !!found;
+      const found = search(c, s, goal, Infinity);
+      if (found === GAVE_UP) unsure = true;
+      return !!found && found !== GAVE_UP;
     });
     if (reachable) return;
     if (unsure) warn(["tests", i, "given"], "could not tell whether this state can be reached: the graph has too many states to search");

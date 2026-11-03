@@ -89,7 +89,7 @@ export function graphFile(g: SuiteGraph): string {
     roles: Object.fromEntries(Object.entries(g.roles).map(([k, r]) => [k, omitEmpty({ name: r.name, surface: r.surface, usually: r.usually })])),
     screens: Object.fromEntries(Object.entries(g.screens).map(([k, list]) => [k, [...list]])),
     facts: { ...g.facts },
-    starts: Object.fromEntries(Object.entries(g.starts).map(([k, st]) => [k, { say: st.say, at: { ...st.at } }])),
+    starts: Object.fromEntries(Object.entries(g.starts).map(([k, st]) => [k, omitEmpty({ say: st.say, at: { ...st.at }, facts: st.facts ? [...st.facts] : undefined })])),
     actions: g.actions.map((a) => omitEmpty({
       device: oneOrMany(a.device),
       from: oneOrMany(a.from),
@@ -97,6 +97,8 @@ export function graphFile(g: SuiteGraph): string {
       do: a.do,
       needs: a.needs ? [...a.needs] : undefined,
       sets: a.sets ? [...a.sets] : undefined,
+      while: a.while && Object.keys(a.while).length ? { ...a.while } : undefined,
+      after: a.after,
     })),
   });
 }
@@ -323,13 +325,13 @@ export async function readFolder(root: string): Promise<{ suite: Suite; problems
 
 const isMap = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
 
-/** A comma inside `{ }` ends the value, which turns the rest of it into a field nobody meant: say so with every unknown field. */
-const COMMA_HINT = ` — a comma inside { } ends a value: quote it`;
+/** A comma inside `{ }` ends the value, and the rest of it becomes a field nobody meant — one with a space in its name, which no real field has. */
+const commaHint = (field: string) => (/\s/.test(field) ? ` — a comma inside { } ends a value: quote it` : "");
 
 function readGiven(r: FileReader, file: string, v: unknown): TestGiven | undefined {
   if (!isMap(v)) { r.error(file, `"given" should be a map (device: …, at: …)`); return undefined; }
   const where = "given: ";
-  for (const k of Object.keys(v)) if (!["device", "at", "facts", "also", "look"].includes(k)) r.error(file, `${where}unknown field "${k}" (expected one of: device, at, facts, also, look)${COMMA_HINT}`);
+  for (const k of Object.keys(v)) if (!["device", "at", "facts", "also", "look"].includes(k)) r.error(file, `${where}unknown field "${k}" (expected one of: device, at, facts, also, look)${commaHint(k)}`);
   const device = r.string(file, v, "device", where, true);
   const at = r.string(file, v, "at", where, true);
   const facts = r.strings(file, v, "facts", where);
@@ -357,7 +359,7 @@ async function readGraph(r: FileReader, file: string): Promise<SuiteGraph | unde
   for (const [k, v] of Object.entries(mapOf("roles"))) {
     const where = `role ${k}: `;
     if (!isMap(v)) { r.error(file, `${where}should be a map (name: …, surface: …)`); continue; }
-    for (const f of Object.keys(v)) if (!["name", "surface", "usually"].includes(f)) r.error(file, `${where}unknown field "${f}" (expected one of: name, surface, usually)${COMMA_HINT}`);
+    for (const f of Object.keys(v)) if (!["name", "surface", "usually"].includes(f)) r.error(file, `${where}unknown field "${f}" (expected one of: name, surface, usually)${commaHint(f)}`);
     const usually = r.string(file, v, "usually", where);
     roles[k] = { name: r.string(file, v, "name", where, true) ?? "", surface: r.string(file, v, "surface", where, true) ?? "", ...(usually ? { usually } : {}) };
   }
@@ -378,9 +380,10 @@ async function readGraph(r: FileReader, file: string): Promise<SuiteGraph | unde
   for (const [k, v] of Object.entries(mapOf("starts"))) {
     const where = `start ${k}: `;
     if (!isMap(v)) { r.error(file, `${where}should be a map (say: …, at: …)`); continue; }
-    for (const f of Object.keys(v)) if (!["say", "at"].includes(f)) r.error(file, `${where}unknown field "${f}" (expected one of: say, at)${COMMA_HINT}`);
+    for (const f of Object.keys(v)) if (!["say", "at", "facts"].includes(f)) r.error(file, `${where}unknown field "${f}" (expected one of: say, at, facts)${commaHint(f)}`);
     if (!isMap(v.at) || !Object.values(v.at).every((x) => typeof x === "string")) { r.error(file, `${where}"at" should be a map of role: screen`); continue; }
-    starts[k] = { say: r.string(file, v, "say", where, true) ?? "", at: v.at as Record<string, string> };
+    const startFacts = r.strings(file, v, "facts", where);
+    starts[k] = { say: r.string(file, v, "say", where, true) ?? "", at: v.at as Record<string, string>, ...(startFacts?.length ? { facts: startFacts } : {}) };
   }
 
   const actions: GraphAction[] = [];
@@ -389,7 +392,7 @@ async function readGraph(r: FileReader, file: string): Promise<SuiteGraph | unde
   else raw.forEach((a, i) => {
     const where = `action ${i + 1}: `;
     if (!isMap(a)) { r.error(file, `${where}should be a map (device: …, from: …, do: …)`); return; }
-    for (const f of Object.keys(a)) if (!["device", "from", "to", "do", "needs", "sets"].includes(f)) r.error(file, `${where}unknown field "${f}" (expected one of: device, from, to, do, needs, sets)${COMMA_HINT}`);
+    for (const f of Object.keys(a)) if (!["device", "from", "to", "do", "needs", "sets", "while", "after"].includes(f)) r.error(file, `${where}unknown field "${f}" (expected one of: device, from, to, do, needs, sets, while, after)${commaHint(f)}`);
     const oneOrMore = (key: string) => {
       const v = a[key];
       if (typeof v === "string") return v;
@@ -401,8 +404,17 @@ async function readGraph(r: FileReader, file: string): Promise<SuiteGraph | unde
     const to = r.string(file, a, "to", where);
     const text = r.string(file, a, "do", where, true);
     const needs = r.strings(file, a, "needs", where), sets = r.strings(file, a, "sets", where);
+    const after = r.string(file, a, "after", where);
+    let whileAt: Record<string, string> | undefined;
+    if (a.while !== undefined && a.while !== null) {
+      if (!isMap(a.while) || !Object.values(a.while).every((x) => typeof x === "string")) r.error(file, `${where}"while" should be a map of role: screen`);
+      else whileAt = a.while as Record<string, string>;
+    }
     if (!device || !from || !text) return;
-    actions.push({ device, from, ...(to ? { to } : {}), do: text, ...(needs?.length ? { needs } : {}), ...(sets?.length ? { sets } : {}) });
+    actions.push({
+      device, from, ...(to ? { to } : {}), do: text, ...(needs?.length ? { needs } : {}), ...(sets?.length ? { sets } : {}),
+      ...(whileAt && Object.keys(whileAt).length ? { while: whileAt } : {}), ...(after ? { after } : {}),
+    });
   });
 
   return { roles, screens, facts, starts, actions };
@@ -455,13 +467,15 @@ async function readFlow(r: FileReader, file: string, key: string): Promise<Suite
  * `["templates", 0, "flows", 2, "steps", 5, "text"]` → `templates/regression/messaging.flow.yaml step 6`.
  * Lint speaks in paths into the document; a person wants the file and the step.
  */
-export function locate(suite: Suite, path: readonly (string | number)[]): string {
+export function locate(suite: Suite, path: readonly (string | number)[], lines?: ReadonlyMap<string, number>): string {
   const [top, i, , fi, , si] = path;
   if (top === "product") return "product.yaml";
   if (top === "graph") {
     const [, section, at] = path;
-    if (section === "actions" && typeof at === "number") return `graph.yaml action ${at + 1}`;
-    return at === undefined ? "graph.yaml" : `graph.yaml ${section} ${at}`;
+    const line = lines?.get(`${section} ${at}`) ?? lines?.get(String(section));
+    const file = line ? `graph.yaml:${line}` : "graph.yaml";
+    if (section === "actions" && typeof at === "number") return `${file} action ${at + 1}`;
+    return at === undefined ? (section === undefined ? "graph.yaml" : `${file} ${section}`) : `${file} ${section} ${at}`;
   }
   if (top === "tests" && typeof i === "number") return `tests/${suite.tests[i]?.key ?? i}.yaml`;
   if (top === "templates" && typeof i === "number") {
@@ -472,6 +486,25 @@ export function locate(suite: Suite, path: readonly (string | number)[]): string
     return typeof si === "number" ? `${file} step ${si + 1}` : file;
   }
   return path.join(".");
+}
+
+/**
+ * Where each part of graph.yaml begins, by the same names lint's paths use —
+ * "actions 59", "facts message", "roles phone-a" — so a problem in a long file
+ * names its line rather than an index to count to.
+ */
+export function graphLines(text: string): Map<string, number> {
+  const out = new Map<string, number>();
+  let section = "";
+  let n = 0;
+  text.split("\n").forEach((line, i) => {
+    const top = /^([A-Za-z]+):/.exec(line);
+    if (top) { section = top[1]!; n = 0; out.set(section, i + 1); return; }
+    if (section === "actions") { if (/^ {0,2}- /.test(line)) out.set(`actions ${n++}`, i + 1); return; }
+    const key = /^ {2}(?:"([^"]+)"|'([^']+)'|([^\s#"'][^:]*?)):(?:\s|$)/.exec(line);
+    if (key) out.set(`${section} ${key[1] ?? key[2] ?? key[3]}`, i + 1);
+  });
+  return out;
 }
 
 export const rel = (root: string, p: string) => relative(process.cwd(), join(root, p)) || ".";

@@ -127,7 +127,7 @@ describe("the graph and given", () => {
     await writeFile(join(root, "graph.yaml"), (await readFile(join(root, "graph.yaml"), "utf8")).replace("do: \"Open #general.\"", "do: Open the list, then tap it"));
     await writeFile(join(root, "graph.yaml"), `${await readFile(join(root, "graph.yaml"), "utf8")}  - { device: phone-a, from: thread, do: Wait, then look, sets: [message] }\n`);
     const { problems } = await readFolder(root);
-    expect(problems.map((p) => p.message)).toEqual(['action 3: unknown field "then look" (expected one of: device, from, to, do, needs, sets) — a comma inside { } ends a value: quote it']);
+    expect(problems.map((p) => p.message)).toEqual(['action 3: unknown field "then look" (expected one of: device, from, to, do, needs, sets, while, after) — a comma inside { } ends a value: quote it']);
   });
 
   test("lint paths into the graph point at graph.yaml", () => {

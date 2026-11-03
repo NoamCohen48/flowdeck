@@ -2156,6 +2156,14 @@
                     "type": "string",
                     "minLength": 1
                   }
+                },
+                "facts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
                 }
               },
               "required": [
@@ -2225,6 +2233,16 @@
                     "minLength": 1,
                     "maxLength": 200
                   }
+                },
+                "while": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "after": {
+                  "type": "string"
                 }
               },
               "required": [
