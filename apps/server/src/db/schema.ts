@@ -18,6 +18,7 @@ import {
   check,
   index,
   integer,
+  json,
   jsonb,
   pgTable,
   primaryKey,
@@ -30,6 +31,7 @@ import type {
   FlowRunState,
   LiveProgress,
   StepKind,
+  SuiteGraph,
   TemplateStatus,
   Verdict,
 } from "@flowdeck/domain";
@@ -48,6 +50,9 @@ export const product = pgTable(
     slug: text("slug").notNull(),
     name: text("name").notNull(),
     description: text("description").notNull().default(""),
+    /** How a person moves through the app, for generated flows. `json`, not
+        `jsonb`: the order of roles and starts is part of what was written. */
+    graph: json("graph").$type<SuiteGraph>(),
     createdAt: now(),
   },
   (t) => [uniqueIndex("product_slug_unique").on(t.slug)],

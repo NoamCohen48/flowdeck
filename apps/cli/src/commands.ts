@@ -2,12 +2,12 @@
  * The commands. Each returns what it found — as text for a person and as a value
  * for `--json` — and throws `CliError` with an exit code when it cannot do its job.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { describeChange, KEY_PATTERN, lintSuite, slugify, uniqueKey, type Suite } from "@flowdeck/domain";
+import { DEFAULT_MAX_STEPS, describeChange, explainGiven, factName, GENERATED_TEMPLATE, generateFlows, KEY_PATTERN, type SuiteGraph, lintSuite, slugify, uniqueKey, type Suite, type SuiteFlow, type SuiteTemplate } from "@flowdeck/domain";
 import { Client, CliError, EXIT, type IssueFeed } from "./client.ts";
-import { flowFile, listSuiteFiles, locate, readFolder, templateFile, testFile, writeFolder, type FileProblem } from "./files.ts";
+import { flowFile, graphLines, listSuiteFiles, locate, readFolder, templateFile, testFile, writeFolder, writeTemplateFolder, type FileProblem } from "./files.ts";
 import { agentsFile, AGENTS_MARKER, guide, TOPICS } from "./guide.ts";
 import { localChanges, merge } from "./merge.ts";
 import { configPath, findRoot, readBase, readConfig, readState, writeConfig, writeState, type ProjectState } from "./project.ts";
@@ -24,6 +24,9 @@ export interface Flags {
   key?: string;
   slug?: string;
   precondition?: string;
+  max?: string;
+  replan: boolean;
+  keepSetup: boolean;
 }
 
 /** What a command hands back: lines for a person, a value for `--json`, and the exit code. */
@@ -52,10 +55,12 @@ async function project(flags: Flags) {
 
 interface Located { level: "error" | "warning"; where: string; message: string }
 
-function located(suite: Suite, files: FileProblem[]): Located[] {
+function located(suite: Suite, files: FileProblem[], root?: string): Located[] {
+  const graphFile = root ? join(root, "graph.yaml") : undefined;
+  const lines = graphFile && suite.graph && existsSync(graphFile) ? graphLines(readFileSync(graphFile, "utf8")) : undefined;
   return [
     ...files.map((p) => ({ level: p.level, where: p.file, message: p.message })),
-    ...lintSuite(suite).map((p) => ({ level: p.level, where: locate(suite, p.path), message: p.message })),
+    ...lintSuite(suite).map((p) => ({ level: p.level, where: locate(suite, p.path, lines), message: p.message })),
   ].sort((a, b) => (a.level === b.level ? a.where.localeCompare(b.where, undefined, { numeric: true }) : a.level === "error" ? -1 : 1));
 }
 
@@ -163,7 +168,7 @@ async function pullInto(root: string, state: ProjectState, flags: Flags): Promis
 export async function lint(_: string[], flags: Flags): Promise<Output> {
   const root = findRoot(flags.dir ?? process.cwd()) ?? resolve(flags.dir ?? ".");
   const { suite, problems } = await readFolder(root);
-  const all = located(suite, problems);
+  const all = located(suite, problems, root);
   const errors = all.filter((p) => p.level === "error").length;
   return {
     text: [...problemLines(all), all.length ? tally(all) : "No problems."],
@@ -177,7 +182,7 @@ export async function status(_: string[], flags: Flags): Promise<Output> {
   const base = await readBase(root);
   const { suite, problems } = await readFolder(root);
   const changes = base ? localChanges(base, suite) : [];
-  const all = located(suite, problems);
+  const all = located(suite, problems, root);
   const lines = changes.map(describeChange);
   return {
     text: [
@@ -192,7 +197,7 @@ export async function status(_: string[], flags: Flags): Promise<Output> {
 export async function push(_: string[], flags: Flags): Promise<Output> {
   const { root, state } = await project(flags);
   const { suite, problems } = await readFolder(root);
-  const all = located(suite, problems);
+  const all = located(suite, problems, root);
   if (all.some((p) => p.level === "error")) {
     return { text: [...problemLines(all), `${tally(all)}: nothing pushed.`], json: { pushed: false, problems: all }, code: EXIT.invalid };
   }
@@ -316,6 +321,143 @@ export async function coverage(_: string[], flags: Flags): Promise<Output> {
     ],
     json: { total: live.length, covered: live.length - uncovered.length, uncovered: uncovered.map((t) => t.key), verifiedBy: Object.fromEntries(verifiedBy), templates },
   };
+}
+
+const GENERATED_DESCRIPTION = "Worked out by flowdeck generate from graph.yaml and each test's given. Edit those and run it again: edits made here are overwritten.";
+
+/** How much longer than planning from nothing an update may get before it is worth saying. */
+const DRIFT = 0.1;
+
+export async function generate(_: string[], flags: Flags): Promise<Output> {
+  const root = findRoot(flags.dir ?? process.cwd()) ?? resolve(flags.dir ?? ".");
+  const { suite, problems } = await readFolder(root);
+  if (!suite.graph) throw new CliError("no graph.yaml here: describe how a person moves through the app first (flowdeck guide graph)", EXIT.usage);
+  const errors = located(suite, problems, root).filter((p) => p.level === "error");
+  if (errors.length) return { text: [...problemLines(errors), `${tally(errors)}: nothing generated.`], json: { generated: false, problems: errors }, code: EXIT.invalid };
+
+  const maxSteps = flags.max === undefined ? DEFAULT_MAX_STEPS : Number(flags.max);
+  if (!Number.isInteger(maxSteps) || maxSteps < 1) throw new CliError(`--max is the longest a flow may be, in steps: a whole number, not "${flags.max}"`, EXIT.usage);
+
+  const existing = suite.templates.find((t) => t.key === GENERATED_TEMPLATE);
+  const previous = flags.replan ? undefined : existing?.flows;
+  const g = generateFlows(suite, { maxSteps, ...(flags.keepSetup ? { setupSteps: Infinity } : {}), ...(previous ? { previous } : {}) });
+  const tpl: SuiteTemplate = {
+    key: GENERATED_TEMPLATE,
+    name: existing?.name ?? "Generated flows",
+    description: existing?.description ?? GENERATED_DESCRIPTION,
+    ...(existing?.archived ? { archived: true } : {}),
+    flows: g.flows,
+  };
+  const { written, removed } = await writeTemplateFolder(root, tpl);
+
+  const flowOf = (flows: readonly SuiteFlow[]) => new Map(flows.flatMap((f) => f.steps.flatMap((s) => (s.verifies ?? []).map((k) => [k, f.key] as const))));
+  const before = flowOf(existing?.flows ?? []), after = flowOf(g.flows);
+  const moved = [...after].filter(([k, f]) => before.has(k) && before.get(k) !== f).map(([k]) => k);
+  const added = [...after.keys()].filter((k) => !before.has(k));
+  const dropped = [...before.keys()].filter((k) => !after.has(k));
+  const tests = after.size;
+  const drift = g.fresh && (g.flows.length > g.fresh.flows || g.steps > g.fresh.steps * (1 + DRIFT)) ? g.fresh : undefined;
+
+  return {
+    text: [
+      `${count(g.flows.length, "flow")}, ${count(g.steps, "step")}, ${count(tests, "test")} (at most ${maxSteps} steps a flow).`,
+      ...g.flows.map((f) => `  ${f.key}  ${count(f.steps.length, "step")}, ${count(f.steps.filter((s) => s.kind === "check").length, "test")}: ${f.name}`),
+      // The first run adds everything; the list says nothing then.
+      ...(added.length && before.size ? [`New: ${added.join(", ")}`] : []),
+      ...(dropped.length ? [`No longer generated: ${dropped.join(", ")}`] : []),
+      ...(moved.length ? [`Moved to another flow: ${moved.join(", ")}`] : []),
+      ...(g.unplaced.length > g.gaveUp.length ? [`Not reachable within ${maxSteps} steps, so in no generated flow: ${g.unplaced.filter((k) => !g.gaveUp.includes(k)).join(", ")}. Raise --max, or give the graph a shorter way there (flowdeck graph explain <test>).`] : []),
+      ...(g.gaveUp.length ? [`The search gave up on ${g.gaveUp.join(", ")}: too many combinations of facts to search, so this is not proof they cannot be reached. Fewer facts help most — merge or drop the ones these tests do not need.`] : []),
+      ...(drift ? [`Planning from nothing would take ${count(drift.flows, "flow")}, ${count(drift.steps, "step")}: flowdeck generate --replan (tests move between flows).`] : []),
+      "",
+      written.length || removed.length
+        ? `templates/${GENERATED_TEMPLATE}: ${written.length} written, ${removed.length} removed. flowdeck push --plan shows what a push would change.`
+        : `templates/${GENERATED_TEMPLATE} is already up to date.`,
+    ],
+    json: { generated: true, template: GENERATED_TEMPLATE, maxSteps, flows: g.flows.map((f) => ({ key: f.key, name: f.name, steps: f.steps.length, tests: f.steps.flatMap((s) => s.verifies ?? []) })), steps: g.steps, unplaced: g.unplaced, gaveUp: g.gaveUp, added, dropped, moved, fresh: g.fresh ?? null, written, removed },
+  };
+}
+
+const asList = (x: string | string[]) => (Array.isArray(x) ? x : [x]);
+
+/** The graph as text: per role, per screen, the ways out, and the tests that are checked there. */
+function outline(suite: Suite, graph: SuiteGraph): string[] {
+  const lines: string[] = [];
+  const conditions = (a: SuiteGraph["actions"][number]) => [a.needs?.length ? `needs ${a.needs.join(", ")}` : "", a.sets?.length ? `sets ${a.sets.join(", ")}` : ""].filter(Boolean).join("; ");
+  for (const [key, r] of Object.entries(graph.roles)) {
+    lines.push(`${key}: ${r.name}, on ${r.surface}${r.usually ? ` (usually ${r.usually})` : ""}`);
+    for (const screen of graph.screens[r.surface] ?? []) {
+      const starts = Object.entries(graph.starts).filter(([, st]) => st.at[key] === screen).map(([k]) => k);
+      lines.push(`  ${screen}${starts.length ? `   [start: ${starts.join(", ")}]` : ""}`);
+      for (const a of graph.actions) {
+        if (!asList(a.device).includes(key) || !asList(a.from).includes(screen)) continue;
+        const to = a.to ?? screen;
+        const cond = conditions(a);
+        lines.push(`    ${to === screen ? "(stays)" : `→ ${to}`}  ${a.do}${cond ? `   (${cond})` : ""}`);
+      }
+      for (const t of suite.tests) {
+        if (t.given?.device !== key || t.given.at !== screen || t.archived) continue;
+        lines.push(`    ✓ ${t.key}${t.given.facts?.length ? `   (with ${t.given.facts.join(", ")})` : ""}`);
+      }
+    }
+  }
+  lines.push("", "facts:", ...Object.entries(graph.facts).map(([f, m]) => `  ${f}: ${m}`));
+  return lines;
+}
+
+/** The graph as a Mermaid flowchart: one box per role, screens as nodes, actions as arrows. */
+function mermaid(graph: SuiteGraph): string[] {
+  const id = (role: string, screen: string) => `${role}__${screen}`.replace(/[^A-Za-z0-9_]/g, "_");
+  const label = (s: string) => s.replace(/"/g, "#quot;");
+  const lines = ["flowchart LR"];
+  for (const [key, r] of Object.entries(graph.roles)) {
+    lines.push(`  subgraph ${id(key, "")}["${label(r.name)}"]`);
+    for (const screen of graph.screens[r.surface] ?? []) lines.push(`    ${id(key, screen)}["${label(screen)}"]`);
+    lines.push("  end");
+  }
+  for (const a of graph.actions) {
+    for (const role of asList(a.device)) for (const from of asList(a.from)) {
+      const facts = [...(a.needs ?? []).map((n) => `if ${n}`), ...(a.sets ?? []).map((x) => (x.startsWith("-") ? `clears ${factName(x)}` : `sets ${factName(x)}`))];
+      lines.push(`  ${id(role, from)} -->|"${label(a.do)}${facts.length ? `<br/>${label(facts.join(", "))}` : ""}"| ${id(role, a.to ?? from)}`);
+    }
+  }
+  return lines;
+}
+
+export async function graphCmd(args: string[], flags: Flags): Promise<Output> {
+  const [what = "show", ...rest] = args;
+  const root = findRoot(flags.dir ?? process.cwd()) ?? resolve(flags.dir ?? ".");
+  const { suite, problems } = await readFolder(root);
+  const graph = suite.graph;
+  if (!graph) throw new CliError("no graph.yaml here: flowdeck guide build-graph says how to write one", EXIT.usage);
+  // An unreachable given is what explain is for; any other error makes the answers meaningless.
+  const errors = located(suite, problems, root).filter((p) => p.level === "error" && !(what === "explain" && p.message.startsWith("no start can reach")));
+  if (errors.length) return { text: [...problemLines(errors), `${tally(errors)}: fix these first (flowdeck lint).`], json: { problems: errors }, code: EXIT.invalid };
+
+  if (what === "show") return { text: outline(suite, graph), json: graph };
+  if (what === "mermaid") return { text: mermaid(graph), json: { mermaid: mermaid(graph).join("\n") } };
+  if (what === "explain") {
+    const [key, start] = rest;
+    if (!key) throw new CliError("flowdeck graph explain <test-key> [start]", EXIT.usage);
+    if (!suite.tests.some((t) => t.key === key)) throw new CliError(`no test "${key}"`, EXIT.usage);
+    if (start && !graph.starts[start]) throw new CliError(`no start "${start}": the starts are ${Object.keys(graph.starts).join(", ")}`, EXIT.usage);
+    const e = explainGiven(suite, key, start);
+    if (e.status === "no-given") return { text: [`${key} has no given, so no generated flow checks it: add one (flowdeck guide graph).`], json: e };
+    if (e.status !== "reachable") return { text: [`${key} cannot be reached${e.status === "unknown" ? " (as far as the search could tell)" : ""}:`, ...e.reasons.map((r) => `  - ${r}`)], json: e, code: EXIT.invalid };
+    const generated = suite.templates.find((t) => t.key === GENERATED_TEMPLATE)?.flows.find((f) => f.steps.some((s) => s.verifies?.includes(key)));
+    const far = Object.entries(e.fromEachStart).map(([k, n]) => `${k}: ${n === null ? "no way" : count(n, "step")}`).join(", ");
+    return {
+      text: [
+        `${key}: ${count(e.steps.length - 1, "step")} from ${e.start} (${graph.starts[e.start]!.say})`,
+        ...e.steps.map((s, i) => `  ${String(i + 1).padStart(2)}. [${s.device}] ${s.kind === "check" ? "✓ " : ""}${s.text}`),
+        "",
+        `From each start: ${far}.`,
+        generated ? `Checked in templates/${GENERATED_TEMPLATE}/${generated.key}.flow.yaml.` : "In no generated flow yet: flowdeck generate.",
+      ],
+      json: e,
+    };
+  }
+  throw new CliError("flowdeck graph show | mermaid | explain <test-key> [start]", EXIT.usage);
 }
 
 export async function report(args: string[], flags: Flags): Promise<Output> {

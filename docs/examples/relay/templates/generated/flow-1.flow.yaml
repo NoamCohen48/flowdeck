@@ -1,0 +1,21 @@
+name: Messaging, sync (2 tests)
+precondition: Relay installed on both phones, signed in as qa-1 (Phone A) and qa-2 (Phone B), on the chat list.
+steps:
+  - do: Open the chat with qa-2.
+    device: Phone A
+  - do: Send the message "hello".
+    device: Phone A
+  - check: Watch the message as it sends.
+    device: Phone A
+    expect: The message appears at once with a pending clock, then a single check within 2 seconds.
+    verifies: [sending-a-message-shows-it-optimistically]
+  - do: Open the chat with qa-1.
+    device: Phone B
+  - do: Long-press "hello".
+    device: Phone B
+  - do: React with 👍.
+    device: Phone B
+  - check: Look at "hello".
+    device: Phone A
+    expect: The same emoji and the same count show on every device in the thread.
+    verifies: [emoji-reaction-syncs-across-devices]

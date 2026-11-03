@@ -9,6 +9,7 @@
  * `check`, it happens on a `device`, a check has an `expect`, and a step
  * `verifies` tests by key.
  */
+import { GENERATED_TEMPLATE, lintGraph, type SuiteGraph, type TestGiven } from "./graph.ts";
 import { matchDeviceLabel, namesSeveralDevices, otherDevicesMentioned } from "./handoffs.ts";
 
 export type SuiteStepKind = "action" | "check";
@@ -19,6 +20,8 @@ export interface SuiteTest {
   title: string;
   expect: string;
   tags?: string[];
+  /** The state the test needs, against the graph: where, and what is true. Never steps. */
+  given?: TestGiven;
   /** Everything else in the generic bag: priority, category… */
   metadata?: Record<string, unknown>;
   archived?: boolean;
@@ -60,6 +63,8 @@ export interface Suite {
   product: { name: string; description?: string };
   tests: SuiteTest[];
   templates: SuiteTemplate[];
+  /** How a person moves through the app, for generated flows. */
+  graph?: SuiteGraph;
 }
 
 /* ── Keys ─────────────────────────────────────────────────────────────── */
@@ -109,7 +114,7 @@ const INSTRUCTION_VERBS = [
   "reply", "share", "search", "invite", "accept", "dismiss", "allow", "deny", "connect", "disconnect",
 ];
 const VERBS = INSTRUCTION_VERBS.join("|");
-const SEVERAL_ACTIONS = new RegExp(`(,?\\s+and\\s+then|,?\\s+then|;\\s*|,?\\s+and|,\\s*)\\s+(${VERBS})\\b`, "gi");
+const SEVERAL_ACTIONS = new RegExp(`(,?\\s+and\\s+then|,?\\s+then|;\\s*|,?\\s+and|,\\s*|[.!]\\s*)\\s+(${VERBS})\\b`, "gi");
 const STARTS_WITH_VERB = new RegExp(`^\\s*(${VERBS})\\b`, "i");
 
 /**
@@ -122,6 +127,8 @@ const STARTS_WITH_VERB = new RegExp(`^\\s*(${VERBS})\\b`, "i");
  */
 export function joinsSeveralActions(text: string): string | undefined {
   for (const m of text.matchAll(SEVERAL_ACTIONS)) {
+    // "Close it. Wait 30 seconds." is two steps as surely as "close it and wait".
+    if (/^[.!]/.test(m[1]!)) return m[0].trim();
     const bareComma = /^,\s*$/.test(m[1]!);
     if (!bareComma || STARTS_WITH_VERB.test(text)) return m[0].trim();
   }
@@ -180,19 +187,21 @@ export function lintSuite(suite: Suite): SuiteProblem[] {
 
       // Devices this flow uses, for the one-device-per-step rule.
       const flowDevices = [...new Set(flow.steps.map((s) => s.device))];
+      // Generated steps are worded in graph.yaml and the tests; the wording is checked there, where it can be fixed.
+      const worded = tpl.key !== GENERATED_TEMPLATE;
       flow.steps.forEach((s, si) => {
         const sat = [...fat, "steps", si];
         if (!s.text.trim()) error([...sat, "text"], "a step needs an instruction");
         if (!s.device.trim()) error([...sat, "device"], "a step happens on a device; name it");
-        const joint = joinsSeveralActions(s.text);
+        const joint = worded ? joinsSeveralActions(s.text) : undefined;
         if (joint) warn([...sat, "text"], `"${joint}…": one thing per step — split it into two`);
         if (s.kind === "check" && !s.expect?.trim()) warn([...sat, "expect"], "a check with no expected result: say what the tester should see");
         if (s.kind === "action" && s.expect?.trim()) warn([...sat, "expect"], "an action's expected result is never shown; make it a check, or drop it");
 
         const near = matchDeviceLabel(s.device, [...devices].filter((d) => d !== s.device));
         if (near) warn([...sat, "device"], `"${s.device}" looks like "${near}": one device, two names gives it two colours and two hand-offs`);
-        const others = otherDevicesMentioned(`${s.text} ${s.expect ?? ""}`, s.device, flowDevices);
-        const several = namesSeveralDevices(`${s.text} ${s.expect ?? ""}`);
+        const others = worded ? otherDevicesMentioned(`${s.text} ${s.expect ?? ""}`, s.device, flowDevices) : [];
+        const several = worded && namesSeveralDevices(`${s.text} ${s.expect ?? ""}`);
         if (others.length) warn([...sat, "text"], `also names ${others.join(", ")}: a step happens on one device — split it`);
         else if (several) warn([...sat, "text"], `says "${several}": a step happens on one device — split it`);
 
@@ -211,12 +220,17 @@ export function lintSuite(suite: Suite): SuiteProblem[] {
     });
   });
 
-  // Coverage: every live test reachable by some flow somewhere — archived templates count.
+  // Coverage: every live test reachable by some flow somewhere — archived templates count. A test with a
+  // given waits for `flowdeck generate`, so those are one line, not one each.
+  const waiting: string[] = [];
   suite.tests.forEach((t, i) => {
-    if (!t.archived && !verified.has(t.key)) warn(["tests", i], `"${t.key}" is in no flow: it will never be checked on a testing day`);
+    if (t.archived || verified.has(t.key)) return;
+    if (t.given && suite.graph) waiting.push(t.key);
+    else warn(["tests", i], `"${t.key}" is in no flow: it will never be checked on a testing day`);
   });
+  if (waiting.length) warn(["graph"], `${waiting.length === 1 ? `"${waiting[0]}" has a given but is` : `${waiting.length} tests with a given are`} in no flow yet: run flowdeck generate`);
 
-  return problems;
+  return [...problems, ...lintGraph(suite)];
 }
 
 /** "templates[0].flows[2].steps[5]" — the same rendering the API's `details` use. */

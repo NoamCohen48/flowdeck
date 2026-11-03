@@ -3,20 +3,20 @@
  * a three-way merge of your folder with the server's suite.
  *
  * The merge works on whole things — a test, a flow, a template's own fields and
- * flow order, the product — not lines. A thing only you changed keeps your
+ * flow order, the product, the graph — not lines. A thing only you changed keeps your
  * version; a thing only the server changed takes the server's; a thing both
  * changed differently keeps yours and is reported, so a push afterwards says
  * plainly that it overwrites the other edit.
  */
-import { planSuite, type Stored, type Suite, type SuiteFlow, type SuiteTemplate, type SuiteTest } from "@flowdeck/domain";
+import { metadataOf, planSuite, type Stored, type Suite, type SuiteFlow, type SuiteGraph, type SuiteTemplate, type SuiteTest } from "@flowdeck/domain";
 
 /** A suite as `planSuite`'s stored side, with keys standing in for ids. */
 export function asStored(s: Suite): Stored {
   return {
-    product: { name: s.product.name, description: s.product.description ?? "" },
+    product: { name: s.product.name, description: s.product.description ?? "", graph: s.graph ?? null },
     tests: s.tests.map((t) => ({
       id: t.key, key: t.key, title: t.title, expect: t.expect, archived: t.archived ?? false,
-      metadata: { ...(t.metadata ?? {}), ...(t.tags?.length ? { tags: [...t.tags] } : {}) },
+      metadata: metadataOf(t),
     })),
     templates: s.templates.map((t) => ({
       id: t.key, key: t.key, name: t.name, description: t.description ?? "", archived: t.archived ?? false,
@@ -38,6 +38,7 @@ export function localChanges(base: Suite, local: Suite) {
 
 type Entity =
   | { kind: "product"; value: Suite["product"] }
+  | { kind: "graph"; value: SuiteGraph }
   | { kind: "test"; value: SuiteTest }
   | { kind: "template"; value: Omit<SuiteTemplate, "flows"> & { order: string[] } }
   | { kind: "flow"; template: string; value: SuiteFlow };
@@ -45,6 +46,7 @@ type Entity =
 function entities(s: Suite): Map<string, Entity> {
   const m = new Map<string, Entity>();
   m.set("product", { kind: "product", value: s.product });
+  if (s.graph) m.set("graph", { kind: "graph", value: s.graph });
   for (const t of s.tests) m.set(`test ${t.key}`, { kind: "test", value: t });
   for (const t of s.templates) {
     const { flows, ...meta } = t;
@@ -92,5 +94,6 @@ export function merge(base: Suite, local: Suite, remote: Suite): Merged {
     })
     .sort((x, y) => x.key.localeCompare(y.key));
 
-  return { suite: { product, tests, templates }, taken, kept, conflicts };
+  const graph = (out.get("graph") as Extract<Entity, { kind: "graph" }> | undefined)?.value;
+  return { suite: { product, tests, templates, ...(graph ? { graph } : {}) }, taken, kept, conflicts };
 }

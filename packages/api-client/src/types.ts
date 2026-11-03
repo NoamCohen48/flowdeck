@@ -3845,6 +3845,7 @@ export interface components {
             };
             tests: components["schemas"]["SuiteTest"][];
             templates: components["schemas"]["SuiteTemplate"][];
+            graph?: components["schemas"]["SuiteGraph"];
         };
         SuiteTest: {
             /** @example sign-in-rejects-a-wrong-password */
@@ -3852,10 +3853,21 @@ export interface components {
             title: string;
             expect: string;
             tags?: string[];
+            given?: components["schemas"]["TestGiven"];
             metadata?: {
                 [key: string]: unknown;
             };
             archived?: boolean;
+        };
+        TestGiven: {
+            /** @example sign-in-rejects-a-wrong-password */
+            device: string;
+            at: string;
+            facts?: string[];
+            also?: {
+                [key: string]: string;
+            };
+            look?: string;
         };
         SuiteTemplate: {
             /** @example sign-in-rejects-a-wrong-password */
@@ -3882,6 +3894,42 @@ export interface components {
             expect?: string | null;
             after?: string | null;
             verifies?: string[];
+        };
+        SuiteGraph: {
+            roles: {
+                [key: string]: {
+                    name: string;
+                    surface: string;
+                    usually?: string;
+                };
+            };
+            screens: {
+                [key: string]: string[];
+            };
+            facts: {
+                [key: string]: string;
+            };
+            starts: {
+                [key: string]: {
+                    say: string;
+                    at: {
+                        [key: string]: string;
+                    };
+                    facts?: string[];
+                };
+            };
+            actions: {
+                device: string | string[];
+                from: string | string[];
+                to?: string;
+                do: string;
+                needs?: string[];
+                sets?: string[];
+                while?: {
+                    [key: string]: string;
+                };
+                after?: string;
+            }[];
         };
         SuitePlan: {
             revision: string;

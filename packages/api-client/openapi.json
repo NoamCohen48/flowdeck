@@ -1894,6 +1894,9 @@
               "$ref": "#/components/schemas/SuiteTemplate"
             },
             "maxItems": 500
+          },
+          "graph": {
+            "$ref": "#/components/schemas/SuiteGraph"
           }
         },
         "required": [
@@ -1926,6 +1929,9 @@
               "minLength": 1
             }
           },
+          "given": {
+            "$ref": "#/components/schemas/TestGiven"
+          },
           "metadata": {
             "type": "object",
             "additionalProperties": {
@@ -1941,6 +1947,44 @@
           "title",
           "expect"
         ]
+      },
+      "TestGiven": {
+        "type": "object",
+        "properties": {
+          "device": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "example": "sign-in-rejects-a-wrong-password"
+          },
+          "at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "also": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "look": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "device",
+          "at"
+        ],
+        "additionalProperties": false
       },
       "SuiteTemplate": {
         "type": "object",
@@ -2053,6 +2097,172 @@
           "text",
           "device"
         ]
+      },
+      "SuiteGraph": {
+        "type": "object",
+        "properties": {
+          "roles": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "surface": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "usually": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "surface"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "screens": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "facts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "starts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "say": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "at": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "facts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                }
+              },
+              "required": [
+                "say",
+                "at"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "device": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 1
+                    }
+                  ]
+                },
+                "from": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "minItems": 1
+                    }
+                  ]
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "do": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "needs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "sets": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "while": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "after": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "device",
+                "from",
+                "do"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 5000
+          }
+        },
+        "required": [
+          "roles",
+          "screens",
+          "facts",
+          "starts",
+          "actions"
+        ],
+        "additionalProperties": false
       },
       "SuitePlan": {
         "type": "object",

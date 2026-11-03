@@ -193,6 +193,56 @@ describe("the suite document", () => {
     expect((await pull()).revision).toBe(doc.revision);
   });
 
+  test("a graph and a given round-trip, in the order they were written", async () => {
+    const doc = await pull();
+    const withGraph: Suite = {
+      ...doc.suite,
+      tests: doc.suite.tests.map((t) => (t.key === "message-arrives" ? { ...t, given: { device: "phone-b", at: "thread", facts: ["message"], look: "Look at #general." } } : t)),
+      graph: {
+        // Not in key order on purpose: the order of roles and starts is kept.
+        roles: { "phone-b": { name: "Phone B", surface: "phone" }, "phone-a": { name: "Phone A", surface: "phone", usually: "Pixel 8" } },
+        screens: { phone: ["channels", "thread"] },
+        facts: { message: "A message is in #general", "~sent": "Just sent" },
+        starts: { "signed-in": { say: "Both phones on the channel list.", at: { "phone-b": "channels", "phone-a": "channels" } } },
+        actions: [
+          { device: ["phone-a", "phone-b"], from: "channels", to: "thread", do: "Open #general." },
+          { device: ["phone-a", "phone-b"], from: "thread", to: "channels", do: "Go back." },
+          { device: "phone-a", from: "thread", do: 'Send "hello".', sets: ["message", "~sent"] },
+        ],
+      },
+    };
+    const plan = await call<{ summary: string[] }>(`/api/products/${slug}/suite/plan`, json("POST", withGraph));
+    expect(plan.body.summary).toEqual(["~ product: graph", "~ test message-arrives: metadata (new version)"]);
+    const res = await push(withGraph, doc.revision);
+    expect(res.status).toBe(200);
+
+    const back = await pull();
+    expect(back.suite.graph).toEqual(withGraph.graph!);
+    expect(JSON.stringify(back.suite.graph)).toBe(JSON.stringify(withGraph.graph));
+    expect(back.suite.tests.find((t) => t.key === "message-arrives")!.given).toEqual({ device: "phone-b", at: "thread", facts: ["message"], look: "Look at #general." });
+    expect((await push(back.suite, back.revision)).body.summary).toEqual([]);
+
+    // The product routes do not carry it.
+    const products = await call<Record<string, unknown>[]>("/api/products");
+    expect(products.body.find((p) => p.id === productId)).not.toHaveProperty("graph");
+  });
+
+  test("a given no start can reach is refused", async () => {
+    const doc = await pull();
+    const bad: Suite = { ...doc.suite, tests: doc.suite.tests.map((t) => (t.key === "sign-in-works" ? { ...t, given: { device: "phone-a", at: "thread", facts: ["!message", "~sent"] } } : t)) };
+    const res = await push(bad, doc.revision);
+    expect(res.status).toBe(400);
+    expect((res.body.details as { level: string; message: string }[]).filter((p) => p.level === "error").map((p) => p.message)).toEqual([
+      "no start can reach this state: check its screen and facts against the actions",
+    ]);
+  });
+
+  test("an unknown field in a graph is refused, not dropped", async () => {
+    const doc = await pull();
+    const bad = { ...doc.suite, graph: { ...doc.suite.graph!, actions: [{ device: "phone-a", from: "thread", do: "Wave.", on: true }] } };
+    expect((await push(bad as Suite, doc.revision)).status).toBe(400);
+  });
+
   test("the download names the file after the slug", async () => {
     const res = await app.request(`/api/products/${slug}/suite?download=true`);
     expect(res.headers.get("content-disposition")).toContain(`${slug}-`);

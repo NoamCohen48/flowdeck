@@ -4,6 +4,509 @@
       "key": "relay",
       "name": "Relay",
       "description": "Team messaging with file sync across phone, tablet and web.",
+      "graph": {
+        "roles": {
+          "phone-a": {
+            "name": "Phone A",
+            "surface": "phone",
+            "usually": "Pixel 8"
+          },
+          "phone-b": {
+            "name": "Phone B",
+            "surface": "phone",
+            "usually": "iPhone 13"
+          },
+          "dana": {
+            "name": "Dana's laptop",
+            "surface": "web",
+            "usually": "Second laptop"
+          },
+          "web": {
+            "name": "Laptop",
+            "surface": "web",
+            "usually": "Chrome on laptop"
+          }
+        },
+        "screens": {
+          "phone": [
+            "not-installed",
+            "welcome",
+            "sign-in",
+            "sign-in-error",
+            "channels",
+            "thread",
+            "message-menu",
+            "editing",
+            "composer",
+            "viewer",
+            "settings",
+            "search",
+            "closed",
+            "channels-as-dana"
+          ],
+          "web": [
+            "channels",
+            "thread"
+          ]
+        },
+        "facts": {
+          "message": "A message from Phone A (\"ping\") is in #qa-sandbox",
+          "read-on-b": "Phone B has had #qa-sandbox open since the message arrived",
+          "reacted-on-b": "Phone B reacted 👍 to the message",
+          "edit-typed": "The new text is typed but not saved",
+          "edited": "The message was edited",
+          "deleted": "The message was deleted",
+          "photo": "A photo is in #qa-sandbox",
+          "dark": "The theme is Dark",
+          "muted": "#qa-sandbox is muted on Phone A",
+          "offline": "Phone A is in airplane mode",
+          "queued": "Messages were sent from phone A while offline",
+          "~signed-in": "Just signed in",
+          "~sent": "Just sent",
+          "~uploaded": "Just uploaded",
+          "~rejected": "An oversized file was just tried",
+          "~typing": "Dana is typing right now",
+          "~pushed": "Dana just sent a message",
+          "~from-push": "Just opened from a notification",
+          "~muted-sent": "Dana just sent messages to the muted channel",
+          "~reconnected": "Phone A just came back online",
+          "~downloaded": "The photo was just downloaded on the laptop"
+        },
+        "starts": {
+          "fresh": {
+            "say": "Relay not installed on Phone A. Relay installed on Phone B, signed out. Dana signed in on her laptop.",
+            "at": {
+              "phone-a": "not-installed",
+              "phone-b": "sign-in",
+              "dana": "channels",
+              "web": "channels"
+            }
+          },
+          "signed-in": {
+            "say": "Signed in as QA on Phone A and Phone B, on the channel list. Dana signed in on her laptop.",
+            "at": {
+              "phone-a": "channels",
+              "phone-b": "channels",
+              "dana": "channels",
+              "web": "channels"
+            }
+          }
+        },
+        "actions": [
+          {
+            "device": "phone-a",
+            "from": "not-installed",
+            "to": "welcome",
+            "do": "Launch Relay after installing the release build."
+          },
+          {
+            "device": "phone-a",
+            "from": [
+              "welcome",
+              "sign-in"
+            ],
+            "to": "sign-in-error",
+            "do": "Sign in with the QA email and a wrong password."
+          },
+          {
+            "device": "phone-a",
+            "from": "sign-in-error",
+            "to": "channels",
+            "do": "Sign in with the right password.",
+            "sets": [
+              "~signed-in"
+            ]
+          },
+          {
+            "device": [
+              "phone-a",
+              "phone-b"
+            ],
+            "from": [
+              "welcome",
+              "sign-in"
+            ],
+            "to": "channels",
+            "do": "Sign in with the QA account.",
+            "sets": [
+              "~signed-in"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "channels",
+            "to": "sign-in",
+            "do": "Sign out from Settings."
+          },
+          {
+            "device": "phone-a",
+            "from": "sign-in",
+            "to": "channels-as-dana",
+            "do": "Sign in as Dana."
+          },
+          {
+            "device": "phone-a",
+            "from": "channels-as-dana",
+            "to": "sign-in",
+            "do": "Sign out from Settings."
+          },
+          {
+            "device": "phone-a",
+            "from": "channels",
+            "to": "thread",
+            "do": "Open #qa-sandbox."
+          },
+          {
+            "device": "phone-b",
+            "from": "channels",
+            "to": "thread",
+            "do": "Open #qa-sandbox.",
+            "needs": [
+              "!message"
+            ]
+          },
+          {
+            "device": [
+              "phone-a",
+              "phone-b"
+            ],
+            "from": "thread",
+            "to": "channels",
+            "do": "Go back to the channel list."
+          },
+          {
+            "device": "phone-a",
+            "from": "channels",
+            "to": "settings",
+            "do": "Open Settings → Appearance."
+          },
+          {
+            "device": "phone-a",
+            "from": "settings",
+            "to": "channels",
+            "do": "Go back to the channel list."
+          },
+          {
+            "device": "phone-a",
+            "from": "settings",
+            "do": "Switch the theme to Dark.",
+            "needs": [
+              "!dark"
+            ],
+            "sets": [
+              "dark"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "settings",
+            "do": "Switch the theme to Light.",
+            "needs": [
+              "dark"
+            ],
+            "sets": [
+              "-dark"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "channels",
+            "to": "search",
+            "do": "Search for \"archived\"."
+          },
+          {
+            "device": "phone-a",
+            "from": "search",
+            "to": "channels",
+            "do": "Close search."
+          },
+          {
+            "device": "phone-a",
+            "from": "thread",
+            "do": "Send a new message, \"ping\".",
+            "needs": [
+              "!offline"
+            ],
+            "sets": [
+              "message",
+              "~sent",
+              "-read-on-b",
+              "-reacted-on-b",
+              "-edited",
+              "-deleted"
+            ]
+          },
+          {
+            "device": "phone-b",
+            "from": "channels",
+            "to": "thread",
+            "do": "Open #qa-sandbox.",
+            "needs": [
+              "message"
+            ],
+            "sets": [
+              "read-on-b"
+            ]
+          },
+          {
+            "device": "phone-b",
+            "from": "thread",
+            "to": "message-menu",
+            "do": "Long-press \"ping\".",
+            "needs": [
+              "message"
+            ]
+          },
+          {
+            "device": "phone-b",
+            "from": "message-menu",
+            "to": "thread",
+            "do": "React with 👍.",
+            "sets": [
+              "reacted-on-b"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "thread",
+            "to": "message-menu",
+            "do": "Long-press \"ping\".",
+            "needs": [
+              "message"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "message-menu",
+            "to": "editing",
+            "do": "Choose Edit."
+          },
+          {
+            "device": "phone-a",
+            "from": "editing",
+            "do": "Change the text to \"ping edited\".",
+            "sets": [
+              "edit-typed"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "editing",
+            "to": "thread",
+            "do": "Tap Save.",
+            "needs": [
+              "edit-typed"
+            ],
+            "sets": [
+              "edited",
+              "-edit-typed"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "message-menu",
+            "to": "thread",
+            "do": "Choose Delete.",
+            "sets": [
+              "-message",
+              "deleted"
+            ]
+          },
+          {
+            "device": [
+              "phone-a",
+              "phone-b"
+            ],
+            "from": "message-menu",
+            "to": "thread",
+            "do": "Close the menu."
+          },
+          {
+            "device": "phone-a",
+            "from": "thread",
+            "to": "composer",
+            "do": "Attach a photo from the gallery."
+          },
+          {
+            "device": "phone-a",
+            "from": "composer",
+            "to": "thread",
+            "do": "Tap Send.",
+            "sets": [
+              "photo",
+              "~uploaded"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "thread",
+            "to": "viewer",
+            "do": "Tap the photo's thumbnail.",
+            "needs": [
+              "photo"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "viewer",
+            "to": "thread",
+            "do": "Close the viewer."
+          },
+          {
+            "device": "phone-a",
+            "from": "thread",
+            "do": "Attach the file larger than 100 MB.",
+            "sets": [
+              "~rejected"
+            ]
+          },
+          {
+            "device": "web",
+            "from": "channels",
+            "to": "thread",
+            "do": "Open #qa-sandbox in the web app."
+          },
+          {
+            "device": "web",
+            "from": "thread",
+            "to": "channels",
+            "do": "Go back to the channel list."
+          },
+          {
+            "device": "web",
+            "from": "thread",
+            "do": "Download the photo.",
+            "needs": [
+              "photo"
+            ],
+            "sets": [
+              "~downloaded"
+            ]
+          },
+          {
+            "device": "dana",
+            "from": "channels",
+            "to": "thread",
+            "do": "Open #qa-sandbox."
+          },
+          {
+            "device": "dana",
+            "from": "thread",
+            "to": "channels",
+            "do": "Go back to the channel list."
+          },
+          {
+            "device": "dana",
+            "from": "thread",
+            "do": "Start typing a message without sending it.",
+            "sets": [
+              "~typing"
+            ]
+          },
+          {
+            "device": "dana",
+            "from": "thread",
+            "do": "Send \"wake up\".",
+            "needs": [
+              "!muted"
+            ],
+            "sets": [
+              "~pushed"
+            ]
+          },
+          {
+            "device": "dana",
+            "from": "thread",
+            "do": "Send two short messages.",
+            "needs": [
+              "muted"
+            ],
+            "sets": [
+              "~muted-sent"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "thread",
+            "to": "closed",
+            "do": "Close Relay completely (swipe it out of recents)."
+          },
+          {
+            "device": "phone-a",
+            "from": "closed",
+            "to": "thread",
+            "do": "Tap the notification.",
+            "needs": [
+              "~pushed"
+            ],
+            "sets": [
+              "~from-push"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "closed",
+            "to": "thread",
+            "do": "Open Relay."
+          },
+          {
+            "device": "phone-a",
+            "from": "thread",
+            "do": "Mute #qa-sandbox from the channel menu.",
+            "needs": [
+              "!muted"
+            ],
+            "sets": [
+              "muted"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "thread",
+            "do": "Unmute #qa-sandbox from the channel menu.",
+            "needs": [
+              "muted"
+            ],
+            "sets": [
+              "-muted"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "thread",
+            "do": "Turn on airplane mode.",
+            "needs": [
+              "!offline"
+            ],
+            "sets": [
+              "offline"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "thread",
+            "do": "Send three messages, \"one\", \"two\" and \"three\".",
+            "needs": [
+              "offline"
+            ],
+            "sets": [
+              "queued"
+            ]
+          },
+          {
+            "device": "phone-a",
+            "from": "thread",
+            "do": "Turn off airplane mode.",
+            "needs": [
+              "offline"
+            ],
+            "sets": [
+              "-offline",
+              "~reconnected"
+            ]
+          }
+        ]
+      },
       "tests": [
         {
           "key": "T-01",
@@ -13,7 +516,12 @@
           "metadata": {
             "tags": [
               "onboarding"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "welcome",
+              "look": "Look at the first screen."
+            }
           }
         },
         {
@@ -25,7 +533,12 @@
             "tags": [
               "onboarding",
               "auth"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "sign-in-error",
+              "look": "Look at the password field."
+            }
           }
         },
         {
@@ -37,7 +550,15 @@
             "tags": [
               "onboarding",
               "auth"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "channels",
+              "facts": [
+                "~signed-in"
+              ],
+              "look": "Watch the channel list load."
+            }
           }
         },
         {
@@ -48,7 +569,12 @@
           "metadata": {
             "tags": [
               "ui"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "channels",
+              "look": "Look at the header."
+            }
           }
         },
         {
@@ -59,7 +585,15 @@
           "metadata": {
             "tags": [
               "messaging"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "~sent"
+              ],
+              "look": "Watch the message as it sends."
+            }
           }
         },
         {
@@ -70,7 +604,15 @@
           "metadata": {
             "tags": [
               "messaging"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "~sent"
+              ],
+              "look": "Keep watching the message."
+            }
           }
         },
         {
@@ -82,7 +624,15 @@
             "tags": [
               "messaging",
               "sync"
-            ]
+            ],
+            "given": {
+              "device": "phone-b",
+              "at": "thread",
+              "facts": [
+                "message"
+              ],
+              "look": "Look for \"ping\"."
+            }
           }
         },
         {
@@ -94,7 +644,16 @@
             "tags": [
               "messaging",
               "sync"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "message",
+                "read-on-b"
+              ],
+              "look": "Look at \"ping\"'s ticks."
+            }
           }
         },
         {
@@ -105,7 +664,15 @@
           "metadata": {
             "tags": [
               "messaging"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "~typing"
+              ],
+              "look": "Watch the thread header."
+            }
           }
         },
         {
@@ -117,7 +684,15 @@
             "tags": [
               "messaging",
               "sync"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "reacted-on-b"
+              ],
+              "look": "Look at \"ping\"."
+            }
           }
         },
         {
@@ -128,7 +703,15 @@
           "metadata": {
             "tags": [
               "messaging"
-            ]
+            ],
+            "given": {
+              "device": "phone-b",
+              "at": "thread",
+              "facts": [
+                "edited"
+              ],
+              "look": "Look at the message."
+            }
           }
         },
         {
@@ -140,7 +723,15 @@
             "tags": [
               "messaging",
               "sync"
-            ]
+            ],
+            "given": {
+              "device": "phone-b",
+              "at": "thread",
+              "facts": [
+                "deleted"
+              ],
+              "look": "Look where the message was."
+            }
           }
         },
         {
@@ -151,7 +742,15 @@
           "metadata": {
             "tags": [
               "files"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "~uploaded"
+              ],
+              "look": "Watch the upload."
+            }
           }
         },
         {
@@ -163,7 +762,12 @@
             "tags": [
               "files",
               "ui"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "viewer",
+              "look": "Try to zoom, and find the download button."
+            }
           }
         },
         {
@@ -175,7 +779,15 @@
             "tags": [
               "files",
               "limits"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "~rejected"
+              ],
+              "look": "Read the error."
+            }
           }
         },
         {
@@ -186,7 +798,15 @@
           "metadata": {
             "tags": [
               "files"
-            ]
+            ],
+            "given": {
+              "device": "web",
+              "at": "thread",
+              "facts": [
+                "~downloaded"
+              ],
+              "look": "Look at the downloaded file's name."
+            }
           }
         },
         {
@@ -197,7 +817,15 @@
           "metadata": {
             "tags": [
               "notifications"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "closed",
+              "facts": [
+                "~pushed"
+              ],
+              "look": "Watch the lock screen."
+            }
           }
         },
         {
@@ -208,7 +836,15 @@
           "metadata": {
             "tags": [
               "notifications"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "~from-push"
+              ],
+              "look": "See where Relay opens."
+            }
           }
         },
         {
@@ -220,7 +856,15 @@
             "tags": [
               "notifications",
               "settings"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "~muted-sent"
+              ],
+              "look": "Watch the phone for a few seconds."
+            }
           }
         },
         {
@@ -232,7 +876,16 @@
             "tags": [
               "sync",
               "offline"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "queued",
+                "offline"
+              ],
+              "look": "Look at the three messages."
+            }
           }
         },
         {
@@ -244,7 +897,16 @@
             "tags": [
               "sync",
               "offline"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "queued",
+                "~reconnected"
+              ],
+              "look": "Watch the three messages."
+            }
           }
         },
         {
@@ -257,7 +919,15 @@
               "sync",
               "offline",
               "ui"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "offline"
+              ],
+              "look": "Look under the thread header."
+            }
           }
         },
         {
@@ -269,7 +939,12 @@
             "tags": [
               "auth",
               "security"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "channels-as-dana",
+              "look": "Look through the channel list and a thread."
+            }
           }
         },
         {
@@ -281,7 +956,15 @@
             "tags": [
               "ui",
               "settings"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "thread",
+              "facts": [
+                "dark"
+              ],
+              "look": "Look over every part of the thread."
+            }
           }
         },
         {
@@ -292,7 +975,12 @@
           "metadata": {
             "tags": [
               "search"
-            ]
+            ],
+            "given": {
+              "device": "phone-a",
+              "at": "search",
+              "look": "Look at the results."
+            }
           }
         },
         {

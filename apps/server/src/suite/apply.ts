@@ -27,8 +27,9 @@ function stepRow(s: SuiteStep, position: number) {
 
 export async function applySuite(tx: Tx, productId: string, stored: Stored, desired: Suite, actor: string) {
   /* Product. */
-  if (stored.product.name !== desired.product.name || stored.product.description !== (desired.product.description ?? "")) {
-    await tx.update(product).set({ name: desired.product.name, description: desired.product.description ?? "" }).where(eq(product.id, productId));
+  const graph = desired.graph ?? null;
+  if (stored.product.name !== desired.product.name || stored.product.description !== (desired.product.description ?? "") || JSON.stringify(stored.product.graph ?? null) !== JSON.stringify(graph)) {
+    await tx.update(product).set({ name: desired.product.name, description: desired.product.description ?? "", graph }).where(eq(product.id, productId));
   }
 
   /* Tests. */

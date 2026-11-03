@@ -1,0 +1,48 @@
+roles:
+  phone-a:
+    name: Phone A
+    surface: phone
+    usually: Pixel 8
+  phone-b:
+    name: Phone B
+    surface: phone
+    usually: iPhone 13
+screens:
+  phone: [chats, chat, message-menu]
+facts:
+  hello: A message, "hello", from Phone A is in the chat
+  reacted-on-b: Phone B reacted 👍 to "hello"
+  ~sent: Phone A just sent it
+starts:
+  signed-in:
+    say: Relay installed on both phones, signed in as qa-1 (Phone A) and qa-2 (Phone B), on the chat list.
+    at:
+      phone-a: chats
+      phone-b: chats
+actions:
+  - device: phone-a
+    from: chats
+    to: chat
+    do: Open the chat with qa-2.
+  - device: phone-b
+    from: chats
+    to: chat
+    do: Open the chat with qa-1.
+  - device: [phone-a, phone-b]
+    from: chat
+    to: chats
+    do: Go back to the chat list.
+  - device: phone-a
+    from: chat
+    do: Send the message "hello".
+    sets: [hello, ~sent, "-reacted-on-b"]
+  - device: phone-b
+    from: chat
+    to: message-menu
+    do: Long-press "hello".
+    needs: [hello]
+  - device: phone-b
+    from: message-menu
+    to: chat
+    do: React with 👍.
+    sets: [reacted-on-b]

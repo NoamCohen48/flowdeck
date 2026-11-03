@@ -23,7 +23,11 @@ A step "verifies" the tests it confirms. That link is the whole model:
 On a testing day each tester claims a flow, walks its steps on real devices, and
 records a verdict per test: pass, fail, minor or skipped (the test itself is wrong).
 
-Topics:  flowdeck guide tests | flows | steps | files | workflow | all`,
+Instead of writing long flows by hand, you can describe how a person moves through
+the app (graph.yaml) and the state each test needs (given:), and let
+"flowdeck generate" work the flows out: flowdeck guide graph.
+
+Topics:  flowdeck guide tests | flows | steps | graph | build-graph | files | workflow | all`,
 
   tests: `WRITING TESTS
 
@@ -129,10 +133,185 @@ The rules (flowdeck lint checks them)
   6. SAY WHERE IT LEAVES THEM when the next step depends on it: after: "The channel
      list". If the UI changed, the tester can still get there and carry on.`,
 
+  graph: `GENERATED FLOWS: THE GRAPH AND EACH TEST'S GIVEN
+
+A long flow where each test sets up the next is the cheapest way to test, and the
+hardest to write: you have to hold the whole app in your head. So describe the app
+once, say the state each test needs, and let flowdeck find the flows.
+
+graph.yaml is how a person moves through the app:
+
+  roles:      the devices a flow needs, by part, not by model
+                phone-a: { name: Phone A, surface: phone, usually: Pixel 8 }
+  screens:    where a role can be, per surface
+                phone: [sign-in, channels, thread, settings]
+  facts:      what can be true in the world, each with what it means
+                message: A message is in #general
+                ~sent: Just sent         (~ = fresh: true only until the next action)
+              "~sent" and "sent" are one name: refer to it either way, never declare both.
+  starts:     states a flow may begin from: the precondition in words, where every
+              role is, and (optional) facts already true
+                signed-in:
+                  say: Both phones signed in, on the channel list. Dark mode on.
+                  at: { phone-a: channels, phone-b: channels }
+                  facts: [dark]
+  actions:    one step on one role, from a screen to a screen (the same one when
+              "to" is left out), needing some facts and setting others
+                - device: phone-a
+                  from: thread
+                  do: Send "hi".
+                  needs: ["!offline"]           (!x: x must be false)
+                  sets: [message, ~sent]        (-x: makes x false)
+                  while: { phone-b: thread }    (optional: only while Phone B is there)
+                  after: The message shows a clock.   (optional: shown under the step)
+              device and from can be lists: [phone-a, phone-b] does it on either.
+
+A test's given is the state it needs — never steps, because there is more than one
+way to get there:
+
+  given:
+    device: phone-b          the role the check happens on
+    at: thread               its screen
+    facts: [message]         what must be true (and "!x" what must not)
+    also: { phone-a: thread }   other roles that must be somewhere too (optional)
+    look: Look for "hi".     the check's instruction (the title when left out)
+
+  flowdeck generate                 writes templates/generated/, flows of at most 25 steps
+  flowdeck generate --max 15        shorter flows, more of them
+  flowdeck generate --replan        plan from nothing (tests may move between flows)
+  flowdeck generate --keep-setup    keep every step, even the setup before the first check
+
+Every test with a given lands in exactly one generated flow, checked as soon as the
+flow can reach its state. Run it again after an edit and the flows change as little
+as they can: tests stay in their flow, new ones go where they cost the fewest steps.
+It says when planning from nothing would be noticeably shorter. The same suite
+always gives the same flows.
+
+Each flow says the whole state it begins from in its precondition: the start's
+words, and then — when the flow would open with three or more actions that check
+nothing — the state those actions reach ("Then, any way you like: Phone A is on
+settings. The tablet is paired."). How the tester gets there does not matter, so
+those steps are left out. The action a first check is about always stays. Flows share
+the world (the same phones, the same server), so set each one's precondition up
+before you start it, whatever ran before.
+
+Several devices
+  The state is every role's screen at once, plus the facts. The facts are shared:
+  they are the world, not one screen. So a step on one device changes what another
+  can check — Phone A sends, "message" becomes true, and Phone B can now see it:
+
+    - { device: phone-a, from: thread, do: Send "hi"., sets: [message] }
+    - { device: phone-b, from: channels, to: thread, do: "Open #general." }
+    given: { device: phone-b, at: thread, facts: [message] }
+
+  Every action moves one role, so every generated step is on one device. The search
+  interleaves the devices however is shortest, and between equally short ways it
+  prefers the one that puts a device down less often. A start says where every role is; "also:" in a given pins another
+  role too ("Phone A must still be on the thread when Phone B reacts"). A fact that
+  is about one device names it (read-on-b), because a plain "read" would be true
+  for all of them.
+
+  When an action only has its effect while another device is somewhere — the alert
+  shows only while Whistle is in the background — say so with while:
+
+    - { device: pc, from: shell, do: Make the agent ask a question., while: { phone: home-screen }, sets: [alert-shown] }
+    - { device: pc, from: shell, do: Make the agent ask a question., while: { phone: herd }, sets: [marked-waiting] }
+
+Keep the facts few
+  Every fact that can be on or off doubles the states the search may have to look
+  through. For each test, flowdeck searches only the facts and devices that can
+  matter to it, which keeps big graphs fast — but a graph where every fact touches
+  every other is still slow. Drop facts no test needs, and merge ones that always
+  change together. When a search runs out of room, generate and explain say so ("the
+  search gave up"): that is not proof a test cannot be reached, only that the graph
+  is too big to tell.
+
+Rules worth knowing:
+  - Name facts for what a tester can see, and give a fact its role when it is about
+    one device: reacted-on-b, not reacted.
+  - A check that must come right after an action ("watch it send") needs a fresh fact.
+  - Do not edit templates/generated/: it is rewritten. Edit the graph and the givens.
+  - Tests with no given are left to hand-written flows; both count for coverage.
+  - flowdeck lint checks the graph: unknown screens and facts, a fact nothing sets,
+    a screen with no way out, an action no start can get to, a given no start can
+    reach. Each problem names its line in graph.yaml.`,
+
+  "build-graph": `BUILDING A GRAPH — FOR A PERSON OR AN AGENT
+
+The format is "flowdeck guide graph". This is how to get from nothing to a graph that
+generates good flows. Work in small passes and run flowdeck lint after each one: it
+names the file and the problem.
+
+1. Read before writing
+   - Every test (tests/*.yaml): each one hints at a screen and at something that must
+     be true. Together they say which screens and facts the graph needs — and which
+     it does not.
+   - The hand-written flows, if any: they are real paths through the app, with the
+     devices, the order, and "after:" notes on where a step leaves the tester.
+   - The app itself where you can: its routes or screen names in the code, or the
+     running app. Use the app's own names for screens.
+
+2. Roles and starts
+   - One role per device a flow needs, by part: phone-a, phone-b, web. Not by model.
+   - Starts: the states a tester can set up before a flow without steps — "fresh
+     install", "signed in on both phones". Usually one or two. Put every role in each.
+
+3. Screens: coarse
+   - One screen per place a tester stands and looks, not per component or dialog.
+     A menu or an editor is a screen only when a test is checked there or actions
+     happen from it.
+   - Too many screens make long, fiddly flows; too few hide a way back.
+
+4. Actions: one step each
+   - Write each the way a tester reads a step: one instruction, on one device.
+   - Give every screen a way out (lint warns when there is none). Add the ways back
+     a tester really uses: Back, Close, the tab bar.
+   - device and from can be lists, for the same action on several devices or screens.
+
+5. Facts: only what something needs
+   - Add a fact when a test's given or an action's needs depends on it. A fact
+     nothing needs is noise (lint warns).
+   - Name it for what is seen ("photo": a photo is in the thread). Put the device in
+     the name when it is about one device (read-on-b).
+   - Use ~fresh for "watch it happen" checks, which must come right after the action.
+   - Clear what an action undoes: sending a new message clears "edited" (-edited).
+   - Keep them few: every on-or-off fact doubles what the search may look through.
+     When generate or explain says "the search gave up", drop or merge facts.
+   - When an effect depends on where another device is, write the action once per
+     case with while: { other-role: screen } rather than a fact that tracks it.
+   - A state a tester can set up before the flow (an agent already waiting, dark
+     mode on) can be a start's facts: instead of actions that build it.
+
+6. A given on each test
+   - device, at, the facts it needs, and a look: what the tester looks at. A state,
+     never steps.
+   - A test that cannot be put as a state (a timer, a scheduled job) keeps a
+     hand-written flow instead. That is fine.
+
+7. Check and read the result
+   flowdeck lint                       until no errors
+   flowdeck graph show                 each device's screens, ways out, tests checked there
+   flowdeck graph explain <test>       the shortest way to that test, or why there is none
+   flowdeck generate                   then read the flows as a tester would
+   flowdeck graph mermaid              a diagram, to paste where Mermaid renders
+
+   Read every generated flow. A strange detour (signing out to reach a test, a long
+   walk back) almost always means a missing action. A test checked somewhere odd
+   means its given is too loose — add the fact it really needs.
+
+When lint says "no start can reach this state", run flowdeck graph explain on it. It
+says which screen nothing leads to, which fact nothing sets, or which part of the
+given conflicts with the rest (most often a fresh fact checked too far from where it
+is set).
+
+Change the graph, run flowdeck generate again: the flows change as little as they
+can, so a review of the diff shows exactly what the change did.`,
+
   files: `THE FILES
 
   product.yaml                            name, description
-  tests/<key>.yaml                        title, expect, tags, metadata, archived
+  graph.yaml                              roles, screens, facts, starts, actions (optional)
+  tests/<key>.yaml                        title, expect, tags, given, metadata, archived
   templates/<key>/template.yaml           name, description, archived, flows (in order)
   templates/<key>/<flow-key>.flow.yaml    name, precondition, estimateMinutes, archived, steps
 
@@ -216,6 +395,12 @@ Workflow:
 3. \`flowdeck lint\` until there are no errors; read every warning.
 4. \`flowdeck push --plan\` and check each line is intended (\`-\` archives).
 5. \`flowdeck push\`. On exit code 3, \`flowdeck pull\` (it merges) and push again.
+
+If there is a graph.yaml, the flows in templates/generated/ are written by
+\`flowdeck generate\`: change graph.yaml and the tests' \`given:\`, then run it again.
+Never edit the generated files. \`flowdeck guide graph\` has the format;
+\`flowdeck guide build-graph\` is how to write or extend a graph, and
+\`flowdeck graph explain <test>\` says why a test cannot be reached.
 
 \`flowdeck report --json\` lists what testers found on the latest testing day,
 including steps they flagged as wrong — fix those flows first.

@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Suite } from "@flowdeck/domain";
-import { locate, readFolder, writeFolder } from "./files.ts";
+import { locate, readFolder, writeFolder, writeTemplateFolder } from "./files.ts";
 import { localChanges, merge } from "./merge.ts";
 
 const dirs: string[] = [];
@@ -82,6 +82,76 @@ describe("the folder", () => {
   test("lint paths point at the file and the step", () => {
     expect(locate(suite(), ["templates", 0, "flows", 1, "steps", 0, "text"])).toBe("templates/regression/messaging.flow.yaml step 1");
     expect(locate(suite(), ["tests", 2, "expect"])).toBe("tests/sign-in-works.yaml");
+  });
+});
+
+describe("the graph and given", () => {
+  const withGraph = (): Suite => {
+    const s = suite();
+    s.tests[0]!.given = { device: "phone-b", at: "thread", facts: ["message"], also: { "phone-a": "thread" }, look: "Look for \"hi\"." };
+    s.graph = {
+      roles: { "phone-a": { name: "Phone A", surface: "phone", usually: "Pixel 8" }, "phone-b": { name: "Phone B", surface: "phone" } },
+      screens: { phone: ["channels", "thread"] },
+      facts: { message: "A message is in #general", "~sent": "Just sent" },
+      starts: { "signed-in": { say: "Both phones on the channel list.", at: { "phone-a": "channels", "phone-b": "channels" } } },
+      actions: [
+        { device: ["phone-a", "phone-b"], from: "channels", to: "thread", do: "Open #general." },
+        { device: "phone-a", from: "thread", do: 'Send "hi".', needs: ["!message"], sets: ["message", "~sent"] },
+      ],
+    };
+    return s;
+  };
+
+  test("graph.yaml and a test's given are written and read back the same", async () => {
+    const root = await scratch();
+    await writeFolder(root, withGraph());
+    const { suite: back, problems } = await readFolder(root);
+    expect(problems).toEqual([]);
+    expect(back).toEqual(withGraph());
+    const text = await readFile(join(root, "graph.yaml"), "utf8");
+    expect(text).toContain('  - device: [phone-a, phone-b]\n    from: channels\n    to: thread\n    do: "Open #general."\n');
+    expect(text).toContain('    needs: ["!message"]\n');
+    expect(await readFile(join(root, "tests/message-arrives.yaml"), "utf8")).toContain("given:\n  device: phone-b\n  at: thread\n  facts: [message]\n");
+  });
+
+  test("no graph, no graph.yaml; dropping the graph removes it", async () => {
+    const root = await scratch();
+    await writeFolder(root, withGraph());
+    const { removed } = await writeFolder(root, suite());
+    expect(removed).toEqual(["graph.yaml"]);
+  });
+
+  test("an unknown field in graph.yaml says how a comma inside { } makes one", async () => {
+    const root = await scratch();
+    await writeFolder(root, withGraph());
+    await writeFile(join(root, "graph.yaml"), (await readFile(join(root, "graph.yaml"), "utf8")).replace("do: \"Open #general.\"", "do: Open the list, then tap it"));
+    await writeFile(join(root, "graph.yaml"), `${await readFile(join(root, "graph.yaml"), "utf8")}  - { device: phone-a, from: thread, do: Wait, then look, sets: [message] }\n`);
+    const { problems } = await readFolder(root);
+    expect(problems.map((p) => p.message)).toEqual(['action 3: unknown field "then look" (expected one of: device, from, to, do, needs, sets, while, after) — a comma inside { } ends a value: quote it']);
+  });
+
+  test("lint paths into the graph point at graph.yaml", () => {
+    expect(locate(withGraph(), ["graph", "actions", 1, "needs", 0])).toBe("graph.yaml action 2");
+    expect(locate(withGraph(), ["graph", "facts", "message"])).toBe("graph.yaml facts message");
+    expect(locate(withGraph(), ["tests", 0, "given", "at"])).toBe("tests/message-arrives.yaml");
+  });
+
+  test("pull takes the server's graph when only the server changed it", () => {
+    const remote = withGraph();
+    remote.graph!.facts.dark = "Dark theme is on";
+    const m = merge(withGraph(), withGraph(), remote);
+    expect(m.suite.graph!.facts.dark).toBe("Dark theme is on");
+    expect(m.taken).toEqual(["graph"]);
+  });
+
+  test("writing one template touches nothing else", async () => {
+    const root = await scratch();
+    await writeFolder(root, suite());
+    await writeFile(join(root, "tests/sign-in-works.yaml"), "title: Sign-in works\nexpect: Channel list loads.\nmetadata: { priority: high }\n");
+    const out = await writeTemplateFolder(root, { key: "generated", name: "Generated flows", flows: [{ key: "flow-1", name: "One", steps: [] }] });
+    expect(out).toEqual({ written: ["templates/generated/template.yaml", "templates/generated/flow-1.flow.yaml"], removed: [] });
+    expect(await readFile(join(root, "tests/sign-in-works.yaml"), "utf8")).toContain("{ priority: high }");
+    expect((await writeTemplateFolder(root, { key: "generated", name: "Generated flows", flows: [] })).removed).toEqual(["templates/generated/flow-1.flow.yaml"]);
   });
 });
 

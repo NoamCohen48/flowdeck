@@ -13,6 +13,7 @@
  *    step that survives an edit keeps its id: the live editor does not churn and
  *    "Steps to update" links keep working.
  */
+import type { SuiteGraph, TestGiven } from "./graph.ts";
 import type { Suite, SuiteStep } from "./suite.ts";
 
 /* ── The stored side ──────────────────────────────────────────────────── */
@@ -52,13 +53,13 @@ export interface StoredTest {
   readonly key: string;
   readonly title: string;
   readonly expect: string;
-  /** The whole bag, tags included. */
+  /** The whole bag, tags and given included. */
   readonly metadata: Readonly<Record<string, unknown>>;
   readonly archived: boolean;
 }
 
 export interface Stored {
-  readonly product: { readonly name: string; readonly description: string };
+  readonly product: { readonly name: string; readonly description: string; readonly graph?: SuiteGraph | null };
   readonly tests: readonly StoredTest[];
   readonly templates: readonly StoredTemplate[];
 }
@@ -173,10 +174,10 @@ export function stepDiffers(stored: StoredStep, desired: SuiteStep, testIdOf: (k
 
 /* ── The plan ─────────────────────────────────────────────────────────── */
 
-/** The metadata a test file would hold: `tags` lifted out, the rest as-is. */
-export function metadataOf(t: { tags?: readonly string[]; metadata?: Readonly<Record<string, unknown>> }): Record<string, unknown> {
-  const { tags: _ignored, ...rest } = (t.metadata ?? {}) as Record<string, unknown>;
-  return t.tags?.length ? { ...rest, tags: [...t.tags] } : rest;
+/** The stored bag for a test: its metadata, with `tags` and `given` (fields of their own in a file) put back in. */
+export function metadataOf(t: { tags?: readonly string[]; given?: TestGiven; metadata?: Readonly<Record<string, unknown>> }): Record<string, unknown> {
+  const { tags: _tags, given: _given, ...rest } = (t.metadata ?? {}) as Record<string, unknown>;
+  return { ...rest, ...(t.tags?.length ? { tags: [...t.tags] } : {}), ...(t.given ? { given: t.given } : {}) };
 }
 
 /** Equal as JSON, whatever order the keys came in. */
@@ -193,6 +194,8 @@ export function planSuite(stored: Stored, desired: Suite): Plan {
   const productFields = [
     norm(stored.product.name) !== norm(desired.product.name) ? "name" : null,
     norm(stored.product.description) !== norm(desired.product.description) ? "description" : null,
+    // Order means something in a graph (roles, starts), so compare it as written.
+    JSON.stringify(stored.product.graph ?? null) !== JSON.stringify(desired.graph ?? null) ? "graph" : null,
   ].filter((f): f is string => f !== null);
   if (productFields.length) changes.push({ op: "update-product", fields: productFields });
 
