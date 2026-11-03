@@ -47,7 +47,7 @@ describe("flowdeck generate", () => {
     await writeFolder(root, suite());
     const first = await flowdeck(root, "generate");
     expect(first.code).toBe(0);
-    expect(first.out).toContain("1 flow, 11 steps, 3 tests (at most 25 steps a flow).");
+    expect(first.out).toContain("1 flow, 9 steps, 3 tests (at most 25 steps a flow).");
     expect(first.out).not.toContain("New:");
     expect(existsSync(join(root, "templates/generated/flow-1.flow.yaml"))).toBe(true);
     expect(await readFile(join(root, "templates/generated/flow-1.flow.yaml"), "utf8")).toContain("precondition: Both phones signed in, on the channel list.\n");

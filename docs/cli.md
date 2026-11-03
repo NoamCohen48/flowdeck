@@ -127,7 +127,8 @@ flowdeck generate --replan    # plan from nothing; tests may move between flows
 ```
 
 - Every test with a `given` is checked in exactly one generated flow, by the shortest path
-  from wherever that flow already is. Tests with no `given` are left to hand-written flows.
+  from wherever that flow already is (between equally short ones, the one with fewer
+  changes of device). Tests with no `given` are left to hand-written flows.
 - Each flow's precondition says the whole state it begins from: the start's words, plus the
   state its first setup actions would reach when there are three or more of them before the
   first check ("Then, any way you like: Phone A is on settings."). Those steps are left out;

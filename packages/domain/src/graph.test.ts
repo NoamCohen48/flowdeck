@@ -120,17 +120,15 @@ describe("generateFlows", () => {
     expect(flow!.precondition).toBe("Both phones signed in, on the channel list.");
     expect(flow!.steps.map((s) => `${s.device}: ${s.kind === "check" ? "✓ " : ""}${s.text}`)).toEqual([
       "Phone A: ✓ Look at the list.",
-      "Phone A: Open #general.",
-      'Phone A: Send "hi".',
-      "Phone A: ✓ Watch it send.",
-      "Phone B: Open #general.",
-      'Phone B: ✓ Look for "hi".',
-      "Phone A: Go back.",
       "Phone A: Open Settings.",
       "Phone A: Switch to the dark theme.",
       "Phone A: Close Settings.",
       "Phone A: Open #general.",
       "Phone A: ✓ Dark thread",
+      'Phone A: Send "hi".',
+      "Phone A: ✓ Watch it send.",
+      "Phone B: Open #general.",
+      'Phone B: ✓ Look for "hi".',
     ]);
     // A check carries the test's expected result and verifies it.
     expect(flow!.steps[0]).toEqual({ kind: "check", text: "Look at the list.", device: "Phone A", expect: "The channel list.", verifies: ["sign-in-works"] });
@@ -301,7 +299,7 @@ describe("explainGiven", () => {
     expect(e.status).toBe("reachable");
     if (e.status !== "reachable") return;
     expect(e.start).toBe("signed-in");
-    expect(e.steps.map((s) => `${s.device}: ${s.text}`)).toEqual(["Phone A: Open #general.", "Phone B: Open #general.", 'Phone A: Send "hi".', 'Phone B: Look for "hi".']);
+    expect(e.steps.map((s) => `${s.device}: ${s.text}`)).toEqual(["Phone A: Open #general.", 'Phone A: Send "hi".', "Phone B: Open #general.", 'Phone B: Look for "hi".']);
     expect(e.fromEachStart).toEqual({ "signed-in": 3, "signed-out": 5 });
   });
 

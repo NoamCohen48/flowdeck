@@ -205,8 +205,8 @@ Several devices
     given: { device: phone-b, at: thread, facts: [message] }
 
   Every action moves one role, so every generated step is on one device. The search
-  interleaves the devices however is shortest: a flow switches device when the next
-  test needs it. A start says where every role is; "also:" in a given pins another
+  interleaves the devices however is shortest, and between equally short ways it
+  prefers the one that puts a device down less often. A start says where every role is; "also:" in a given pins another
   role too ("Phone A must still be on the thread when Phone B reacts"). A fact that
   is about one device names it (read-on-b), because a plain "read" would be true
   for all of them.

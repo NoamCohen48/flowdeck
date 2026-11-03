@@ -114,6 +114,8 @@ interface Edge {
 }
 
 interface Goal {
+  /** The role the check happens on. */
+  device: number;
   where: [role: number, screen: number][];
   needOn: bigint;
   needOff: bigint;
@@ -199,7 +201,7 @@ function compile(graph: SuiteGraph, tests: readonly SuiteTest[]): Compiled {
       const i = roles.indexOf(r);
       return [i, screenIndex[i]!.get(s)!];
     });
-    goals.set(t.key, { where, needOn: bits(g.facts, (x) => !x.startsWith("!")), needOff: bits(g.facts, (x) => x.startsWith("!")) });
+    goals.set(t.key, { device: roles.indexOf(g.device), where, needOn: bits(g.facts, (x) => !x.startsWith("!")), needOff: bits(g.facts, (x) => x.startsWith("!")) });
     live.set(t.key, t);
   }
 
@@ -334,28 +336,33 @@ function atLeast(c: Compiled, s: State, goal: Goal, rel: Relevance): number {
  * The shortest list of edges from `from` to a state that meets `goal`, at most
  * `limit` long. A*, with `atLeast` as the guide: it heads for the goal first and
  * still finds a shortest way, and it never looks at a state that could not make
- * the limit. Ties go to the deeper state, then to the one found first — edges
- * are tried in file order — so the same graph always gives the same path. Null
- * when there is none; GAVE_UP when the search ran out of states.
+ * the limit. Between equally short ways it leans to fewer changes of device —
+ * a tester putting one phone down for another — counted from `who`, the role
+ * of the step before (-1: none). Then the deeper state, then the one found
+ * first — edges are tried in file order — so the same graph always gives the
+ * same path. Null when there is none; GAVE_UP when the search ran out of states.
  */
-function search(c: Compiled, from: State, goal: Goal, limit: number): Found | null | typeof GAVE_UP {
+function search(c: Compiled, from: State, goal: Goal, limit: number, who = -1): Found | null | typeof GAVE_UP {
   if (meets(from, goal)) return { edges: [], end: from };
   if (!hopeful(c, from, goal)) return null;
   const rel = relevance(c, goal);
+  // One node a state, whichever device reached it: switches only break ties, so a count that is near enough will do.
   const key = rel.key;
   const h0 = atLeast(c, from, goal, rel);
   if (h0 > limit) return null;
-  const nodes: { state: State; parent: number; edge: number; g: number; f: number }[] = [{ state: from, parent: -1, edge: -1, g: 0, f: h0 }];
-  const best = new Map([[key(from), 0]]);
+  const nodes: { state: State; parent: number; edge: number; g: number; f: number; sw: number; role: number }[] = [{ state: from, parent: -1, edge: -1, g: 0, f: h0, sw: 0, role: who }];
+  const best = new Map<bigint, [g: number, sw: number]>([[key(from), [0, 0]]]);
+  const worse = (b: [number, number] | undefined, g: number, sw: number) => !!b && (b[0] < g || (b[0] === g && b[1] <= sw));
   const heap = new Heap((a, b) => {
     const x = nodes[a]!, y = nodes[b]!;
-    return x.f !== y.f ? x.f < y.f : x.g !== y.g ? x.g > y.g : a < b;
+    return x.f !== y.f ? x.f < y.f : x.sw !== y.sw ? x.sw < y.sw : x.g !== y.g ? x.g > y.g : a < b;
   });
   heap.push(0);
   while (heap.size) {
     const i = heap.pop();
     const node = nodes[i]!;
-    if (best.get(key(node.state))! < node.g) continue;
+    const b = best.get(key(node.state))!;
+    if (b[0] < node.g || (b[0] === node.g && b[1] < node.sw)) continue;
     if (meets(node.state, goal)) {
       const out: number[] = [];
       for (let n = node; n.parent !== -1; n = nodes[n.parent]!) out.push(n.edge);
@@ -363,15 +370,17 @@ function search(c: Compiled, from: State, goal: Goal, limit: number): Found | nu
     }
     if (node.g >= limit) continue;
     for (const ei of rel.edges) {
-      const next = move(c, node.state, c.edges[ei]!);
+      const edge = c.edges[ei]!;
+      const next = move(c, node.state, edge);
       if (!next) continue;
       const k = key(next);
       const g = node.g + 1;
-      if ((best.get(k) ?? Infinity) <= g) continue;
+      const sw = node.sw + (node.role !== -1 && node.role !== edge.role ? 1 : 0);
+      if (worse(best.get(k), g, sw)) continue;
       const f = g + atLeast(c, next, goal, rel);
       if (f > limit) continue;
-      best.set(k, g);
-      nodes.push({ state: next, parent: i, edge: ei, g, f });
+      best.set(k, [g, sw]);
+      nodes.push({ state: next, parent: i, edge: ei, g, f, sw, role: edge.role });
       heap.push(nodes.length - 1);
       if (best.size > SEARCH_BUDGET) return GAVE_UP;
     }
@@ -419,20 +428,20 @@ class Heap {
  * the facts and screens that matter to the test, so that is the cache key; the
  * state it ends in is the edges played from where you really are.
  */
-function hop(c: Compiled, state: State, key: string, limit: number): Found | null {
+function hop(c: Compiled, state: State, key: string, limit: number, who = -1): Found | null {
   const goal = c.goals.get(key)!;
   if (meets(state, goal)) return { edges: [], end: state };
   const rel = relevance(c, goal);
   let byState = c.paths.get(key);
   if (!byState) c.paths.set(key, (byState = new Map()));
-  const k = rel.key(state);
+  const k = rel.key(state) * BigInt(c.roles.length + 1) + BigInt(who + 1);
   const cached = byState.get(k);
   // A way found is the shortest there is, whatever limit it was found within; "none" holds only up to the limit it looked to.
   const reusable = cached && (cached.edges === null ? cached.limit >= limit : cached.edges === GAVE_UP ? cached.limit === limit : true);
   let edges: number[] | null | typeof GAVE_UP;
   if (reusable) edges = Array.isArray(cached.edges) && cached.edges.length > limit ? null : cached.edges;
   else {
-    const found = search(c, state, goal, limit);
+    const found = search(c, state, goal, limit, who);
     edges = found && found !== GAVE_UP ? found.edges : found;
     byState.set(k, { edges, limit });
   }
@@ -500,19 +509,20 @@ function setupCut(c: Compiled, start: State, edges: readonly number[], goal: Goa
 function build(c: Compiled, flow: FlowPlan, set: Settings, cap = set.maxSteps): Built | undefined {
   const start = c.starts.get(flow.start);
   if (!start) return undefined;
-  let state = start, cut = 0;
+  let state = start, cut = 0, who = -1;
   const steps: PlannedStep[] = [];
   for (const [i, key] of flow.tests.entries()) {
     if (!c.goals.has(key)) return undefined;
     // A hop never needs to look further than the room the flow has left.
     const room = i === 0 ? set.maxSteps : cap - (steps.length - cut) - 1;
     if (room < 0) return undefined;
-    const found = hop(c, state, key, room);
+    const found = hop(c, state, key, room, who);
     if (!found) return undefined;
     for (const e of found.edges) steps.push({ kind: "do", edge: e });
     if (i === 0) cut = setupCut(c, start, found.edges, c.goals.get(key)!, set.setup);
     steps.push({ kind: "check", test: key });
     state = found.end;
+    who = c.goals.get(key)!.device;
   }
   return steps.length - cut <= cap ? { steps, cut } : undefined;
 }
@@ -524,12 +534,12 @@ function before(a: readonly number[], b: readonly number[]) {
   return false;
 }
 
-/** The nearest of `keys` from `state`: the path there, and which key. */
-function nearest(c: Compiled, state: State, keys: readonly string[], limit: number) {
+/** The nearest of `keys` from `state`, with `who` the role of the step before: the path there, and which key. */
+function nearest(c: Compiled, state: State, keys: readonly string[], limit: number, who = -1) {
   let best: { found: Found; key: string } | undefined;
   for (const key of keys) {
     // Nothing longer than the best so far can win, so no search needs to look further.
-    const found = hop(c, state, key, best ? Math.min(limit, best.found.edges.length) : limit);
+    const found = hop(c, state, key, best ? Math.min(limit, best.found.edges.length) : limit, who);
     if (found && (!best || before(found.edges, best.found.edges))) best = { found, key };
   }
   return best;
@@ -549,14 +559,15 @@ function freshPlan(c: Compiled, keys: readonly string[], set: Settings) {
     if (!best) break;
     const flow: FlowPlan = { start: best.start, tests: [] };
     let state = c.starts.get(best.start)!;
-    let length = 0;
+    let length = 0, who = -1;
     while (left.length) {
-      const n = nearest(c, state, left, flow.tests.length ? set.maxSteps - length - 1 : set.maxSteps);
+      const n = nearest(c, state, left, flow.tests.length ? set.maxSteps - length - 1 : set.maxSteps, who);
       const b = n && build(c, { start: flow.start, tests: [...flow.tests, n.key] }, set);
       if (!n || !b) break;
       flow.tests.push(n.key);
       left.splice(left.indexOf(n.key), 1);
       state = n.found.end;
+      who = c.goals.get(n.key)!.device;
       length = cost(b);
     }
     if (!flow.tests.length) break;
@@ -565,22 +576,60 @@ function freshPlan(c: Compiled, keys: readonly string[], set: Settings) {
   return { plan, left };
 }
 
-/** Where inserting `key` costs the fewest extra steps: [cost, flow, position]. */
-function fit(c: Compiled, plan: readonly FlowPlan[], key: string, set: Settings, skip = -1): [number, number, number] | undefined {
-  let best: [number, number, number] | undefined;
+/** How many of the cheapest-looking places `fit` builds in full to be sure. */
+const FIT_CHECKS = 3;
+
+/**
+ * Where inserting `key` costs the fewest extra steps, and fewer than `under`:
+ * [cost, flow, position]. Building a whole flow for every place is what makes
+ * planning slow, so each place is first estimated from the two hops it adds
+ * and the one it replaces; then the few cheapest are built in full, and the
+ * real cost decides.
+ */
+function fit(c: Compiled, plan: readonly FlowPlan[], key: string, set: Settings, skip = -1, under = Infinity): [number, number, number] | undefined {
+  const guesses: { guess: number; fi: number; pos: number; base: number }[] = [];
   plan.forEach((f, fi) => {
-    // One step (the check itself) is the least a test can add: nothing beats it, and a full flow cannot take it.
-    if (fi === skip || best?.[0] === 1) return;
-    const was = build(c, f, set);
+    if (fi === skip) return;
+    const was = f.tests.length ? build(c, f, set) : undefined;
     const base = was ? cost(was) : 0;
-    if (was && base + 1 > set.maxSteps) return;
-    for (let pos = 0; pos <= f.tests.length && best?.[0] !== 1; pos++) {
-      // Only an insertion cheaper than the best so far matters, so no search needs to look further than that.
-      const cap = Math.min(set.maxSteps, best ? base + best[0] - 1 : set.maxSteps);
-      const b = build(c, { start: f.start, tests: [...f.tests.slice(0, pos), key, ...f.tests.slice(pos)] }, set, cap);
-      if (b && (!best || cost(b) - base < best[0])) best = [cost(b) - base, fi, pos];
+    // One step (the check itself) is the least a test can add, so a full flow cannot take it.
+    if (base + 1 > set.maxSteps) return;
+    // The state before each test's hop, and how long that hop is.
+    const before: State[] = [];
+    const whos: number[] = [];
+    const hops: number[] = [];
+    let state = c.starts.get(f.start)!, length = 0, who = -1;
+    for (const p of was?.steps ?? []) {
+      if (before.length === hops.length) { before.push(state); whos.push(who); }
+      if (p.kind === "do") { state = move(c, state, c.edges[p.edge]!)!; who = c.edges[p.edge]!.role; length++; continue; }
+      hops.push(length);
+      who = c.goals.get(p.test)!.device;
+      length = 0;
+    }
+    before.push(state);
+    whos.push(who);
+    for (let pos = 0; pos <= f.tests.length; pos++) {
+      // guess = there + 1 + on - replaced, and it must stay under `under`: that bounds both searches.
+      const replaced = pos < f.tests.length ? hops[pos]! : 0;
+      const there = hop(c, before[pos]!, key, Math.min(set.maxSteps, under - 2 + replaced), whos[pos]);
+      if (!there) continue;
+      let guess = there.edges.length + 1;
+      if (pos < f.tests.length) {
+        const on = hop(c, there.end, f.tests[pos]!, Math.min(set.maxSteps, under - 2 + replaced - there.edges.length), c.goals.get(key)!.device);
+        if (!on) continue;
+        guess += on.edges.length - hops[pos]!;
+      }
+      if (guess < under) guesses.push({ guess, fi, pos, base });
     }
   });
+  guesses.sort((a, b) => a.guess - b.guess || a.fi - b.fi || a.pos - b.pos);
+  let best: [number, number, number] | undefined;
+  for (const g of guesses.slice(0, FIT_CHECKS)) {
+    const f = plan[g.fi]!;
+    const cap = Math.min(set.maxSteps, g.base + Math.min(best ? best[0] : Infinity, under) - 1);
+    const b = build(c, { start: f.start, tests: [...f.tests.slice(0, g.pos), key, ...f.tests.slice(g.pos)] }, set, cap);
+    if (b && (!best || cost(b) - g.base < best[0])) best = [cost(b) - g.base, g.fi, g.pos];
+  }
   return best;
 }
 
@@ -602,6 +651,37 @@ function foldSmall(c: Compiled, plan: FlowPlan[], set: Settings) {
         changed = true;
         break;
       }
+    }
+  }
+  return plan;
+}
+
+/**
+ * Greedy planning takes the nearest test each time, which is good but not the
+ * best. So, test by test in order: take it out of its flow and put it back
+ * wherever it costs the fewest steps — the same flow, another one — and keep
+ * the move only when the total gets shorter. Repeat until nothing improves. A
+ * flow left empty goes. Only for planning from nothing: an update keeps tests
+ * where they are on purpose.
+ */
+function improve(c: Compiled, plan: FlowPlan[], set: Settings) {
+  const costOf = (f: FlowPlan) => (f.tests.length ? cost(build(c, f, set)!) : 0);
+  for (let round = 0, better = true; better && round < 10; round++) {
+    better = false;
+    for (const key of plan.flatMap((f) => f.tests)) {
+      const from = plan.findIndex((f) => f.tests.includes(key));
+      const was = plan[from]!;
+      const rest = { start: was.start, tests: was.tests.filter((k) => k !== key) };
+      const left = rest.tests.length ? build(c, rest, set) : { steps: [], cut: 0 };
+      if (!left) continue;
+      // What taking it out saves, against the cheapest place to put it back (fit counts from the flow without it).
+      const saved = costOf(was) - cost(left);
+      const without = plan.map((f, i) => (i === from ? rest : f));
+      const spot = fit(c, without, key, set, -1, saved);
+      if (!spot || spot[0] >= saved) continue;
+      without[spot[1]] = { start: without[spot[1]]!.start, tests: [...without[spot[1]]!.tests.slice(0, spot[2]), key, ...without[spot[1]]!.tests.slice(spot[2])] };
+      plan = without.filter((f) => f.tests.length);
+      better = true;
     }
   }
   return plan;
@@ -687,7 +767,7 @@ export function generateFlows(suite: Suite, options: GenerateOptions = {}): Gene
 
   const fromNothing = () => {
     const f = freshPlan(c, keys, set);
-    return { plan: foldSmall(c, f.plan, set), left: f.left };
+    return { plan: improve(c, foldSmall(c, f.plan, set), set), left: f.left };
   };
   const length = (plan: readonly FlowPlan[]) => plan.reduce((n, f) => { const b = build(c, f, set); return n + (b ? cost(b) : 0); }, 0);
 
